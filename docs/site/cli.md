@@ -41,7 +41,7 @@ Writes a minimal `parcela.yaml` without replacing an existing file. The command 
 parcela up [--detach] [--setup] [--name NAME | --primary] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale]
 ```
 
-Registers the checkout on first use, starts the proxy if needed, and starts the configured services. HTTP routes open after all HTTP services pass readiness. A ready environment is reused. If the owner process died but services survived, `up` adopts the recorded processes instead of starting duplicates.
+Registers the checkout on first use and starts the configured services. If HTTP services are configured, it starts the proxy as needed and opens routes after readiness. Without HTTP services, it supervises processes without a proxy or URL. A ready environment is reused. If the owner process died but services survived, `up` adopts the recorded processes instead of starting duplicates.
 
 | Option | Effect |
 | --- | --- |
@@ -58,7 +58,7 @@ Registers the checkout on first use, starts the proxy if needed, and starts the 
 
 After readiness, ordinary services are not restarted automatically. Exits are reported. If an HTTP service stops listening for longer than the readiness timeout, `readiness_timeout_seconds` in `parcela.yaml` (60 seconds by default), the environment stops. Sharing publishers have a separate retry policy.
 
-The first `up` in a terminal may offer system CA trust. `PARCELA_NO_TRUST=1` suppresses it. Nonterminal runs never change trust.
+For an HTTP environment, the first `up` in a terminal may offer system CA trust. `PARCELA_NO_TRUST=1` suppresses it. Nonterminal runs never change trust.
 
 ## down
 
@@ -89,7 +89,7 @@ Shows registered URLs, live HTTP health, process state, and named ports.
 
 | Environment state | Meaning |
 | --- | --- |
-| `ready` | The environment is running and HTTP checks pass. |
+| `ready` | The configured processes have started, hooks have completed, and explicit readiness checks pass. |
 | `starting` | Startup is in progress. |
 | `unhealthy` | A live health check fails. |
 | `stopping` | Shutdown is in progress. |
@@ -122,7 +122,7 @@ Logs remain after shutdown until the next start. Files are under `log/processes/
 parcela url [SERVICE]
 ```
 
-Prints the default service's URL or the named HTTP service's URL. Registered URLs remain available while stopped.
+Prints the default service's URL or the named HTTP service's URL. Registered URLs remain available while stopped. Environments without HTTP services have no URL, so `url` and `open` return an error.
 
 ## open
 

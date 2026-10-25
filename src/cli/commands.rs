@@ -553,7 +553,9 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
             "parcela: the Parcela process that started {} exited; taking back control of its running services",
             render::name(&serde_json::to_value(&workspace)?)
         );
-        parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
+        if !manifest.services.is_empty() {
+            parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
+        }
         let result = if start.detach {
             lifecycle::recover_detached(&registry, &workspace)?
         } else {
@@ -640,8 +642,10 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
         );
     }
     // Started here so its notice reaches this terminal, not the detached owner's log.
-    parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
-    parcela::proxy::offer_trust(registry.state_path());
+    if !manifest.services.is_empty() {
+        parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
+        parcela::proxy::offer_trust(registry.state_path());
+    }
     let log = registry.runtime_path(&workspace).join("log/owner.log");
     let offset = std::fs::metadata(&log).map_or(0, |metadata| metadata.len());
     let result = lifecycle::detached(

@@ -63,12 +63,16 @@ impl Record {
             record
                 .session
                 .public_url
+                .as_deref()
+                .unwrap_or_default()
                 .trim_start_matches("https://")
                 .split(':')
                 .next()
                 .unwrap_or_default(),
         )?;
-        let endpoints = record.session.endpoints(&record.manifest.default_service);
+        let endpoints = record
+            .session
+            .endpoints(record.manifest.default_service.as_deref());
         ensure!(
             endpoints.len() == hosts.len()
                 && endpoints
@@ -123,7 +127,7 @@ impl Record {
         self.owner_holds(path)
             && self
                 .session
-                .endpoints(&self.manifest.default_service)
+                .endpoints(self.manifest.default_service.as_deref())
                 .iter()
                 .all(|endpoint| {
                     process::listener_identity(endpoint.backend_port, &roots)

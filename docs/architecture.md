@@ -20,10 +20,10 @@ Parcela turns one checkout's configuration into a supervised environment. It own
 1. Find and validate the nearest `parcela.yaml`.
 2. Register the checkout on first use. A main checkout gets the project URL. A linked jj workspace or Git worktree gets a preview name.
 3. Reserve service hostnames and lease backend ports from 20000 through 29999, including each port a `compose` service's containers publish. Port leases use one transaction.
-4. Start the shared proxy if needed.
+4. Start the shared proxy if HTTP endpoints are configured. Watcher-only environments skip the proxy and trust setup.
 5. Build the process graph. Start hook dependencies, setup if due, prestart, and the remaining services in dependency order.
-6. Confirm that every HTTP listener belongs to the graph and that its readiness path returns 2xx.
-7. Publish the environment's routes. A detached start returns when its owner reports readiness.
+6. Wait for hooks to complete, services to start, and explicit readiness checks to pass. For HTTP services, confirm that listeners belong to the graph and readiness paths return 2xx.
+7. Publish the environment's HTTP routes, if any. A detached start returns when its owner reports readiness.
 
 The owner holds `owner.lock`, serves its control socket, and saves `owner.json`. Each command runs under `bash -c`, or `sh -c` without bash, in a separate process group. Each process writes its own log.
 

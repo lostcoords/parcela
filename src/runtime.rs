@@ -33,9 +33,9 @@ pub fn session_environment(
         manifest,
         workspace,
         runtime,
-        &session.public_url,
-        Some(session.backend_port),
-        &session.endpoints(&manifest.default_service),
+        session.public_url.as_deref().unwrap_or_default(),
+        session.backend_port,
+        &session.endpoints(manifest.default_service.as_deref()),
         &session.ports,
         share,
     )
@@ -86,6 +86,10 @@ pub fn environment(
         ("PARCELA_SHARE_HOSTS".into(), share.hosts(endpoints)),
         ("HOST".into(), "127.0.0.1".into()),
     ]);
+    if manifest.services.is_empty() {
+        context.remove("PARCELA_URL");
+        context.remove("PARCELA_HOSTNAME");
+    }
     if let Some(port) = port {
         context.insert("PORT".into(), port.to_string());
     }
@@ -104,7 +108,7 @@ pub fn environment(
         context.insert(format!("{prefix}_URL"), service_url);
         context.insert(format!("{prefix}_HOSTNAME"), hostname);
         if let Some(port) = endpoint.map(|endpoint| endpoint.backend_port).or_else(|| {
-            (service == manifest.default_service)
+            (Some(service.as_str()) == manifest.default_service.as_deref())
                 .then_some(port)
                 .flatten()
         }) {
@@ -150,6 +154,7 @@ pub(crate) fn command_env(command: &mut Command, context: &BTreeMap<String, Stri
             command.env_remove(key);
         }
     }
+    command.env_remove("PORT");
     command.envs(context);
 }
 fn runtime(registry: &Registry, workspace: &Workspace) -> Result<PathBuf> {
@@ -187,22 +192,28 @@ pub fn run(
         timeout,
         request,
     )?;
-    let router = crate::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
-    crate::proxy::offer_trust(registry.state_path());
+    let router = if manifest.services.is_empty() {
+        None
+    } else {
+        let router = crate::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
+        crate::proxy::offer_trust(registry.state_path());
+        Some(router)
+    };
     let path = runtime(registry, workspace)?;
     let owner_lock = Lock::acquire(&path.join("owner.lock"))?;
     converge_crashed_session(registry, workspace, &owner_lock)?;
     let (endpoints, ports, probes) =
-        crate::ports::allocate(registry, manifest, workspace, &router, backend_port)?;
+        crate::ports::allocate(registry, manifest, workspace, router.as_ref(), backend_port)?;
     let default = endpoints
         .iter()
-        .find(|endpoint| endpoint.service == manifest.default_service)
-        .context("default endpoint missing")?;
+        .find(|endpoint| Some(endpoint.service.as_str()) == manifest.default_service.as_deref());
     let share = Share::plan(
         registry.state_path(),
         request,
         &endpoints,
-        router.front_door.https,
+        router
+            .as_ref()
+            .map_or(1443, |router| router.front_door.https),
     )?;
     let kind = match launch {
         Launch::Command(_) => "run",
@@ -211,15 +222,19 @@ pub fn run(
     // Registered before the session exists: an interrupt during startup reaches the owner loop
     // instead of killing Parcela with leased ports and no owner record.
     let signals = Signals::new()?;
-    let session = registry.begin_endpoints(
-        workspace,
-        &router.token,
-        default.backend_port,
-        kind,
-        &router.url(&workspace.hostname),
-        &endpoints,
-        &ports,
-    )?;
+    let session = match (router.as_ref(), default) {
+        (Some(router), Some(default)) => registry.begin_endpoints(
+            workspace,
+            &router.token,
+            default.backend_port,
+            kind,
+            &default.public_url,
+            &endpoints,
+            &ports,
+        )?,
+        (None, None) => registry.begin_processes(workspace, &ports)?,
+        _ => anyhow::bail!("HTTP routing configuration is incomplete"),
+    };
     // owner.json is saved before any process starts, so recovery always knows what ran.
     let launched = (|| -> Result<_> {
         let mut workspace = registry.current(&workspace.source, manifest)?;
@@ -234,7 +249,10 @@ pub fn run(
             Launch::Command(argv) => {
                 ensure!(!argv.is_empty(), "literal command argv required after --");
                 vec![supervisor::literal(
-                    &manifest.default_service,
+                    manifest
+                        .default_service
+                        .as_deref()
+                        .context("run needs an HTTP service")?,
                     argv,
                     &env,
                     &workspace.source,
@@ -249,7 +267,7 @@ pub fn run(
                 if let Some(compose) = manifest.compose() {
                     crate::compose::write_override(&path, compose, &session.ports)?;
                 }
-                let endpoints = session.endpoints(&manifest.default_service);
+                let endpoints = session.endpoints(manifest.default_service.as_deref());
                 supervisor::plan(
                     manifest,
                     &endpoints,
@@ -257,7 +275,13 @@ pub fn run(
                     &workspace.source,
                     &path,
                     setup_pending(manifest, &path),
-                    &share.processes(manifest, &endpoints, router.front_door.https)?,
+                    &share.processes(
+                        manifest,
+                        &endpoints,
+                        router
+                            .as_ref()
+                            .map_or(1443, |router| router.front_door.https),
+                    )?,
                 )?
             }
         };
@@ -433,14 +457,24 @@ fn recorded_graph(
     if record.session.kind == "run" {
         // Its one process always started, so its command is never needed again.
         return Ok(vec![supervisor::literal(
-            &record.manifest.default_service,
+            record
+                .manifest
+                .default_service
+                .as_deref()
+                .context("run needs an HTTP service")?,
             &[],
             &env,
             &workspace.source,
         )]);
     }
-    let endpoints = record.session.endpoints(&record.manifest.default_service);
-    let https = crate::frontdoor::FrontDoor::load(registry.state_path())?.https;
+    let endpoints = record
+        .session
+        .endpoints(record.manifest.default_service.as_deref());
+    let https = if record.manifest.services.is_empty() {
+        1443
+    } else {
+        crate::frontdoor::FrontDoor::load(registry.state_path())?.https
+    };
     supervisor::plan(
         &record.manifest,
         &endpoints,
@@ -475,11 +509,34 @@ pub fn preflight(
     let mut resolved = workspace.clone();
     resolved.generation += 1;
     // Checked against the saved front door, so a failing launch never starts the proxy.
-    let active_router = Router {
-        token: String::new(),
-        front_door: crate::frontdoor::FrontDoor::load(registry.state_path())?,
-        version: router::VERSION.into(),
-        protocol: router::PROTOCOL,
+    if manifest.services.is_empty() {
+        match crate::proxy::status(registry.state_path())? {
+            crate::proxy::Status::Stopped => {}
+            crate::proxy::Status::Running(router) => ensure!(
+                router.protocol == router::PROTOCOL,
+                "the running proxy cannot read watcher-only sessions; run `parcela proxy restart` with this Parcela first"
+            ),
+            crate::proxy::Status::Unhealthy(error) => {
+                return Err(error.context(
+                    "the running proxy cannot be verified; inspect `parcela proxy status` before starting watcher-only services",
+                ));
+            }
+        }
+    }
+    ensure!(
+        !manifest.services.is_empty()
+            || (port.is_none() && !request.lan && request.lan_ip.is_none() && !request.tailscale),
+        "--backend-port, --lan, --lan-ip and --tailscale need an HTTP service"
+    );
+    let active_router = if manifest.services.is_empty() {
+        None
+    } else {
+        Some(Router {
+            token: String::new(),
+            front_door: crate::frontdoor::FrontDoor::load(registry.state_path())?,
+            version: router::VERSION.into(),
+            protocol: router::PROTOCOL,
+        })
     };
     let reserved = registry.hosts(&workspace.id)?;
     for (service, host) in manifest.service_hosts(&workspace.hostname)? {
@@ -492,7 +549,10 @@ pub fn preflight(
     let mut reusable = false;
     if let Some(port) = port {
         ensure!(
-            port >= 1024 && !active_router.listens_on(port),
+            port >= 1024
+                && active_router
+                    .as_ref()
+                    .is_none_or(|router| !router.listens_on(port)),
             "--backend-port {port} is the proxy's port or below 1024; pick another"
         );
         ensure!(
@@ -513,7 +573,7 @@ pub fn preflight(
             };
             let session = registry.session(&workspace.id)?.with_context(busy)?;
             ensure!(
-                session.backend_port == port && session.status != SessionStatus::Stopped,
+                session.backend_port == Some(port) && session.status != SessionStatus::Stopped,
                 busy()
             );
             let record = Record::read(&path, &session)?;
@@ -528,20 +588,19 @@ pub fn preflight(
         registry,
         manifest,
         workspace,
-        &active_router,
+        active_router.as_ref(),
         if reusable { None } else { port },
     )?;
     if reusable {
         endpoints
             .iter_mut()
-            .find(|endpoint| endpoint.service == manifest.default_service)
+            .find(|endpoint| Some(endpoint.service.as_str()) == manifest.default_service.as_deref())
             .context("default endpoint missing")?
             .backend_port = port.context("reuse port missing")?;
     }
     let default = endpoints
         .iter()
-        .find(|endpoint| endpoint.service == manifest.default_service)
-        .context("default endpoint missing")?;
+        .find(|endpoint| Some(endpoint.service.as_str()) == manifest.default_service.as_deref());
     ensure!(
         matches!(launch, Launch::Up) || !request.lan && !request.tailscale,
         "sharing needs up; run starts no publishers"
@@ -550,14 +609,16 @@ pub fn preflight(
         registry.state_path(),
         request,
         &endpoints,
-        active_router.front_door.https,
+        active_router
+            .as_ref()
+            .map_or(1443, |router| router.front_door.https),
     )?;
     let env = environment(
         manifest,
         &resolved,
         &path,
-        &default.public_url,
-        Some(default.backend_port),
+        default.map_or("", |endpoint| endpoint.public_url.as_str()),
+        default.map(|endpoint| endpoint.backend_port),
         &endpoints,
         &ports,
         &share,
@@ -571,7 +632,13 @@ pub fn preflight(
             &workspace.source,
             &path,
             setup_pending(manifest, &path),
-            &share.processes(manifest, &endpoints, active_router.front_door.https)?,
+            &share.processes(
+                manifest,
+                &endpoints,
+                active_router
+                    .as_ref()
+                    .map_or(1443, |router| router.front_door.https),
+            )?,
         )?;
     }
     Ok(())
@@ -595,17 +662,23 @@ fn ready_notice(
             format!("{} ({})", workspace.label, workspace.project_id)
         }
     };
-    let mut text = format!(
-        "{} {name} is running at {}\n",
-        paint("32", "✓"),
-        paint("1;36", &session.public_url)
-    );
+    let mut text = match session.public_url.as_deref() {
+        Some(url) => format!(
+            "{} {name} is running at {}\n",
+            paint("32", "✓"),
+            paint("1;36", url)
+        ),
+        None => format!(
+            "{} {name} is running (no HTTP services)\n",
+            paint("32", "✓")
+        ),
+    };
     // The main service first, so its shared URLs sit under the first line.
-    let (main, others): (Vec<_>, Vec<_>) = endpoints
-        .iter()
-        .partition(|endpoint| endpoint.service == manifest.default_service);
+    let (main, others): (Vec<_>, Vec<_>) = endpoints.iter().partition(|endpoint| {
+        Some(endpoint.service.as_str()) == manifest.default_service.as_deref()
+    });
     for endpoint in main.into_iter().chain(others) {
-        if endpoint.service != manifest.default_service {
+        if Some(endpoint.service.as_str()) != manifest.default_service.as_deref() {
             text.push_str(&format!(
                 "  {:<10}{}\n",
                 endpoint.service,
@@ -666,7 +739,7 @@ impl Owner<'_> {
         let endpoints = self
             .record
             .session
-            .endpoints(&self.record.manifest.default_service);
+            .endpoints(self.record.manifest.default_service.as_deref());
         let mut deadline = Instant::now() + Duration::from_secs(timeout);
         let mut ready = false;
         // A process that exits after the first ready is reported, not fatal.
@@ -729,6 +802,11 @@ impl Owner<'_> {
                 ready = false;
                 deadline = Instant::now() + Duration::from_secs(timeout);
             }
+            let startup = if became_ready {
+                Vec::new()
+            } else {
+                self.supervisor.waiting()
+            };
             // Why each service is not ready yet, for the timeout message.
             let waiting = endpoints
                 .iter()
@@ -758,6 +836,7 @@ impl Owner<'_> {
                     };
                     Some(format!("{}: {reason}", endpoint.service))
                 })
+                .chain(startup)
                 .collect::<Vec<_>>();
             let healthy = waiting.is_empty();
             listener = observed;
@@ -794,7 +873,7 @@ impl Owner<'_> {
                 }
             }
             // The routes come back by themselves once the new proxy runs: its token differs.
-            if proxy_checked.elapsed() >= Duration::from_secs(2) {
+            if !endpoints.is_empty() && proxy_checked.elapsed() >= Duration::from_secs(2) {
                 proxy_checked = Instant::now();
                 if router::current(self.registry.state_path()).is_err() {
                     match crate::proxy::revive(self.registry.state_path()) {
@@ -816,7 +895,8 @@ impl Owner<'_> {
                     }
                 }
             }
-            if let Ok(router) = router::current(self.registry.state_path())
+            if !endpoints.is_empty()
+                && let Ok(router) = router::current(self.registry.state_path())
                 && published.as_ref() != Some(&router.token)
             {
                 if endpoints
@@ -905,7 +985,9 @@ impl Owner<'_> {
     fn wind_down(&mut self) -> Result<()> {
         self.record.refresh(self.path)?;
         self.enter(Phase::Stopping)?;
-        revoke(self.registry);
+        if self.record.manifest.default_service.is_some() {
+            revoke(self.registry);
+        }
         self.supervisor.stop();
         let deadline =
             Instant::now() + Duration::from_secs(self.record.manifest.shutdown_timeout_seconds);
@@ -1122,7 +1204,9 @@ fn converge_crashed(
         .control
         .remove_socket(&crate::sockets::environment(path)?.control)?;
     registry.session_status(session, SessionStatus::Stopped)?;
-    if let Ok(router) = router::current(registry.state_path()) {
+    if record.manifest.default_service.is_some()
+        && let Ok(router) = router::current(registry.state_path())
+    {
         let _ = router::sync(registry, &router);
     }
     Ok(true)
@@ -1209,7 +1293,7 @@ pub fn task(
     let path = runtime(registry, workspace)?;
     let _lock = Lock::acquire(&path.join("task.lock"))?;
     let session = registry.session(&workspace.id)?;
-    let url = crate::lifecycle::url(registry, workspace)?;
+    let url = crate::lifecycle::optional_url(registry, workspace)?.unwrap_or_default();
     let env = if let Some(session) = &session {
         session_environment(manifest, workspace, &path, session, &Share::default())?
     } else {
@@ -1277,7 +1361,7 @@ pub fn teardown(registry: &Registry, manifest: &Manifest, workspace: &Workspace)
             manifest,
             workspace,
             &path,
-            &crate::lifecycle::url(registry, workspace)?,
+            &crate::lifecycle::optional_url(registry, workspace)?.unwrap_or_default(),
             None,
             &[],
             &BTreeMap::new(),
@@ -1317,7 +1401,7 @@ fn live_status(
     let current = current_session(registry, session)?;
     let mut endpoints = BTreeMap::new();
     let mut listeners = Vec::new();
-    let all = session.endpoints(&manifest.default_service);
+    let all = session.endpoints(manifest.default_service.as_deref());
     let snapshot = Listeners::inspect(all.iter().map(|endpoint| endpoint.backend_port))?;
     for endpoint in all {
         let pids = snapshot.owned(endpoint.backend_port, roots)?;
@@ -1348,21 +1432,25 @@ fn live_status(
     }
     listeners.sort_unstable();
     listeners.dedup();
-    let http_ready = endpoints.values().all(|endpoint| endpoint.http_ready);
-    let listener_owned = endpoints.values().all(|endpoint| endpoint.listener_owned);
-    let current_router = router::current(registry.state_path()).ok();
+    let http_ready =
+        !endpoints.is_empty() && endpoints.values().all(|endpoint| endpoint.http_ready);
+    let listener_owned =
+        !endpoints.is_empty() && endpoints.values().all(|endpoint| endpoint.listener_owned);
+    let current_router = if manifest.services.is_empty() {
+        None
+    } else {
+        router::current(registry.state_path()).ok()
+    };
     let router_owned = current_router
         .as_ref()
-        .is_some_and(|router| router.token == current.router_token);
+        .is_some_and(|router| Some(&router.token) == current.router_token.as_ref());
     let route_published = current_router
         .as_ref()
         .is_some_and(|router| router::route_published(registry, router, &current));
     let state = if current.status == SessionStatus::Stopping {
         LiveState::Stopping
     } else if current.status == SessionStatus::Ready
-        && http_ready
-        && router_owned
-        && route_published
+        && (manifest.services.is_empty() || (http_ready && router_owned && route_published))
     {
         LiveState::Ready
     } else if current.status == SessionStatus::Starting {

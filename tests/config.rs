@@ -308,7 +308,7 @@ fn a_container_can_serve_the_environments_url() {
         "version: 1\nproject: blog\nservices:\n  stack:\n    compose:\n      file: compose.yaml\n      services: [db]\n      http:\n        wordpress: {port: 80, healthcheck: /}\n        mail: {service: mailpit, port: 8025, subdomain: mail, healthcheck: /}\n",
     )
     .unwrap();
-    assert_eq!(manifest.default_service, "wordpress");
+    assert_eq!(manifest.default_service.as_deref(), Some("wordpress"));
     assert_eq!(manifest.services["mail"].subdomain.as_deref(), Some("mail"));
     assert_eq!(
         manifest.compose().unwrap().services,

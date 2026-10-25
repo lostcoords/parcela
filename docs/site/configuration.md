@@ -13,7 +13,7 @@ Both are required. `version` is the file format, and this Parcela reads `1`. A f
 
 ## services
 
-`services` is required. At least one service must have `http`, and exactly one HTTP service must omit `subdomain`. Every long-running process is a service. Each one is a mapping with a `command`, or a `compose` file:
+`services` must contain at least one service. HTTP is optional. If any service has `http`, exactly one HTTP service must omit `subdomain`. Every long-running process is a service. Each one is a mapping with a `command`, or a `compose` file:
 
 ```yaml
 services:
@@ -37,6 +37,24 @@ services:
 | `env` | Variables for this service only. Values can use `${NAME}`, like the top-level `env`. |
 
 Service names are DNS labels. `setup` and `prestart` are reserved for hooks. Dependency cycles and unknown dependencies are errors. A service cannot declare both `http` and a shell `healthcheck`.
+
+### Watcher-only environments
+
+An environment without `http` supervises processes without starting Caddy, offering certificate trust, or allocating HTTP ports:
+
+```yaml
+version: 1
+project: sdk
+services:
+  build:
+    command: npm run watch
+```
+
+`up`, `status`, `logs`, `restart`, `down`, hooks, dependencies, tasks, and named `ports` work without HTTP. Readiness waits for hooks to complete and services to start. A service with `healthcheck` must pass that command before the environment is ready.
+
+`url` and `open` fail because there is no HTTP URL. `--backend-port`, `--lan`, `--lan-ip`, `--tailscale`, and literal `run` require an HTTP service. Status JSON has `url: null`; the session's `public_url`, `backend_port`, and `router_token` are null, and its HTTP endpoint set is empty. No `PORT`, `PARCELA_URL`, or `PARCELA_HOSTNAME` is supplied. Explicit named ports still use `PARCELA_PORT_<NAME>`.
+
+A running proxy from an older Parcela must be restarted with the new binary before watcher-only sessions can share its registry. Parcela refuses that mixed-version start rather than changing the shared proxy itself.
 
 ### compose
 
@@ -273,8 +291,8 @@ Every service, hook and task receives these. Service names are uppercased, with 
 |---|---|
 | `PORT` | `29381`, the service's own port. Only HTTP services get one. In tasks it is the port of the service at the environment's URL. |
 | `HOST` | `127.0.0.1` |
-| `PARCELA_URL` | `https://shop.localhost:1443`, the environment's URL |
-| `PARCELA_HOSTNAME` | `shop.localhost` |
+| `PARCELA_URL` | `https://shop.localhost:1443`, the environment's URL, only when HTTP is configured |
+| `PARCELA_HOSTNAME` | `shop.localhost`, only when HTTP is configured |
 | `PARCELA_SHARE_HOSTS` | `shop.local,mb.tail1234.ts.net`, the hostnames other devices use after `up --lan` or `--tailscale`. Empty otherwise. Used for dev-server host allow lists. |
 | `PARCELA_SERVICE_<NAME>_URL` | `PARCELA_SERVICE_API_URL=https://api-shop.localhost:1443` |
 | `PARCELA_SERVICE_<NAME>_HOSTNAME` | `PARCELA_SERVICE_API_HOSTNAME=api-shop.localhost` |

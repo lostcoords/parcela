@@ -34,7 +34,7 @@ fn up_and_doctor_report_the_same_configuration_error() {
     let head = "version: 1\nproject: app\nservices:\n";
     for (services, expected) in [
         (
-            "  web: {command: bin/web}\n",
+            "  web: {command: bin/web, http: {subdomain: www, healthcheck: /}}\n",
             "invalid {path}/parcela.yaml: one service needs http without a subdomain, like `http: {healthcheck: /}`; it gets the environment's URL",
         ),
         (

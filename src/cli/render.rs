@@ -149,12 +149,20 @@ pub fn started(value: &Value, style: &Style) -> String {
     } else {
         ""
     };
-    let mut text = format!(
-        "{} {} is{already} running at {}\n",
-        style.ok(),
-        name(&value["workspace"]),
-        style.url(&url)
-    );
+    let mut text = if value["session"]["public_url"].is_null() {
+        format!(
+            "{} {} is{already} running (no HTTP services)\n",
+            style.ok(),
+            name(&value["workspace"])
+        )
+    } else {
+        format!(
+            "{} {} is{already} running at {}\n",
+            style.ok(),
+            name(&value["workspace"]),
+            style.url(&url)
+        )
+    };
     let live = &value["live"]["endpoints"];
     let (main, others): (Vec<&Value>, Vec<&Value>) = value["session"]["endpoints"]
         .as_array()

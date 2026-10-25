@@ -104,6 +104,26 @@ fn the_saved_profile_beats_the_default_and_parcela_https_port_only_replaces_the_
 }
 
 #[test]
+fn nonterminal_trust_refuses_before_creating_state_or_starting_a_backend() {
+    let proxy = Proxy::new();
+    let output = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .args(["trust", "--caddy", "/not-a-trust-backend"])
+        .env("PATH", "")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("requires a terminal"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(!proxy.state.exists(), "refused trust must not create state");
+}
+
+#[test]
 fn proxy_start_runs_in_the_background_until_proxy_stop() {
     let Some(caddy) = caddy() else {
         eprintln!("skipped: caddy is not on PATH");

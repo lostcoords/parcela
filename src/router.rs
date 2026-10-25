@@ -23,7 +23,7 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 /// The running proxy: its ownership token, the front door it serves and the release that started
 /// it. Unknown fields are ignored, so a newer proxy's record stays readable by older releases.
@@ -186,7 +186,9 @@ struct Route {
 fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
     let mut candidates = Vec::new();
     for session in registry.sessions()? {
-        if session.status != SessionStatus::Ready || session.router_token != router.token {
+        if session.status != SessionStatus::Ready
+            || session.router_token.as_ref() != Some(&router.token)
+        {
             continue;
         }
         let path = registry
@@ -196,7 +198,7 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
         if let Ok(record) = crate::owner::Record::read(&path, &session)
             && record.owner_holds(&path)
         {
-            let endpoints = session.endpoints(&record.manifest.default_service);
+            let endpoints = session.endpoints(record.manifest.default_service.as_deref());
             let wildcard = record
                 .manifest
                 .services
@@ -246,7 +248,7 @@ fn renew_leases(registry: &Registry, router: &Router, routes: &[Route]) -> Resul
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
     for session in registry.sessions()? {
-        if session.router_token != router.token {
+        if session.router_token.as_ref() != Some(&router.token) {
             continue;
         }
         let directory = lease_directory(registry.state_path(), router, &session);

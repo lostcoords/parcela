@@ -14,7 +14,7 @@ use std::{
 pub struct Manifest {
     pub project: Project,
     /// The HTTP service served at the environment's own URL.
-    pub default_service: String,
+    pub default_service: Option<String>,
     /// Routed HTTP services, keyed like `processes`.
     pub services: BTreeMap<String, Service>,
     /// Every long-running process, HTTP or not.
@@ -531,9 +531,7 @@ impl Manifest {
                 id: file.project.clone(),
                 name: file.project,
             },
-            default_service: default_service.context(
-                "one service needs http without a subdomain, like `http: {healthcheck: /}`; it gets the environment's URL",
-            )?,
+            default_service,
             services,
             processes,
             hooks: file.hooks,
@@ -550,8 +548,16 @@ impl Manifest {
     pub fn validate(&self) -> Result<()> {
         dns_label(&self.project.name)?;
         ensure!(
-            self.services.contains_key(&self.default_service),
-            "default service must be an http service"
+            !self.processes.is_empty(),
+            "at least one service is required"
+        );
+        ensure!(
+            self.default_service
+                .as_ref()
+                .map_or(self.services.is_empty(), |name| self
+                    .services
+                    .contains_key(name)),
+            "one service needs http without a subdomain, like `http: {{healthcheck: /}}`; it gets the environment's URL"
         );
         let mut names = std::collections::BTreeSet::new();
         for (name, service) in &self.services {
@@ -751,6 +757,9 @@ impl Manifest {
     }
 
     pub fn service_hosts(&self, base: &str) -> Result<BTreeMap<String, String>> {
+        if self.services.is_empty() {
+            return Ok(BTreeMap::new());
+        }
         let base = base
             .strip_suffix(".localhost")
             .context("invalid environment hostname")?;
@@ -758,7 +767,7 @@ impl Manifest {
         self.services
             .iter()
             .map(|(name, service)| {
-                let label = if name == &self.default_service {
+                let label = if Some(name) == self.default_service.as_ref() {
                     base.to_owned()
                 } else {
                     format!("{}-{base}", service.subdomain.as_deref().unwrap_or(name))
@@ -794,7 +803,7 @@ impl Manifest {
     fn longest_prefix(&self) -> usize {
         self.services
             .iter()
-            .filter(|(name, _)| *name != &self.default_service)
+            .filter(|(name, _)| Some(*name) != self.default_service.as_ref())
             .map(|(name, service)| service.subdomain.as_deref().unwrap_or(name).len() + 1)
             .max()
             .unwrap_or(0)

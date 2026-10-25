@@ -373,10 +373,10 @@ fn contending_stop(replace_session: bool) {
             writer
                 .begin_session(
                     &target,
-                    &expected.router_token,
+                    expected.router_token.as_deref().unwrap(),
                     32002,
                     "up",
-                    &expected.public_url,
+                    expected.public_url.as_deref().unwrap(),
                 )
                 .unwrap()
         });

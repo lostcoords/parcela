@@ -504,6 +504,35 @@ impl Registry {
         endpoints: &[Endpoint],
         ports: &BTreeMap<String, u16>,
     ) -> Result<Session> {
+        self.begin_run(
+            workspace,
+            Some((router_token, port, public_url)),
+            kind,
+            endpoints,
+            ports,
+        )
+    }
+
+    pub fn begin_processes(
+        &mut self,
+        workspace: &Workspace,
+        ports: &BTreeMap<String, u16>,
+    ) -> Result<Session> {
+        self.begin_run(workspace, None, "up", &[], ports)
+    }
+
+    fn begin_run(
+        &mut self,
+        workspace: &Workspace,
+        http: Option<(&str, u16, &str)>,
+        kind: &str,
+        endpoints: &[Endpoint],
+        ports: &BTreeMap<String, u16>,
+    ) -> Result<Session> {
+        let (router_token, port, public_url) = match http {
+            Some((token, port, url)) => (Some(token), Some(port), Some(url)),
+            None => (None, None, None),
+        };
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -516,13 +545,13 @@ impl Registry {
                 })?
                 .collect::<rusqlite::Result<std::collections::BTreeMap<_, _>>>()?
         };
-        let mut endpoint_ports = std::collections::BTreeSet::from([port]);
+        let mut endpoint_ports = port.into_iter().collect::<std::collections::BTreeSet<_>>();
         if !endpoints.is_empty() {
             ensure!(
                 endpoints
                     .iter()
-                    .any(|endpoint| endpoint.backend_port == port
-                        && endpoint.public_url == public_url
+                    .any(|endpoint| Some(endpoint.backend_port) == port
+                        && Some(endpoint.public_url.as_str()) == public_url
                         && endpoint.hostname == workspace.hostname),
                 "default endpoint aliases do not match"
             );
@@ -551,7 +580,10 @@ impl Registry {
             ports.values().all(|port| ports_leased.insert(*port)),
             "duplicate service or reserved port"
         );
-        ensure!(port >= 1024, "backend endpoint must be unprivileged");
+        ensure!(
+            port.is_none_or(|port| port >= 1024),
+            "backend endpoint must be unprivileged"
+        );
         let previous: Option<String> = transaction
             .query_row(
                 "SELECT status FROM sessions WHERE environment_id=?1",
@@ -575,18 +607,20 @@ impl Registry {
         let session = Session {
             environment_id: workspace.id.clone(),
             token: Uuid::new_v4().to_string(),
-            router_token: router_token.into(),
+            router_token: router_token.map(str::to_owned),
             generation,
             backend_port: port,
             status: SessionStatus::Starting,
             kind: kind.into(),
-            public_url: public_url.into(),
+            public_url: public_url.map(str::to_owned),
             endpoints: endpoints.to_vec(),
             ports: ports.clone(),
         };
+        // Schema 4's non-null HTTP aliases encode absent routing as empty strings and port 0.
+        // Keep that storage encoding at the boundary; sessions and JSON use Option.
         transaction.execute("INSERT INTO sessions (environment_id, token, router_token, generation, backend_port, status, kind, public_url, endpoints, ports) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
             ON CONFLICT(environment_id) DO UPDATE SET token=excluded.token, router_token=excluded.router_token, generation=excluded.generation, backend_port=excluded.backend_port, status=excluded.status, kind=excluded.kind, public_url=excluded.public_url, endpoints=excluded.endpoints, ports=excluded.ports WHERE sessions.status='stopped'",
-            params![session.environment_id, session.token, session.router_token, session.generation, port, session.status.as_str(), kind, public_url, serde_json::to_string(endpoints)?, serde_json::to_string(ports)?])
+            params![session.environment_id, session.token, session.router_token.as_deref().unwrap_or(""), session.generation, port.unwrap_or(0), session.status.as_str(), kind, public_url.unwrap_or(""), serde_json::to_string(endpoints)?, serde_json::to_string(ports)?])
             .context("endpoint lease conflict; no foreign listener was changed")?;
         transaction.execute(
             "DELETE FROM active_ports WHERE environment_id=?1",
@@ -766,39 +800,41 @@ impl Endpoint {
 pub struct Session {
     pub environment_id: String,
     pub token: String,
-    pub router_token: String,
+    pub router_token: Option<String>,
     pub generation: i64,
-    pub backend_port: u16,
+    pub backend_port: Option<u16>,
     pub status: SessionStatus,
     pub kind: String,
-    pub public_url: String,
+    pub public_url: Option<String>,
     pub endpoints: Vec<Endpoint>,
     /// Named non-HTTP ports leased with the endpoints; kept after stop so the next run can reuse them.
     pub ports: BTreeMap<String, u16>,
 }
 impl Session {
-    pub fn endpoints(&self, default_service: &str) -> Vec<Endpoint> {
+    pub fn endpoints(&self, default_service: Option<&str>) -> Vec<Endpoint> {
         if self.endpoints.is_empty() {
-            vec![Endpoint {
-                service: default_service.into(),
-                hostname: self
-                    .public_url
-                    .trim_start_matches("https://")
-                    .split(':')
-                    .next()
-                    .unwrap_or_default()
-                    .into(),
-                backend_port: self.backend_port,
-                public_url: self.public_url.clone(),
-            }]
+            match (default_service, self.backend_port, self.public_url.as_ref()) {
+                (Some(service), Some(port), Some(url)) => vec![Endpoint {
+                    service: service.into(),
+                    hostname: url
+                        .trim_start_matches("https://")
+                        .split(':')
+                        .next()
+                        .unwrap_or_default()
+                        .into(),
+                    backend_port: port,
+                    public_url: url.clone(),
+                }],
+                _ => vec![],
+            }
         } else {
             self.endpoints.clone()
         }
     }
     /// Every port this session leases: its HTTP endpoints and its named ports.
     pub fn leased_ports(&self) -> Vec<u16> {
-        let endpoints = if self.endpoints.is_empty() {
-            vec![self.backend_port]
+        let endpoints: Vec<u16> = if self.endpoints.is_empty() {
+            self.backend_port.into_iter().collect()
         } else {
             self.endpoints
                 .iter()
@@ -822,27 +858,29 @@ fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     let session = Session {
         environment_id: row.get(0)?,
         token: row.get(1)?,
-        router_token: row.get(2)?,
+        router_token: Some(row.get::<_, String>(2)?).filter(|token| !token.is_empty()),
         generation: row.get(3)?,
-        backend_port: row.get(4)?,
+        backend_port: Some(row.get::<_, u16>(4)?).filter(|port| *port != 0),
         status: SessionStatus::parse(&row.get::<_, String>(5)?)
             .ok_or(rusqlite::Error::InvalidQuery)?,
         kind: row.get(6)?,
-        public_url: row.get(7)?,
+        public_url: Some(row.get::<_, String>(7)?).filter(|url| !url.is_empty()),
         endpoints: serde_json::from_str(&row.get::<_, String>(8)?)
             .map_err(|_| rusqlite::Error::InvalidQuery)?,
         ports: serde_json::from_str(&row.get::<_, String>(9)?)
             .map_err(|_| rusqlite::Error::InvalidQuery)?,
     };
-    if [
-        &session.environment_id,
-        &session.token,
-        &session.router_token,
-    ]
-    .iter()
-    .any(|id| Uuid::parse_str(id).is_err())
+    if [&session.environment_id, &session.token]
+        .iter()
+        .any(|id| Uuid::parse_str(id).is_err())
         || session.generation <= 0
-        || session.backend_port < 1024
+        || session.backend_port.is_some_and(|port| port < 1024)
+        || session
+            .router_token
+            .as_ref()
+            .is_some_and(|token| Uuid::parse_str(token).is_err())
+        || session.router_token.is_some() != session.backend_port.is_some()
+        || session.public_url.is_some() != session.backend_port.is_some()
         || session
             .endpoints
             .iter()
@@ -866,8 +904,8 @@ fn read_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
             != session.leased_ports().len()
         || (!session.endpoints.is_empty()
             && !session.endpoints.iter().any(|endpoint| {
-                endpoint.backend_port == session.backend_port
-                    && endpoint.public_url == session.public_url
+                Some(endpoint.backend_port) == session.backend_port
+                    && Some(&endpoint.public_url) == session.public_url.as_ref()
             }))
     {
         return Err(rusqlite::Error::InvalidQuery);

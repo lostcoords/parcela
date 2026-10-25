@@ -62,7 +62,7 @@ pub struct Node {
     /// The process's whole environment from Parcela; inherited `PARCELA_` variables are removed.
     pub env: BTreeMap<String, String>,
     pub depends_on: Vec<(String, Condition)>,
-    /// Checked only while another process waits for this one to be healthy.
+    /// Checked until the service passes its explicit startup readiness check.
     pub probe: Option<Probe>,
     pub max_restarts: u32,
     /// Run when the graph stops, before the process is signaled, for anything the process
@@ -522,16 +522,17 @@ impl Supervisor {
         Ok(changed)
     }
 
-    /// Checks readiness of running processes that another process waits on, once a second.
+    /// Checks explicit readiness of running processes until each first passes.
     fn probe(&mut self) -> Result<()> {
         let now = Instant::now();
         for index in 0..self.nodes.len() {
-            let awaited = self.nodes.iter().zip(&self.slots).any(|(node, slot)| {
-                matches!(slot.state, State::Pending)
-                    && node.depends_on.iter().any(|(name, condition)| {
-                        *name == self.nodes[index].name && *condition == Condition::Healthy
-                    })
-            });
+            let awaited = self.nodes[index].probe.is_some()
+                || self.nodes.iter().zip(&self.slots).any(|(node, slot)| {
+                    matches!(slot.state, State::Pending)
+                        && node.depends_on.iter().any(|(name, condition)| {
+                            *name == self.nodes[index].name && *condition == Condition::Healthy
+                        })
+                });
             let node = &self.nodes[index];
             let slot = &mut self.slots[index];
             if slot.healthy || !awaited || !matches!(slot.state, State::Running(_)) {
@@ -582,6 +583,24 @@ impl Supervisor {
             }
         }
         Ok(())
+    }
+
+    /// Processes still awaiting startup, explicit readiness, or hook completion.
+    pub fn waiting(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .zip(&self.slots)
+            .filter_map(|(node, slot)| {
+                let ready = match &slot.state {
+                    State::Exited(Some(0)) => true,
+                    State::Running(_) => {
+                        node.kind != Kind::Hook && (node.probe.is_none() || slot.healthy)
+                    }
+                    _ => false,
+                };
+                (!ready).then(|| format!("{}: waiting for startup or healthcheck", node.name))
+            })
+            .collect()
     }
 
     /// Whether a hook is running. One still waiting for a dependency does not count, so the

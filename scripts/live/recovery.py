@@ -46,7 +46,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 time.sleep(1)
             return
-        data = json.dumps({'id': os.environ['PARCELA_ENVIRONMENT_ID'], 'pid': os.getpid(), 'generation': os.environ['PARCELA_GENERATION']}).encode()
+        data = json.dumps({'id': os.environ['PARCELA_ENVIRONMENT_ID'], 'pid': os.getpid(), 'generation': os.environ['PARCELA_GENERATION'], 'revision': os.environ.get('REVISION')}).encode()
         gated = self.path == '/ready' and os.environ.get('READINESS_GATED') == 'yes' and not (root / 'allow-ready').exists()
         self.send_response(503 if gated else 200)
         self.send_header('Content-Length', str(len(data)))
@@ -56,6 +56,8 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     def server_bind(self):
         socketserver.TCPServer.server_bind(self)
+with (root / 'service-starts').open('a') as log:
+    log.write(str(os.getpid()) + '\\n')
 server = Server(('127.0.0.1', int(os.environ['PORT'])), Handler)
 (root / 'service-started').write_text(str(os.getpid()))
 server.serve_forever()
@@ -842,6 +844,114 @@ def stop_command_after_crash(f):
     wait_for(lambda: _dead(second))
     return {'failed_stop_exit': failed.returncode, 'retried_down_exit': down.returncode, 'graceful_down_exit': graceful.returncode}
 
+def concurrent_up_same_checkout(f):
+    app = f.app('same-checkout')
+    f.start_proxy()
+    owner = f.start_pending(app)
+    starting = f.session(app)
+    contender = f.cli(app['path'], 'up', '--detach', '--backend-port', str(app['port']))
+    assert contender.returncode == 1, contender.stderr
+    assert contender.stderr.strip() in {
+        'parcela: this environment is already running or was interrupted; see `parcela status`',
+        'parcela: backend endpoint is not owned by the current routable generation',
+    }, contender.stderr
+    assert owner.poll() is None
+    (app['runtime'] / 'allow-ready').touch()
+    wait_for(lambda: f.probe(app)[0] == 200)
+    current = f.session(app)
+    assert current['token'] == starting['token'] and current['generation'] == starting['generation']
+    assert (app['runtime'] / 'service-starts').read_text().splitlines() == [str(json.loads(f.probe(app)[1])['pid'])]
+    again = f.cli(app['path'], 'up', '--detach')
+    assert again.returncode == 0, again.stderr
+    assert f.session(app)['token'] == current['token']
+    return {'contender_exit': contender.returncode, 'contender_error': contender.stderr.strip(),
+            'contender_refused_while_starting': True, 'one_service_launch': True, 'repeated_up_keeps_generation': True}
+
+
+def detached_configuration_changes(f):
+    app = f.app('configuration')
+    other = f.app('unchanged')
+    f.start_proxy()
+    f.start(other)
+    other_session = f.session(other)
+    app['manifest']['env'].update(REVISION='before', READINESS_GATED='yes')
+    (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
+    detached = f.spawn(app['path'], 'up', '--detach', '--backend-port', str(app['port']), '--readiness-timeout', '30')
+    wait_for(lambda: (app['runtime'] / 'service-started').exists())
+    app['manifest']['env']['REVISION'] = 'after'
+    app['manifest']['services']['worker'] = {'command': 'python3 -c "import time; time.sleep(600)"'}
+    (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
+    (app['runtime'] / 'allow-ready').touch()
+    assert detached.wait(timeout=40) == 0
+    wait_for(lambda: f.probe(app)[0] == 200)
+    before = json.loads(f.probe(app)[1])
+    assert before['revision'] == 'before', before
+    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status').stdout)['processes']}
+    restarted = f.cli(app['path'], 'restart', '--detach', timeout=40)
+    assert restarted.returncode == 0, restarted.stderr
+    after = json.loads(f.probe(app)[1])
+    assert after['revision'] == 'after' and int(after['generation']) > int(before['generation']), after
+    assert _dead(before['pid'])
+    workers = json.loads(f.cli(app['path'], 'status').stdout)['processes']
+    worker_pid = next(item['pid'] for item in workers if item['name'] == 'worker')
+    assert worker_pid and not _dead(worker_pid)
+    del app['manifest']['services']['worker']
+    (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
+    restarted = f.cli(app['path'], 'restart', '--detach', timeout=40)
+    assert restarted.returncode == 0, restarted.stderr
+    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status').stdout)['processes']}
+    wait_for(lambda: _dead(worker_pid))
+    assert f.session(other)['token'] == other_session['token'] and f.probe(other)[0] == 200
+    return {'pending_start_keeps_original_configuration': True, 'restart_reads_changed_environment': True,
+            'restart_adds_and_removes_services': True, 'removed_worker_stopped': True,
+            'old_process_stopped': True, 'other_environment_unchanged': True}
+
+
+def concurrent_restart(f):
+    app = f.app('restart-race', delay=2)
+    f.start_proxy()
+    f.start(app)
+    before = f.session(app)
+    first = f.spawn(app['path'], 'restart', '--detach')
+    wait_for(lambda: (app['runtime'] / 'shutdown-started').exists())
+    assert first.poll() is None
+    second = f.spawn(app['path'], 'restart', '--detach')
+    codes = [process.wait(timeout=40) for process in (first, second)]
+    assert codes == [0, 0], codes
+    wait_for(lambda: f.probe(app)[0] == 200)
+    current = f.session(app)
+    assert current['generation'] == before['generation'] + 2
+    response = json.loads(f.probe(app)[1])
+    assert response['generation'] == str(current['generation'])
+    launched = [int(pid) for pid in (app['runtime'] / 'service-starts').read_text().splitlines()]
+    assert len(launched) == 3, launched
+    wait_for(lambda: all(_dead(pid) for pid in launched if pid != response['pid']))
+    status = json.loads(f.cli(app['path'], 'status').stdout)
+    assert status['state'] == 'ready' and status['live']['listener_owned'], status
+    assert f.cli(app['path'], 'down').returncode == 0
+    assert not listening(app['port'])
+    return {'restart_exit_codes': codes, 'second_started_during_first_stop': True,
+            'only_current_service_survives': True, 'current_generation_ready': True, 'owned_listener_closed': True}
+
+
+def worker_exit_after_readiness(f):
+    app = f.app('worker-exit')
+    app['manifest']['services']['jobs'] = {
+        'command': 'while [ ! -f "$PARCELA_RUNTIME_DIR/exit-worker" ]; do sleep 0.05; done; exit 7'
+    }
+    (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
+    f.start_proxy()
+    owner = f.start(app)
+    (app['runtime'] / 'exit-worker').touch()
+    def worker_exited():
+        status = json.loads(f.cli(app['path'], 'status').stdout)
+        return any(process['name'] == 'jobs' and process['state'] == 'exited' for process in status['processes'])
+    wait_for(worker_exited)
+    assert json.loads(f.cli(app['path'], 'status').stdout)['state'] == 'ready'
+    assert owner.poll() is None and f.probe(app)[0] == 200
+    return {'worker_exit_reported': True, 'http_environment_stays_ready': True, 'https_code': 200}
+
+
 def _dead(pid):
     try:
         os.kill(pid, 0)
@@ -855,7 +965,8 @@ CASES = [owner_crash, graceful_stop, duplicate_stop, restart_preflight, proxy_ou
          recover_before_readiness, stop_before_readiness, allocation_without_launch_evidence, recover_racing_stop,
          occupied_replacement_port, invalid_replacement_port, restart_owned_port, leased_replacement_port, detached_recover_running,
          detached_recover_stopping, detached_recover_quiescent, recovered_owner_initialization,
-         crashed_tree_down, crashed_tree_up, stop_command_after_crash]
+         crashed_tree_down, crashed_tree_up, stop_command_after_crash,
+         concurrent_up_same_checkout, detached_configuration_changes, concurrent_restart, worker_exit_after_readiness]
 
 
 def run(caddy, cases=None):

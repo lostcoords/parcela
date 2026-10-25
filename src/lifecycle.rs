@@ -52,7 +52,7 @@ fn status_and_services(
         }
     }
     Ok((
-        json!({"workspace": workspace, "url": url(registry, workspace)?, "source_exists": workspace.source.is_dir(), "recorded_session": recorded,
+        json!({"workspace": workspace, "url": optional_url(registry, workspace)?, "source_exists": workspace.source.is_dir(), "recorded_session": recorded,
         "state": state, "live_health_verified": live.is_some(), "live": live, "diagnostic": error}),
         services,
     ))
@@ -321,9 +321,16 @@ fn active(registry: &Registry, workspace: &Workspace) -> Result<Option<Session>>
 /// A running environment's routed URL, else its reserved URL on the saved front door.
 /// Neither proves that the service is reachable.
 pub fn url(registry: &Registry, workspace: &Workspace) -> Result<String> {
+    optional_url(registry, workspace)?.context("this environment has no HTTP services or URL")
+}
+
+pub fn optional_url(registry: &Registry, workspace: &Workspace) -> Result<Option<String>> {
     match active(registry, workspace)? {
         Some(session) => Ok(session.public_url),
-        None => Ok(FrontDoor::load(registry.state_path())?.url(&workspace.hostname)),
+        None if registry.hosts(&workspace.id)?.is_empty() => Ok(None),
+        None => Ok(Some(
+            FrontDoor::load(registry.state_path())?.url(&workspace.hostname),
+        )),
     }
 }
 
@@ -361,6 +368,7 @@ pub fn service_url(registry: &Registry, workspace: &Workspace, service: &str) ->
     match session {
         Some(session) => Ok(session
             .public_url
+            .context("this environment has no HTTP services or URL")?
             .replacen(&workspace.hostname, hostname, 1)),
         None => Ok(FrontDoor::load(registry.state_path())?.url(hostname)),
     }

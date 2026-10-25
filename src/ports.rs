@@ -21,7 +21,7 @@ pub(crate) fn allocate(
     registry: &Registry,
     manifest: &Manifest,
     workspace: &Workspace,
-    router: &Router,
+    router: Option<&Router>,
     port: Option<u16>,
 ) -> Result<Allocation> {
     let unavailable: BTreeSet<_> = registry
@@ -29,28 +29,31 @@ pub(crate) fn allocate(
         .iter()
         .filter(|session| session.status != SessionStatus::Stopped)
         .flat_map(Session::leased_ports)
-        .chain([router.front_door.https])
+        .chain(router.map(|router| router.front_door.https))
         .collect();
     let mut endpoints = Vec::new();
     let mut probes = Vec::new();
     for (service, hostname) in manifest.service_hosts(&workspace.hostname)? {
-        let probe = match port.filter(|_| service == manifest.default_service) {
-            Some(requested) => claim(requested).with_context(|| {
-                format!(
-                    "--backend-port {requested} is already in use by {}; pick another",
-                    crate::process::port_holder(requested)
-                )
-            })?,
-            None => free_port(&unavailable)?,
-        };
+        let probe =
+            match port.filter(|_| Some(service.as_str()) == manifest.default_service.as_deref()) {
+                Some(requested) => claim(requested).with_context(|| {
+                    format!(
+                        "--backend-port {requested} is already in use by {}; pick another",
+                        crate::process::port_holder(requested)
+                    )
+                })?,
+                None => free_port(&unavailable)?,
+            };
         let backend_port = probe.local_addr()?.port();
         ensure!(
-            backend_port >= 1024 && !router.listens_on(backend_port),
+            backend_port >= 1024 && router.is_none_or(|router| !router.listens_on(backend_port)),
             "backend endpoint conflicts with privileged/router ports"
         );
         endpoints.push(Endpoint {
             service,
-            public_url: router.url(&hostname),
+            public_url: router
+                .context("HTTP service needs a router")?
+                .url(&hostname),
             hostname,
             backend_port,
         });

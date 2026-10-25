@@ -138,7 +138,10 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
         .session_status(&session, SessionStatus::Ready)
         .unwrap();
     let config = router::configuration(&registry, &router).unwrap();
-    assert_eq!(session.public_url, "https://auth-app.localhost:34443");
+    assert_eq!(
+        session.public_url.as_deref(),
+        Some("https://auth-app.localhost:34443")
+    );
     assert_eq!(
         config["apps"]["http"]["servers"]
             .as_object()
@@ -398,7 +401,7 @@ fn service_hosts_and_port_leases_are_atomic_for_the_whole_set() {
     let next = registry
         .begin_session(&other, &token, 32011, "run", "https://other-app.localhost")
         .unwrap();
-    assert_eq!(next.backend_port, 32011);
+    assert_eq!(next.backend_port, Some(32011));
     assert!(
         registry
             .session_status(&session, SessionStatus::Ready)

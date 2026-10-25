@@ -172,6 +172,8 @@ fn report_started(state: &Path, started: &Started, out: Output) -> Result<i32> {
 
 /// `parcela trust`: trusts the CA on request. The only other path is `offer_trust`.
 pub fn trust(state: &Path, print: bool, caddy: &str) -> Result<i32> {
+    use std::io::IsTerminal;
+
     let certificate = proxy::certificate(state);
     if print {
         anyhow::ensure!(
@@ -182,6 +184,10 @@ pub fn trust(state: &Path, print: bool, caddy: &str) -> Result<i32> {
         println!("{}", certificate.display());
         return Ok(0);
     }
+    anyhow::ensure!(
+        std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
+        "parcela trust requires a terminal; run it directly in a terminal to approve system trust"
+    );
     Registry::open(state, true)?.context("cannot create the registry")?;
     proxy::ensure_running(state, "<name>.localhost")?;
     proxy::install_trust(state, caddy)?;

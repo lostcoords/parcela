@@ -214,23 +214,35 @@ pub struct Probes<'a> {
 
 /// Report whether `parcela up` can work here. Read-only: creates no state and changes no host setting.
 pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
-    let checks = [
-        backend(
+    let headless = locate(probes.path)
+        .and_then(|source| Manifest::load(&source.join("parcela.yaml")))
+        .is_ok_and(|manifest| manifest.services.is_empty());
+    let mut checks = vec![];
+    if !headless {
+        checks.push(backend(
             "caddy",
             probes.caddy.unwrap_or("caddy"),
             "v2.",
             "install Caddy 2: brew install caddy (or https://caddyserver.com/docs/install)",
-        ),
-        tool("lsof", &["/usr/sbin/lsof", "lsof"]),
+        ));
+        checks.push(tool("lsof", &["/usr/sbin/lsof", "lsof"]));
+    }
+    checks.extend([
         tool("ps", &["/bin/ps", "ps"]),
         config(probes.path),
         state(probes.state),
-        proxy(probes.state),
-    ];
+    ]);
+    if !headless {
+        checks.push(proxy(probes.state));
+    }
     let ready = checks.iter().all(|check| check.ok);
-    let notes = vec![
+    let notes = if headless {
+        vec!["No HTTP services; no proxy or certificate trust is needed.".to_owned()]
+    } else {
+        vec![
         "HTTPS trust is not checked, and only `parcela trust` changes it. If the browser warns, run `parcela trust` once.".to_owned(),
-    ];
+    ]
+    };
     let next = checks
         .iter()
         .find_map(|check| check.fix.clone())

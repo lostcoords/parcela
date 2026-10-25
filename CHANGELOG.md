@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-25
+
+SDK watchers, workers, and other non-HTTP services can run as an environment without a dummy web server. Existing HTTP configurations work unchanged.
+
+Before starting a watcher-only environment in an existing installation, restart the shared proxy with the new binary using `parcela proxy restart`. This briefly interrupts environment URLs, but does not restart their processes.
+
+### Added
+
+- Watcher-only environments. `parcela up` supervises services without `http`, with hooks, command health checks, logs, restart, and shutdown, without starting the proxy or changing trust. URL commands report that no HTTP URL exists. A running older proxy must be restarted with the new binary before sharing its registry with these sessions.
+
+### Fixed
+
+- `parcela trust` refuses to change system trust without a terminal, before creating state or starting the proxy. `trust --print` still works in scripts.
+
 ### Removed
 
 - The warning that a relay installed by 0.4 does not redirect port 80, in `parcela proxy status` and `parcela doctor`. Run `parcela proxy install` again to add the redirect.
