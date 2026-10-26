@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-26
+
+Create a named test checkout through Parcela, then seed, snapshot and reproduce its declared data without copying a live SQLite file or touching another environment.
+
+### Added
+
+- `parcela create NAME` creates and registers a Git worktree or jj workspace without starting services. `--revision` pins source and `--from` restores a named data snapshot.
+- `data.files` and `data.sqlite` explicitly select environment-owned snapshot content. `snapshot` uses consistent SQLite backups and checksums. `restore` fills only a fresh data directory and never overwrites existing data. Seed and external data export/import commands remain project-defined tasks.
+
+### Fixed
+
+- Parcela closes inherited non-stdio descriptors on startup. Previously, parallel launchers could inherit a temporary listener and keep an unrelated proxy port occupied inside Parcela or Caddy.
+- Proxy startup waits for transient ownership-lock probes instead of failing when a simultaneous status check briefly holds the lock.
+- Watcher-only `doctor` checks a live shared proxy's compatibility, matching startup refusal. HTTP protocol differences remain warnings, as for HTTP startup. `doctor` now honors `--workspace`.
+- `restart` validates changed service sets and HTTP-only flags before stopping the predecessor or forgetting setup completion.
+- An abandoned jj workspace no longer hides live checkout inventory or blocks creating another workspace. Its missing root is reported and omitted.
+
 ## 0.6.0 - 2026-10-25
 
 SDK watchers, workers, and other non-HTTP services can run as an environment without a dummy web server. Existing HTTP configurations work unchanged.

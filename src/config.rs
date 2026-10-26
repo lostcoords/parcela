@@ -21,6 +21,9 @@ pub struct Manifest {
     pub processes: BTreeMap<String, Process>,
     pub hooks: Hooks,
     pub tasks: BTreeMap<String, Task>,
+    /// CLI-only data transfer policy, not part of the supervised process graph.
+    #[serde(skip)]
+    pub data: Data,
     /// Non-HTTP ports leased per run and exported as `PARCELA_PORT_<NAME>`; never routed or probed.
     pub ports: Vec<String>,
     pub environment: BTreeMap<String, String>,
@@ -154,6 +157,79 @@ pub struct Task {
     pub timeout_seconds: Option<u64>,
 }
 
+/// Literal paths under PARCELA_DATA_DIR. Nothing is included by default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Data {
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub sqlite: Vec<String>,
+}
+impl Data {
+    pub fn validate(&self) -> Result<()> {
+        let paths: Vec<_> = self.files.iter().chain(&self.sqlite).collect();
+        for (index, path) in paths.iter().enumerate() {
+            data_path(path)?;
+            for other in &paths[..index] {
+                ensure!(
+                    !Path::new(path).starts_with(other) && !Path::new(other).starts_with(path),
+                    "data paths overlap: {path} and {other}"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validate both configured paths and paths read from a snapshot before touching the filesystem.
+pub fn data_path(value: &str) -> Result<&Path> {
+    let path = Path::new(value);
+    ensure!(
+        !value.chars().any(char::is_control),
+        "data path contains control characters: {value:?}"
+    );
+    ensure!(
+        !value.is_empty()
+            && path
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_))),
+        "data path must be a literal relative path without . or ..: {value}"
+    );
+    let normalized = path
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    ensure!(normalized == value, "data path must be normalized: {value}");
+    for part in path.components() {
+        let part = part.as_os_str().to_string_lossy().to_ascii_lowercase();
+        ensure!(
+            !part.starts_with(".env")
+                && ![
+                    ".git",
+                    ".jj",
+                    ".ssh",
+                    ".aws",
+                    "credentials",
+                    "credentials.yml.enc",
+                    "master.key",
+                    "id_rsa",
+                    "id_ed25519"
+                ]
+                .contains(&part.as_str())
+                && !part.ends_with(".pem")
+                && !part.ends_with(".key")
+                && !part.ends_with("-wal")
+                && !part.ends_with("-shm")
+                && !part.ends_with("-journal"),
+            "sensitive file or SQLite sidecar is not allowed in data snapshots: {value}"
+        );
+    }
+    Ok(path)
+}
+
 /// The only `parcela.yaml` format version this build reads.
 pub const VERSION: u32 = 1;
 const SHUTDOWN_TIMEOUT_SECONDS: u64 = 300;
@@ -193,6 +269,9 @@ struct File {
     /// Commands to run with `parcela task NAME`.
     #[serde(default)]
     tasks: BTreeMap<String, Task>,
+    /// Allowlisted data files/directories and SQLite databases under PARCELA_DATA_DIR.
+    #[serde(default)]
+    data: Data,
     /// How long `up` waits for every service to be ready, in seconds. Time spent in hooks does not count. Default 60.
     #[cfg_attr(test, schemars(range(min = 1, max = 86400)))]
     readiness_timeout_seconds: Option<u64>,
@@ -536,6 +615,7 @@ impl Manifest {
             processes,
             hooks: file.hooks,
             tasks: file.tasks,
+            data: file.data,
             ports: file.ports,
             environment: file.env,
             shutdown_timeout_seconds: SHUTDOWN_TIMEOUT_SECONDS,
@@ -546,6 +626,7 @@ impl Manifest {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.data.validate()?;
         dns_label(&self.project.name)?;
         ensure!(
             !self.processes.is_empty(),

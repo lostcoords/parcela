@@ -488,10 +488,8 @@ fn recorded_graph(
     )
 }
 
-pub fn preflight(
-    registry: &Registry,
+pub fn validate_request(
     manifest: &Manifest,
-    workspace: &Workspace,
     launch: Launch<'_>,
     port: Option<u16>,
     timeout: u64,
@@ -505,29 +503,31 @@ pub fn preflight(
         (1..=86400).contains(&timeout),
         "readiness timeout must be between 1 and 86400"
     );
-    let path = registry.runtime_path(workspace);
-    let mut resolved = workspace.clone();
-    resolved.generation += 1;
-    // Checked against the saved front door, so a failing launch never starts the proxy.
-    if manifest.services.is_empty() {
-        match crate::proxy::status(registry.state_path())? {
-            crate::proxy::Status::Stopped => {}
-            crate::proxy::Status::Running(router) => ensure!(
-                router.protocol == router::PROTOCOL,
-                "the running proxy cannot read watcher-only sessions; run `parcela proxy restart` with this Parcela first"
-            ),
-            crate::proxy::Status::Unhealthy(error) => {
-                return Err(error.context(
-                    "the running proxy cannot be verified; inspect `parcela proxy status` before starting watcher-only services",
-                ));
-            }
-        }
-    }
     ensure!(
         !manifest.services.is_empty()
             || (port.is_none() && !request.lan && request.lan_ip.is_none() && !request.tailscale),
         "--backend-port, --lan, --lan-ip and --tailscale need an HTTP service"
     );
+    Ok(())
+}
+
+pub fn preflight(
+    registry: &Registry,
+    manifest: &Manifest,
+    workspace: &Workspace,
+    launch: Launch<'_>,
+    port: Option<u16>,
+    timeout: u64,
+    request: share::Request,
+) -> Result<()> {
+    validate_request(manifest, launch, port, timeout, request)?;
+    let path = registry.runtime_path(workspace);
+    let mut resolved = workspace.clone();
+    resolved.generation += 1;
+    // Checked against the saved front door, so a failing launch never starts the proxy.
+    if manifest.services.is_empty() {
+        crate::proxy::check_watcher_compatibility(registry.state_path())?;
+    }
     let active_router = if manifest.services.is_empty() {
         None
     } else {
@@ -538,14 +538,7 @@ pub fn preflight(
             protocol: router::PROTOCOL,
         })
     };
-    let reserved = registry.hosts(&workspace.id)?;
-    for (service, host) in manifest.service_hosts(&workspace.hostname)? {
-        ensure!(
-            reserved.get(&service) == Some(&host)
-                || (manifest.services.len() == 1 && reserved.get("") == Some(&host)),
-            "service hostname not reserved; explicitly re-adopt the stopped environment"
-        );
-    }
+    registry.check_hosts(manifest, workspace)?;
     let mut reusable = false;
     if let Some(port) = port {
         ensure!(

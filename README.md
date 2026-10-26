@@ -69,6 +69,18 @@ Each HTTP service receives a leased port through `PORT`. Routes open after readi
 
 The primary checkout uses `https://shop.localhost:1443`. A `signup` checkout uses `https://signup-shop.localhost:1443`. Additional HTTP services add their configured prefix. Sharing with another device requires `--lan` or `--tailscale` for that run.
 
+## Give an agent its own environment
+
+From the configured project, create and start a named checkout:
+
+```sh
+parcela create experiment
+parcela -w experiment up --detach
+parcela -w experiment down
+```
+
+Parcela creates a jj workspace or detached Git worktree and registers its preview name. Creation starts nothing. With [declared data](docs/site/configuration.md#data), `snapshot` and `create --from` reproduce a stopped environment's dataset from explicitly declared files, with consistent SQLite backups. See [worktrees and agents](docs/site/worktrees.md#reproduce-a-test-dataset).
+
 Parcela sends anonymous command telemetry unless disabled. Run `parcela telemetry disable` to turn it off. [Telemetry](docs/site/telemetry.md) lists the fields and controls.
 
 ## Documentation

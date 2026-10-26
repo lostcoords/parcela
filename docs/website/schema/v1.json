@@ -42,6 +42,27 @@
       ],
       "type": "object"
     },
+    "Data": {
+      "additionalProperties": false,
+      "description": "Literal paths under PARCELA_DATA_DIR. Nothing is included by default.",
+      "properties": {
+        "files": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sqlite": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "FileCompose": {
       "additionalProperties": false,
       "properties": {
@@ -261,6 +282,14 @@
     "^x-": {}
   },
   "properties": {
+    "data": {
+      "$ref": "#/$defs/Data",
+      "default": {
+        "files": [],
+        "sqlite": []
+      },
+      "description": "Allowlisted data files/directories and SQLite databases under PARCELA_DATA_DIR."
+    },
     "env": {
       "additionalProperties": {
         "type": "string"

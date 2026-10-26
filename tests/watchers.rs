@@ -199,6 +199,14 @@ fn watcher_sessions_coexist_with_http_and_refuse_an_older_running_proxy() {
     let mut older: Value = serde_json::from_slice(&original).unwrap();
     older["protocol"] = serde_json::json!(parcela::router::PROTOCOL - 1);
     fs::write(&metadata, serde_json::to_vec(&older).unwrap()).unwrap();
+    let watcher_doctor = env.run(&["doctor"]);
+    assert!(!watcher_doctor.status.success());
+    let http_doctor = env.run_at(&web, &["doctor"]);
+    assert!(
+        http_doctor.status.success(),
+        "{}",
+        String::from_utf8_lossy(&http_doctor.stdout)
+    );
     let refused = env.run(&["up", "--detach"]);
     fs::write(&metadata, &original).unwrap();
     assert!(!refused.status.success());
@@ -224,4 +232,74 @@ fn watcher_sessions_coexist_with_http_and_refuse_an_older_running_proxy() {
     env.success(&["down"]);
     let status: Value = serde_json::from_slice(&env.run_at(&web, &["status"]).stdout).unwrap();
     assert_eq!(status["state"], "ready");
+}
+
+#[test]
+fn watcher_doctor_and_up_both_refuse_an_unverified_live_proxy() {
+    let env = Environment::new(WATCHER);
+    let proxy = env.path().join("state/proxy");
+    parcela::private::directory(&proxy).unwrap();
+    let _owner = parcela::private::Lock::acquire(&proxy.join("owner.lock")).unwrap();
+    let output = env.run(&["doctor", "--caddy", "/nonexistent/caddy"]);
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(!output.status.success(), "{report}");
+    assert_eq!(report["ready"], false);
+    assert!(report["checks"].as_array().unwrap().iter().any(|check| {
+        check["name"] == "proxy"
+            && check["ok"] == false
+            && check["detail"]
+                .as_str()
+                .unwrap()
+                .contains("cannot be verified")
+    }));
+    assert!(!env.path().join("state/registry.sqlite3").exists());
+    let output = env.run(&["up", "--detach"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be verified"));
+    assert!(env.success(&["status"])["recorded_session"].is_null());
+}
+
+#[test]
+fn invalid_http_to_watcher_restart_preserves_the_running_generation_and_setup() {
+    if parcela::process::on_path("caddy").is_none() {
+        return;
+    }
+    let config = "version: 1\nproject: watcher\nhooks:\n  setup: {command: 'echo setup >> setup-count'}\nservices:\n  web:\n    command: python3 -m http.server $PORT --bind 127.0.0.1\n    http: {healthcheck: /}\n";
+    let env = Environment::new(config);
+    let port = std::net::TcpListener::bind(("127.0.0.1", 0))
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+        .to_string();
+    env.success(&["proxy", "start", "--port", &port]);
+    let first = env.success(&["up", "--detach"]);
+    let pid = env.success(&["status"])["processes"][0]["pid"].clone();
+    fs::write(env.path().join("parcela.yaml"), WATCHER).unwrap();
+    for flags in [
+        vec!["--lan"],
+        vec!["--lan-ip", "192.0.2.1"],
+        vec!["--tailscale"],
+        vec!["--backend-port", "31010"],
+    ] {
+        let mut args = vec!["restart", "--detach", "--setup"];
+        args.extend(flags);
+        let refused = env.run(&args);
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("need an HTTP service"));
+        let status = env.success(&["status"]);
+        assert_eq!(status["state"], "ready", "{status}");
+        assert_eq!(status["processes"][0]["pid"], pid);
+        assert_eq!(
+            status["recorded_session"]["token"],
+            first["session"]["token"]
+        );
+        assert_eq!(status["live"]["route_published"], true);
+    }
+    fs::write(env.path().join("parcela.yaml"), config).unwrap();
+    env.success(&["restart", "--detach"]);
+    assert_eq!(
+        fs::read_to_string(env.path().join("setup-count")).unwrap(),
+        "setup\n"
+    );
 }

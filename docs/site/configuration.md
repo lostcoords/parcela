@@ -319,3 +319,17 @@ Every service, hook and task receives these. Service names are uppercased, with 
 | `$(getconf DARWIN_USER_TEMP_DIR)parcela/` on macOS, `/tmp/parcela-<uid>/` on Linux | Unix sockets for the running environments and the proxy. |
 
 The state directory is private to your user. `rm` keeps an environment's directory. A later registration gets a new directory. Retained files are not automatically reused.
+
+## data
+
+```yaml
+data:
+  files: [uploads, dictionaries]
+  sqlite: [development.sqlite3]
+```
+
+`data` declares the content included by `snapshot` and `restore`. It does not change application bindings. Every path is literal, normalized, and relative to `PARCELA_DATA_DIR`. Nothing is included by default. Paths cannot overlap. `files` accepts regular files and directories; `sqlite` accepts SQLite database files and backs them up through SQLite rather than copying their main file or WAL separately.
+
+Absolute paths, traversal, symlinks, hardlinked files, special files, `.env` files, common credential filenames, keys, and SQLite sidecars are refused. Raw SQLite databases under `files` are refused too. This is not a secret scanner: declared databases and uploads can contain private application records. Snapshots stay private to the current user and are not uploaded.
+
+Snapshots contain only declared data and integrity metadata. Source files, environment variables, process state, setup markers, and undeclared test data are excluded. PostgreSQL, Redis, Compose volumes, and other external data need project-defined export and import tasks. Export a consistent artifact to a declared file before snapshotting it.

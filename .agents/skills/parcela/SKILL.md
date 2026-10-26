@@ -1,6 +1,6 @@
 ---
 name: parcela
-description: "Use Parcela to inspect, start, stop, restart or recover named local development environments, retrieve service URLs and logs, share one with other devices on request, and run explicitly configured project tasks. Use for Parcela operations, not terminal layout, VCS history or implicit application setup."
+description: "Use Parcela to create, snapshot, restore, inspect, start, stop, restart or recover named local development environments, retrieve service URLs and logs, share one with other devices on request, and run explicitly configured project tasks. Use for Parcela operations, not terminal layout, VCS history or implicit application setup."
 ---
 
 # Parcela
@@ -36,6 +36,33 @@ The main checkout gets the project URL. A linked jj workspace or Git worktree ge
 A separate URL does not separate databases, uploads, secrets or queues. Read the project's `parcela.yaml` and instructions before the first `up`, and refuse to start until its data bindings suit the request. https://parcela.run/docs/frameworks/ shows per-environment SQLite, PostgreSQL, Redis and uploads, and host checks for common frameworks; propose such a change rather than make it unasked.
 
 `up` runs `hooks.setup` on an environment's first start and `hooks.prestart` on every start. Tell the user what they will do, such as installing packages or migrating. `up --setup` reruns setup; use it only when asked. Do not run preparation commands that `parcela.yaml` does not declare.
+
+## Create a disposable test environment
+
+Only when checkout creation is authorized:
+
+```sh
+parcela --json --path "$CHECKOUT" create trial
+```
+
+Keep `.workspace.id`, `.workspace.source`, and `.checkout.revision` from the response. `create` registers a preview but starts nothing. It uses jj when present, never falls back to Git after a jj failure, and otherwise creates a detached Git worktree. Git defaults to `HEAD`; jj defaults to `@` and snapshots according to its normal rules. Use `--revision REV` or `--directory DIR` only for the requested source and destination. Existing destinations and names are refused. Do not copy ignored secrets yourself as a workaround.
+
+Use `--workspace "$ENVIRONMENT_ID"` for every subsequent operation. `doctor` accepts that selector too. A failed creation may retain a checkout; report its path instead of deleting or silently reusing it.
+
+## Reproduce declared data
+
+Read `data.files`, `data.sqlite`, setup hooks and seed/export/import tasks first. Snapshots include only declared paths under `PARCELA_DATA_DIR`; they do not establish that external databases or queues are isolated. Declared application records may still be sensitive.
+
+With explicit permission to capture the selected stopped environment:
+
+```sh
+parcela --workspace "$ENVIRONMENT_ID" snapshot baseline
+parcela --json --path "$CHECKOUT" create trial --from baseline
+```
+
+SQLite uses a consistent backup, including WAL contents. Snapshots reject linked paths, common secret files and raw SQLite file copies. Names are immutable. `restore baseline` fills only a fresh registered environment with no data directory; never remove existing data to make it pass. Restore starts nothing and does not mark setup complete. Review the next start's setup and migration commands for their effects on restored data.
+
+Seed and external data operations remain project-defined tasks, such as `parcela --workspace "$ENVIRONMENT_ID" task seed`. Do not infer permission to run them from permission to create a checkout. `down` stops the selected graph; `rm` still retains source and runtime data. There is no implicit source or snapshot deletion.
 
 ## Start and verify
 
@@ -94,6 +121,6 @@ parcela --workspace "$ENVIRONMENT_ID" down
 
 ## Limits
 
-Parcela is a local development runner, not a sandbox. It does not restart individual services, copy data between environments or prove browser trust. This skill and `--help` are not runtime proof.
+Parcela is a local development runner, not a sandbox. It does not restart individual services, snapshot undeclared or external data, transfer secrets, or prove browser trust. This skill and `--help` are not runtime proof.
 
 Parcela sends anonymous usage data unless it is turned off (https://parcela.run/docs/telemetry/). Leave `parcela telemetry` and `DO_NOT_TRACK` as the user set them unless they ask.

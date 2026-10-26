@@ -398,7 +398,8 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
     let state = registry.state_path();
     let directory = proxy_dir(state);
     private::directory(&directory)?;
-    let _lifetime = Lock::acquire(&directory.join("owner.lock"))?;
+    // Read-only status probes briefly acquire this same lock before a daemon owns it.
+    let _lifetime = Lock::wait(&directory.join("owner.lock"))?;
     let _update = Lock::wait(&directory.join("updates.lock"))?;
     let admin_socket = socket(state)?;
     crate::sockets::prepare(&admin_socket)?;
@@ -560,6 +561,7 @@ pub fn probe_listener(port: u16) -> Result<()> {
         crate::process::port_holder(port)
     )
 }
+
 fn stop_proxy(
     child: &mut Option<OwnedChild>,
     peer: Option<&crate::process::Identity>,

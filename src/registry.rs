@@ -429,6 +429,16 @@ impl Registry {
             .pragma_query_value(None, "user_version", |r| r.get(0))?)
     }
 
+    /// Check proposed URLs without changing the reservations of a running generation.
+    pub fn check_hosts(&self, manifest: &Manifest, workspace: &Workspace) -> Result<()> {
+        for (service, host) in manifest.service_hosts(&workspace.hostname)? {
+            if let Some(holder) = host_holder(&self.connection, &host, &workspace.id)? {
+                bail!("{host} is already used by {holder}; choose another subdomain for {service}");
+            }
+        }
+        Ok(())
+    }
+
     pub fn hosts(&self, environment: &str) -> Result<std::collections::BTreeMap<String, String>> {
         if self.version()? < 3 {
             let host = self.connection.query_row(
@@ -680,11 +690,7 @@ impl Registry {
 }
 
 /// The checkout that already holds a hostname, other than `environment` itself.
-fn host_holder(
-    transaction: &rusqlite::Transaction<'_>,
-    host: &str,
-    environment: &str,
-) -> Result<Option<String>> {
+fn host_holder(transaction: &Connection, host: &str, environment: &str) -> Result<Option<String>> {
     Ok(transaction
         .query_row(
             "SELECT w.source FROM workspaces w LEFT JOIN workspace_hosts h ON h.environment_id = w.id

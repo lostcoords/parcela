@@ -71,6 +71,30 @@ pub enum Command {
         #[arg(long)]
         command: Option<String>,
     },
+    /// Create and register a new Git worktree or jj workspace without starting it
+    Create {
+        /// Preview environment name
+        name: String,
+        /// New checkout directory (default: a sibling named <repository>-<name>)
+        #[arg(long)]
+        directory: Option<PathBuf>,
+        /// Source revision (default: Git HEAD or jj @); Git worktrees are detached
+        #[arg(long)]
+        revision: Option<String>,
+        /// Restore a named data snapshot before the first start
+        #[arg(long)]
+        from: Option<String>,
+    },
+    /// Save declared data from a stopped environment to an immutable named snapshot
+    Snapshot {
+        /// New immutable snapshot name
+        name: String,
+    },
+    /// Restore a data snapshot into a fresh registered environment; never replaces data
+    Restore {
+        /// Snapshot to restore
+        name: String,
+    },
     /// Start the environment
     Up {
         /// Environment name (default: the worktree name)

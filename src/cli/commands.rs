@@ -219,7 +219,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
     if let Some(selector) = &cli.workspace
         && !matches!(
             cli.command,
-            Command::Init { .. } | Command::Doctor { .. } | Command::Telemetry { .. }
+            Command::Init { .. } | Command::Telemetry { .. }
         )
     {
         let registry =
@@ -242,6 +242,30 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         | Command::Upgrade { .. }
         | Command::Completion { .. }
         | Command::ComposeForward { .. } => unreachable!("handled above"),
+        Command::Create {
+            name,
+            directory,
+            revision,
+            from,
+        } => super::environments::create(
+            &state,
+            &cli.path,
+            &name,
+            directory.as_deref(),
+            revision.as_deref(),
+            from.as_deref(),
+            out,
+        ),
+        Command::Snapshot { name } => {
+            let (registry, workspace) = reader()?;
+            let (_, manifest) = project(&workspace.source)?;
+            super::environments::snapshot(&registry, &manifest, &workspace, &name, out)
+        }
+        Command::Restore { name } => {
+            let (registry, workspace) = reader()?;
+            let (_, manifest) = project(&workspace.source)?;
+            super::environments::restore(&registry, &manifest, &workspace, &name, out)
+        }
         Command::Init { name, command } => {
             let front_door = FrontDoor::load(&state)?;
             super::init::run(
@@ -520,6 +544,13 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
     let readiness_timeout = start
         .readiness_timeout
         .unwrap_or(manifest.readiness_timeout_seconds);
+    parcela::runtime::validate_request(
+        &manifest,
+        launch,
+        start.backend_port,
+        readiness_timeout,
+        start.share,
+    )?;
     let (mut registry, workspace) = if start.restart || snapshot.is_some() {
         ensure!(
             start.request.name.is_none() && !start.request.primary,
@@ -577,22 +608,11 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
     } else {
         None
     };
-    if start.setup {
-        let marker = registry
-            .runtime_path(&workspace)
-            .join(parcela::runtime::SETUP_DONE);
-        match std::fs::remove_file(&marker) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(error).context("forget the finished setup");
-            }
-            _ => {}
-        }
-    }
     // A service was added, removed or renamed: its URLs can only be reserved once the old run stops.
     let new_hosts = start.restart
         && snapshot.is_none()
         && registry.hosts(&workspace.id)? != manifest.service_hosts(&workspace.hostname)?;
-    if (start.restart || start.detach) && !new_hosts {
+    if start.restart || start.detach {
         parcela::runtime::preflight(
             &registry,
             &manifest,
@@ -629,6 +649,17 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
     } else {
         workspace
     };
+    if start.setup {
+        let marker = registry
+            .runtime_path(&workspace)
+            .join(parcela::runtime::SETUP_DONE);
+        match std::fs::remove_file(&marker) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(error).context("forget the finished setup");
+            }
+            _ => {}
+        }
+    }
     if !start.detach {
         drop(restart_lock);
         return parcela::runtime::run(

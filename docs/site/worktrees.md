@@ -16,31 +16,38 @@ Each environment has its own processes, ports, logs, and runtime directory. Proc
 
 ## Run several agents at once
 
-Give each agent its own worktree and start the app in it:
+Create the checkouts through Parcela, then start them independently:
 
 ```sh
-git worktree add ../signup && (cd ../signup && parcela up --detach)
-git worktree add ../billing && (cd ../billing && parcela up --detach)
+parcela create signup
+parcela create billing
+parcela -w signup up --detach
+parcela -w billing up --detach
 ```
 
-```text
-✓ signup (shop) is running at https://signup-shop.localhost:1443
-✓ billing (shop) is running at https://billing-shop.localhost:1443
-```
+Parcela chooses jj for a jj repository, including a colocated repository, or Git otherwise. `create` registers the name but starts nothing. With Git it creates a detached worktree at `HEAD`; with jj it creates a workspace on `@`. `--revision REV` chooses another source revision and `--directory DIR` chooses a new location. Git's uncommitted changes are not copied. jj follows its normal working-copy snapshot rules.
 
-With jj, use `jj workspace add ../signup`. Each agent then works only in its own directory. Inside it, `parcela url`, `parcela logs` and `parcela restart` act on that checkout and nothing else.
+Use `--json` and keep the returned `.workspace.id` and `.workspace.source` for each agent. From any directory, use `parcela --workspace "$ENVIRONMENT_ID" status`, `logs`, `task`, `restart`, or `down`. Names and URLs also work as selectors when unambiguous.
 
-To act on a checkout from somewhere else, pass `--path`:
+You can still create checkouts with Git or jj yourself, then run `parcela up --detach` in each one.
+
+### Reproduce a test dataset
+
+First bind the app's databases and uploads to `PARCELA_DATA_DIR` and declare [snapshot data](configuration.md#data). Configure a `tasks.seed` command if the project needs synthetic fixtures. Review its effects before running it.
 
 ```sh
-parcela --path ../billing url
+parcela create baseline
+parcela -w baseline up --detach
+parcela -w baseline task seed
+parcela -w baseline down
+parcela -w baseline snapshot migration-fixture
+parcela create migration-trial --from migration-fixture
+parcela -w migration-trial up --detach
+parcela -w migration-trial task test
+parcela -w migration-trial down
 ```
 
-```text
-https://billing-shop.localhost:1443
-```
-
-Or name the environment the way its URL does, from any directory: `parcela -w billing-shop url`. `-w` takes a URL, a hostname, a name that only one environment has, or an ID.
+The new checkout gets independent data, processes, ports, and URLs. Snapshotting requires a stopped environment. Restore fills only a new data directory and never overwrites an existing one. It restores data, not source: choose `--revision` when reproducing an exact code revision. Setup still runs on first start, so make its commands safe for restored data.
 
 See everything that runs on the machine:
 
@@ -50,8 +57,8 @@ parcela ls
 
 ```text
 PROJECT  NAME     STATE    URL                                  PATH
-shop     billing  ready    https://billing-shop.localhost:1443  /Users/you/code/billing
-shop     signup   ready    https://signup-shop.localhost:1443   /Users/you/code/signup
+shop     billing  ready    https://billing-shop.localhost:1443  /Users/you/code/shop-billing
+shop     signup   ready    https://signup-shop.localhost:1443   /Users/you/code/shop-signup
 shop     primary  stopped  https://shop.localhost:1443          /Users/you/code/shop
 ```
 

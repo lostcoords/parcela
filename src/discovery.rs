@@ -64,19 +64,22 @@ fn parse_jj(bytes: &[u8]) -> Result<Vec<Checkout>> {
     let fields = text.split_terminator('\0').collect::<Vec<_>>();
     let (rows, remainder) = fields.as_chunks::<2>();
     ensure!(remainder.is_empty(), "invalid jj workspace inventory");
-    rows.iter()
-        .map(|row| {
-            let path = PathBuf::from(row[1]);
-            ensure!(
-                path.is_absolute(),
-                "jj returned a nonabsolute workspace root"
+    let mut checkouts = Vec::new();
+    for row in rows {
+        let path = PathBuf::from(row[1]);
+        if !path.is_absolute() {
+            eprintln!(
+                "parcela: jj workspace {:?} has no readable root; omitted from checkout inventory",
+                row[0]
             );
-            Ok(Checkout {
-                source: path,
-                name: Some(row[0].into()),
-            })
-        })
-        .collect()
+            continue;
+        }
+        checkouts.push(Checkout {
+            source: path,
+            name: Some(row[0].into()),
+        });
+    }
+    Ok(checkouts)
 }
 fn parse_git(bytes: &[u8]) -> Result<Vec<Checkout>> {
     let mut rows = Vec::new();

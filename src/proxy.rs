@@ -57,6 +57,21 @@ pub fn status(state: &Path) -> Result<Status> {
     })
 }
 
+/// Watcher sessions share the registry with a live proxy, even though they need no routing.
+pub fn check_watcher_compatibility(state: &Path) -> Result<()> {
+    match status(state)? {
+        Status::Stopped => Ok(()),
+        Status::Running(router) => {
+            ensure!(router.protocol == PROTOCOL,
+                "the running proxy cannot read watcher-only sessions; run `parcela proxy restart` with this Parcela first");
+            Ok(())
+        }
+        Status::Unhealthy(error) => Err(error.context(
+            "the running proxy cannot be verified; inspect `parcela proxy status` before starting watcher-only services",
+        )),
+    }
+}
+
 /// The recorded owner of the proxy, when its evidence is readable.
 pub fn owner(state: &Path) -> Option<(Identity, Identity)> {
     let evidence: ProxyEvidence =

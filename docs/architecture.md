@@ -13,6 +13,14 @@ Parcela turns one checkout's configuration into a supervised environment. It own
 | Caddy | Terminates TLS and routes requests using private configuration, storage, and an admin socket. |
 | Project | Defines commands, dependencies, hooks, and external effects in `parcela.yaml`. |
 
+## Checkout and data ownership
+
+`create` delegates checkout creation to the repository's VCS, then registers its preview identity. It never starts the process graph. `discovery` remains read-only. Source creation and data restoration are separate operations; failures retain any created checkout with an explicit error rather than deleting source.
+
+Snapshot policy is parsed from `data` in `parcela.yaml`. It is not serialized into the supervised graph: the proxy and environment owners need process configuration, not permission to copy data. Snapshot metadata stores the data policy separately. `snapshot` and `restore` take the environment's restart, owner, and task locks and require a stopped session. Data is staged in a private directory and published with an atomic no-replacement rename. SQLite uses its backup API, never a live main-file/WAL copy.
+
+The CLI accepts only standard input, output, and error as inherited descriptors. Before starting threads it closes other inherited copies, so a caller's temporary socket or ownership lock cannot survive in Parcela or its children.
+
 ## Startup and readiness
 
 `parcela up` performs these steps:
@@ -87,7 +95,9 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration and runs the proxy and optional macOS relay. |
 | `share` | Plans LAN and Tailscale sharing and allowed host variables. |
 | `process`, `http` | Checks process identity, listener ownership, and readiness. `http` is a client. |
-| `discovery` | Reads jj and Git checkout inventory without modifying it. |
+| `discovery` | Reads jj and Git checkout inventory without modifying it. Unresolvable jj roots are reported and omitted without hiding live checkouts. |
+| `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |
+| `snapshots` | Saves declared environment data with SQLite backups and checksums; restores only to absent data directories. |
 | `private`, `sockets` | Owns private files, locks, and socket placement. |
 | `src/cli` | Parses arguments, selects commands, and renders output. |
 

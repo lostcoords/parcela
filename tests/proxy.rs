@@ -65,6 +65,12 @@ impl Proxy {
 }
 impl Drop for Proxy {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!(
+                "fixture proxy log: {}",
+                fs::read_to_string(self.state.join("proxy/proxy.log")).unwrap_or_default()
+            );
+        }
         cli(&self.state, &["proxy", "stop"]);
     }
 }
@@ -263,14 +269,11 @@ fn only_a_proxy_on_another_protocol_warns() {
     let proxy = Proxy::new();
     let port = free_port().to_string();
     let caddy = caddy.to_str().unwrap();
-    assert!(
-        cli(
-            &proxy.state,
-            &["proxy", "start", "--port", &port, "--caddy", caddy]
-        )
-        .status
-        .success()
+    let started = cli(
+        &proxy.state,
+        &["proxy", "start", "--port", &port, "--caddy", caddy],
     );
+    assert!(started.status.success(), "{}", stderr(&started));
     let record = proxy.state.join("proxy/router.json");
     let rewrite = |version: &str, protocol: Option<u32>| {
         let mut router: Value =
@@ -566,4 +569,148 @@ fn open_hands_the_running_url_to_the_browser_and_refuses_a_stopped_one() {
         format!("--new-window {url}\n"),
         "nothing opened while stopped"
     );
+}
+
+#[test]
+fn proxy_start_waits_for_a_transient_status_probe_to_release_the_owner_lock() {
+    use std::{
+        os::unix::fs::PermissionsExt,
+        process::Stdio,
+        time::{Duration, Instant},
+    };
+    let Some(caddy) = caddy() else {
+        return;
+    };
+    let proxy = Proxy::new();
+    let root = proxy._t.path().canonicalize().unwrap();
+    let directory = proxy.state.join("proxy");
+    parcela::private::directory(&directory).unwrap();
+    let probe = parcela::private::Lock::acquire(&directory.join("owner.lock")).unwrap();
+    let wrapper = root.join("caddy-probe");
+    let reached = root.join("version-reached");
+    fs::write(&wrapper, format!("#!/bin/sh\nif [ \"$1\" = version ]; then\n  '{}' version\n  touch '{}'\nelse\n  exec '{}' \"$@\"\nfi\n", caddy.display(), reached.display(), caddy.display())).unwrap();
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
+    let port = free_port().to_string();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .args(["proxy", "run", "--port", &port, "--caddy"])
+        .arg(&wrapper)
+        .env("PARCELA_NO_TRUST", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !reached.exists() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(150));
+    let exited = child.try_wait().unwrap();
+    drop(probe);
+    if exited.is_some() {
+        let output = child.wait_with_output().unwrap();
+        panic!(
+            "a transient status probe aborted startup: {}",
+            stderr(&output)
+        );
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !cli(&proxy.state, &["proxy", "status"]).status.success() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(cli(&proxy.state, &["proxy", "stop"]).status.success());
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn proxy_does_not_retain_an_unrelated_listener_inherited_from_its_caller() {
+    use std::{os::fd::AsRawFd, process::Stdio};
+    let Some(caddy) = caddy() else {
+        return;
+    };
+    let proxy = Proxy::new();
+    let foreign = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let foreign_port = foreign.local_addr().unwrap().port();
+    let port = free_port().to_string();
+    let fd = foreign.as_raw_fd();
+    // SAFETY: the test owns fd. This reproduces a descriptor inherited across a concurrent spawn.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    assert!(flags >= 0);
+    assert_eq!(
+        unsafe { libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) },
+        0
+    );
+    let child = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .args(["proxy", "start", "--port", &port, "--caddy"])
+        .arg(caddy)
+        .env("PARCELA_NO_TRUST", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    assert_eq!(unsafe { libc::fcntl(fd, libc::F_SETFD, flags) }, 0);
+    drop(foreign);
+    let started = child.unwrap().wait_with_output().unwrap();
+    assert!(started.status.success(), "{}", stderr(&started));
+    assert!(
+        TcpListener::bind(("127.0.0.1", foreign_port)).is_ok(),
+        "Parcela or Caddy retained the caller's unrelated listener on {foreign_port}"
+    );
+    assert!(cli(&proxy.state, &["proxy", "status"]).status.success());
+}
+
+#[test]
+fn trust_requires_both_input_and_error_terminals_before_any_state_effects() {
+    use std::{fs::File, os::fd::FromRawFd, process::Stdio};
+    for (input_terminal, error_terminal) in
+        [(false, false), (false, true), (true, false), (true, true)]
+    {
+        let proxy = Proxy::new();
+        let (mut primary, mut secondary) = (0, 0);
+        // SAFETY: openpty initializes two owned descriptors; no terminal settings are changed.
+        assert_eq!(
+            unsafe {
+                libc::openpty(
+                    &mut primary,
+                    &mut secondary,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            0
+        );
+        let (_reader, writer) =
+            unsafe { (File::from_raw_fd(primary), File::from_raw_fd(secondary)) };
+        let output = Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .arg("--state-dir")
+            .arg(&proxy.state)
+            .args(["trust", "--caddy", "/nonexistent/trust-backend"])
+            .env("PARCELA_NO_TRUST", "1")
+            .env("PATH", "")
+            .env("PARCELA_HTTPS_PORT", free_port().to_string())
+            .stdin(if input_terminal {
+                Stdio::from(writer.try_clone().unwrap())
+            } else {
+                Stdio::null()
+            })
+            .stderr(if error_terminal {
+                Stdio::from(writer.try_clone().unwrap())
+            } else {
+                Stdio::piped()
+            })
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert_eq!(
+            proxy.state.exists(),
+            input_terminal && error_terminal,
+            "stdin terminal={input_terminal}, stderr terminal={error_terminal}"
+        );
+        assert!(!proxy.state.join("proxy/data/pki").exists());
+    }
 }

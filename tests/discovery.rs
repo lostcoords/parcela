@@ -221,3 +221,41 @@ fn ls_outside_a_project_shows_only_registered_environments() {
     );
     assert!(!state.exists());
 }
+
+#[test]
+fn a_missing_jj_workspace_does_not_block_creating_or_listing_live_checkouts() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let source = root.join("source");
+    output(
+        Command::new("jj")
+            .args(["git", "init", "--colocate"])
+            .arg(&source),
+    );
+    fs::write(source.join("parcela.yaml"), MANIFEST).unwrap();
+    let missing = root.join("missing");
+    jj(
+        &source,
+        &[
+            "workspace",
+            "add",
+            "--name",
+            "missing",
+            "-r",
+            "@",
+            missing.to_str().unwrap(),
+        ],
+    );
+    fs::remove_dir_all(&missing).unwrap();
+    let listing = ls(&source, &root.join("state"));
+    assert_eq!(unregistered(&listing).len(), 1, "{listing}");
+    output(
+        Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .arg("--path")
+            .arg(&source)
+            .arg("--state-dir")
+            .arg(root.join("state"))
+            .args(["create", "usable"]),
+    );
+    assert!(root.join("source-usable/parcela.yaml").exists());
+}

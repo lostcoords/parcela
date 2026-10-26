@@ -35,6 +35,36 @@ parcela init [--name NAME] [--command CMD]
 
 Writes a minimal `parcela.yaml` without replacing an existing file. The command is inferred from `package.json`, Rails, or Django, with a Python file server as fallback. `--command` overrides the guess. `--name` sets the project name.
 
+## create
+
+```text
+parcela create NAME [--directory DIR] [--revision REV] [--from SNAPSHOT]
+```
+
+Creates and registers a preview without starting services or running setup. Git repositories get a detached worktree at `HEAD` by default. jj repositories get a named workspace based on `@`, including the changes jj snapshots from the source checkout. `--revision` chooses another revision. jj takes precedence in colocated repositories; a jj failure never falls back to Git. Other VCS backends are unsupported.
+
+The default directory is a sibling named `<repository>-<NAME>`. `--directory` chooses a new directory whose parent already exists. Existing directories, workspace names, and registered environment names are refused. Git checkout hooks are disabled. Ignored files are not copied; files already committed to Git or tracked by jj follow that VCS's rules.
+
+`--from` restores a data snapshot before the first start. It does not restore source history, secrets, setup markers, or running processes. JSON includes `checkout` with the path, VCS and source revision, `workspace` with the environment ID, and `state: stopped`. A creation failure retains any checkout already created and names it in the error.
+
+## snapshot
+
+```text
+parcela snapshot NAME
+```
+
+Saves the selected environment's [declared data](configuration.md#data) under `<state>/snapshots/<project>/<NAME>`. The environment must be stopped with no owner, restart, or task operation holding its locks. Each SQLite database uses SQLite's backup API, including committed WAL contents. Snapshot names are immutable. There is no automatic seeding, retention limit, or snapshot deletion command.
+
+## restore
+
+```text
+parcela restore NAME
+```
+
+Restores a snapshot into a fresh registered environment whose data directory does not exist. Existing data is never replaced, including an empty data directory. Project and data declarations must match. Files are staged and checksummed before publication, and a failed restore publishes no partial data. Snapshot and restore require macOS or Linux with atomic no-replacement directory rename support.
+
+Restore does not start services or mark setup complete. The next `up` runs the normal setup and prestart hooks. Those commands must preserve restored data. Seed and external database export/import commands remain explicitly configured [tasks](#task).
+
 ## up
 
 ```text
@@ -138,7 +168,7 @@ Opens the default service's URL, or the named service's, in the browser set in `
 parcela doctor
 ```
 
-Checks Caddy, `lsof`, `ps`, configuration, the state directory, and the proxy without changing them. Each failure includes a fix. Exit code 1 means at least one check failed. Browser trust is not checked.
+Checks Caddy, `lsof`, `ps`, configuration, the state directory, and the proxy without changing them. Each failure includes a fix. Exit code 1 means at least one check failed. Watcher-only projects skip Caddy and `lsof`, but check compatibility with any live shared proxy. HTTP protocol differences are warnings, as for `up`; watcher-only starts refuse an incompatible proxy. Browser trust and application readiness are not checked.
 
 JSON has the shape `{ready, checks: [{name, ok, detail, fix}], notes}`.
 
@@ -158,7 +188,7 @@ Forgets a stopped environment and releases names and ports. Refuses a running en
 parcela task NAME [-- ARGS...]
 ```
 
-Runs a configured task with the environment's variables. The environment must have started at least once and may be stopped. Arguments after `--` are appended to the task command. Output and exit status pass through, except a timeout exits 124.
+Runs a configured task with the environment's variables. The environment must be registered, through `create` or `up`, and may be stopped. Arguments after `--` are appended to the task command. Output and exit status pass through, except a timeout exits 124.
 
 ## run
 

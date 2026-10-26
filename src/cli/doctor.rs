@@ -171,13 +171,13 @@ fn proxy(state: &Path) -> Check {
         );
     }
     match parcela::proxy::status(state) {
-        Ok(Status::Running(router)) => match parcela::proxy::protocol_warning(&router) {
-            Some(warning) => Check::fail("proxy", warning, "parcela proxy restart"),
-            None => Check::pass(
-                "proxy",
-                format!("running, {}", router.front_door.describe()),
-            ),
-        },
+        Ok(Status::Running(router)) => Check::pass(
+            "proxy",
+            match parcela::proxy::protocol_warning(&router) {
+                Some(warning) => format!("running, {}; {warning}", router.front_door.describe()),
+                None => format!("running, {}", router.front_door.describe()),
+            },
+        ),
         Ok(Status::Stopped) => match Some(front_door.https)
             .filter(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_err())
         {
@@ -232,9 +232,17 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
         config(probes.path),
         state(probes.state),
     ]);
-    if !headless {
-        checks.push(proxy(probes.state));
-    }
+    checks.push(if headless {
+        match parcela::proxy::check_watcher_compatibility(probes.state) {
+            Ok(()) => Check::pass(
+                "proxy",
+                "no HTTP proxy needed; shared registry is compatible",
+            ),
+            Err(error) => Check::fail("proxy", format!("{error:#}"), "parcela proxy status"),
+        }
+    } else {
+        proxy(probes.state)
+    });
     let ready = checks.iter().all(|check| check.ok);
     let notes = if headless {
         vec!["No HTTP services; no proxy or certificate trust is needed.".to_owned()]
