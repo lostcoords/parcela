@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.1 - 2026-10-28
+
 ### Fixed
 
 - Unknown configuration fields now suggest checking the spelling and upgrading Parcela if the configuration requires a newer release.
