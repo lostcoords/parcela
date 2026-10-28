@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `up --domain DOMAIN` also serves each service at `<name>.DOMAIN`, in plain HTTP on `127.0.0.1:1480` (`--domain-port`), for an HTTPS proxy you run in front with a wildcard certificate. Forwarded headers from loopback reach the app. Proxy protocol 3: run `parcela proxy restart` after upgrading.
+
+### Fixed
+
+- Route renewal no longer fails for a service with two or more ports on lsof 4.99.7, which aborts on a comma-separated port list. Parcela passes one `-iTCP` per port.
+
 ## 0.7.2 - 2026-10-28
 
 ### Fixed

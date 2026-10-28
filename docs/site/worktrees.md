@@ -152,6 +152,30 @@ $ parcela up --detach --tailscale
 
 Each service gets its own HTTPS port on this machine's tailnet name, through `tailscale serve`. Tailscale's certificate is trusted everywhere, so there is no warning. Only devices on your tailnet can open it. It never uses Funnel. It needs the Tailscale CLI, a connected machine and HTTPS certificates turned on for the tailnet. Parcela picks ports that `tailscale serve status` shows free, and leaves the rest of your serve configuration alone.
 
+### Share under your own domain
+
+```text
+$ parcela up --detach --domain dev.example.com
+✓ hello is running at https://hello.localhost:1443
+            https://hello.dev.example.com
+  api       https://api-hello.localhost:1443
+            https://api-hello.dev.example.com
+```
+
+Every environment's name becomes one label under your domain, so one wildcard certificate covers all of them. Parcela answers these names in plain HTTP on `127.0.0.1:1480` only (`--domain-port N` changes the port). Parcela never opens the port to other machines and never holds the certificate or DNS credentials. Your own HTTPS proxy does that, so it decides who can reach the names. For example, with a Caddy that has a DNS provider module, listening on this machine's tailnet address:
+
+```text
+*.dev.example.com {
+    bind 100.101.102.103
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 127.0.0.1:1480
+}
+```
+
+Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`.
+
 ### Let the dev server accept the names
 
 Dev servers such as Vite and Rails refuse hostnames they do not know. Parcela puts the shared ones in `PARCELA_SHARE_HOSTS`, separated by commas. For Vite:
@@ -162,11 +186,11 @@ server: {
 },
 ```
 
-The publishers show up in `parcela status` and `parcela logs` as `parcela-lan-<service>` and `parcela-tailscale-<service>`. A link that the app builds from `PARCELA_URL` still points at `.localhost`, which other devices cannot open.
+The publishers show up in `parcela status` and `parcela logs` as `parcela-lan-<service>` and `parcela-tailscale-<service>`. `--domain` has no publisher: the proxy serves its names. A link that the app builds from `PARCELA_URL` still points at `.localhost`, which other devices cannot open.
 
 ### Stop sharing
 
-Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach` without sharing flags. Unset `PARCELA_LAN` and `PARCELA_TAILSCALE` first if you used those variables.
+Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach` without sharing flags. Unset `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN` first if you used those variables.
 
 Check `parcela status`. For Tailscale, also check `tailscale serve status` to confirm the run's ports are gone. Parcela leaves unrelated serve configuration alone.
 

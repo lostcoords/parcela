@@ -68,7 +68,7 @@ Run `parcela status` and look at the `parcela-lan-*` and `parcela-tailscale-*` p
 
 ## The dev server rejects the host
 
-Rails, Django and Vite accept `*.localhost` names in development by default, but not the `.local` and tailnet names of `--lan` and `--tailscale`, nor any name once you set an allow list yourself. Add the names from `PARCELA_SHARE_HOSTS`, or derive them from `PARCELA_URL`. [Configure frameworks](frameworks.md#framework-settings) shows the setting for each framework.
+Rails, Django and Vite accept `*.localhost` names in development by default, but not the `.local`, tailnet and domain names of `--lan`, `--tailscale` and `--domain`, nor any name once you set an allow list yourself. Add the names from `PARCELA_SHARE_HOSTS`, or derive them from `PARCELA_URL`. [Configure frameworks](frameworks.md#framework-settings) shows the setting for each framework.
 
 ## Safari searches instead of opening the URL
 

@@ -67,7 +67,7 @@ hooks:
 
 Each HTTP service receives a leased port through `PORT`. Routes open after readiness checks pass. Setup runs until it succeeds once in each environment. Your configuration decides how to install dependencies and separate databases, queues, and uploads.
 
-The primary checkout uses `https://shop.localhost:1443`. A `signup` checkout uses `https://signup-shop.localhost:1443`. Additional HTTP services add their configured prefix. Sharing with another device requires `--lan` or `--tailscale` for that run.
+The primary checkout uses `https://shop.localhost:1443`. A `signup` checkout uses `https://signup-shop.localhost:1443`. Additional HTTP services add their configured prefix. Sharing with another device requires `--lan`, `--tailscale` or `--domain` for that run.
 
 ## Give an agent its own environment
 

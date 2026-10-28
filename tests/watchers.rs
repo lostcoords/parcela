@@ -117,6 +117,7 @@ fn watcher_only_environments_reject_http_flags_and_literal_run() {
         vec!["up", "--detach", "--lan"],
         vec!["up", "--detach", "--lan-ip", "192.0.2.1"],
         vec!["up", "--detach", "--tailscale"],
+        vec!["up", "--detach", "--domain", "dev.example.com"],
         vec!["run", "--", "sleep", "1"],
     ] {
         let env = Environment::new(WATCHER);
@@ -280,6 +281,7 @@ fn invalid_http_to_watcher_restart_preserves_the_running_generation_and_setup() 
         vec!["--lan"],
         vec!["--lan-ip", "192.0.2.1"],
         vec!["--tailscale"],
+        vec!["--domain", "dev.example.com"],
         vec!["--backend-port", "31010"],
     ] {
         let mut args = vec!["restart", "--detach", "--setup"];

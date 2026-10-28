@@ -23,7 +23,7 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 2;
+pub const PROTOCOL: u32 = 3;
 
 /// The running proxy: its ownership token, the front door it serves and the release that started
 /// it. Unknown fields are ignored, so a newer proxy's record stays readable by older releases.
@@ -92,8 +92,8 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
     let routes = routes(registry, router)?;
     renew_leases(registry, router, &routes)?;
     let mut config = render(registry, router, &routes, true)?;
-    // A LAN listener Caddy could not open never takes the loopback routes down with it.
-    if FAILED_LAN
+    // A LAN or domain listener Caddy could not open never takes the loopback routes down with it.
+    if FAILED_SHARE
         .lock()
         .is_ok_and(|failed| failed.as_ref() == Some(&config))
     {
@@ -104,12 +104,15 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
         return Ok(());
     }
     if let Err(error) = load(state, &config) {
+        let servers = &config["apps"]["http"]["servers"];
         ensure!(
-            config["apps"]["http"]["servers"].get("lan").is_some(),
+            servers.get("lan").is_some() || servers.get("domain").is_some(),
             error
         );
-        eprintln!("parcela: LAN sharing is off; Caddy could not listen there: {error:#}");
-        if let Ok(mut failed) = FAILED_LAN.lock() {
+        eprintln!(
+            "parcela: LAN and domain sharing are off; Caddy could not listen there: {error:#}"
+        );
+        if let Ok(mut failed) = FAILED_SHARE.lock() {
             *failed = Some(config);
         }
         config = render(registry, router, &routes, false)?;
@@ -128,8 +131,8 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
     }
     Ok(())
 }
-/// The last configuration whose LAN listener Caddy refused.
-static FAILED_LAN: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+/// The last configuration whose LAN or domain listener Caddy refused.
+static FAILED_SHARE: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
 
 fn load(state: &Path, config: &Value) -> Result<()> {
     let (status, response) = http::admin(
@@ -146,16 +149,12 @@ fn load(state: &Path, config: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Whether the loaded proxy configuration already listens on `ip:port` for the LAN.
-pub fn lan_listening(state: &Path, ip: Ipv4Addr, port: u16) -> bool {
+/// Whether the loaded proxy configuration's `server` already listens on `address`.
+pub fn listening(state: &Path, server: &str, address: &str) -> bool {
     private::read_json::<Value>(&proxy_dir(state).join("loaded.json")).is_ok_and(|config| {
-        config["apps"]["http"]["servers"]["lan"]["listen"]
+        config["apps"]["http"]["servers"][server]["listen"]
             .as_array()
-            .is_some_and(|listen| {
-                listen
-                    .iter()
-                    .any(|address| address == &json!(format!("{ip}:{port}")))
-            })
+            .is_some_and(|listen| listen.iter().any(|listened| listened == address))
     })
 }
 fn lease_directory(state: &Path, router: &Router, session: &Session) -> PathBuf {
@@ -179,6 +178,8 @@ struct Route {
     dials: Vec<(Endpoint, std::net::SocketAddr)>,
     /// The LAN address of a run started with `--lan`.
     lan: Option<Ipv4Addr>,
+    /// The front proxy's domain of a run started with `--domain`.
+    domain: Option<crate::share::Domain>,
     /// Services that also take every subdomain of their host.
     wildcard: std::collections::BTreeSet<String>,
 }
@@ -211,15 +212,16 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
                 record.roots(),
                 endpoints,
                 record.share.lan,
+                record.share.domain.clone(),
                 wildcard,
             ));
         }
     }
     let listeners = crate::process::Listeners::inspect(candidates.iter().flat_map(
-        |(_, _, endpoints, _, _)| endpoints.iter().map(|endpoint| endpoint.backend_port),
+        |(_, _, endpoints, _, _, _)| endpoints.iter().map(|endpoint| endpoint.backend_port),
     ))?;
     let mut routes = Vec::new();
-    for (session, roots, endpoints, lan, wildcard) in candidates {
+    for (session, roots, endpoints, lan, domain, wildcard) in candidates {
         let owned = endpoints.iter().all(|endpoint| {
             listeners
                 .owned(endpoint.backend_port, &roots)
@@ -237,6 +239,7 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
                 session,
                 dials,
                 lan,
+                domain,
                 wildcard,
             });
         }
@@ -291,9 +294,11 @@ fn renew_leases(registry: &Registry, router: &Router, routes: &[Route]) -> Resul
 pub fn configuration(registry: &Registry, router: &Router) -> Result<Value> {
     render(registry, router, &routes(registry, router)?, true)
 }
-/// The whole Caddy configuration. With `lan`, runs started with `--lan` also answer on their LAN
-/// address under `.local` names, on a server of their own so LAN clients reach nothing else.
-fn render(registry: &Registry, router: &Router, ready: &[Route], lan: bool) -> Result<Value> {
+/// The whole Caddy configuration. With `shared`, runs started with `--lan` also answer on their
+/// LAN address under `.local` names, on a server of their own so LAN clients reach nothing else,
+/// and runs started with `--domain` answer their names in plain HTTP on a loopback server, for
+/// the person's own front proxy to terminate TLS in front of it.
+fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -> Result<Value> {
     let state = registry.state_path();
     let workspaces = registry.list(None)?;
     let mut routes = Vec::new();
@@ -312,10 +317,13 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], lan: bool) -> R
     let mut lan_listen = std::collections::BTreeSet::new();
     let mut lan_hosts = Vec::new();
     let mut wildcards = Vec::new();
+    let mut domain_routes = Vec::new();
+    let mut domain_listen = std::collections::BTreeSet::new();
     for Route {
         session,
         dials,
         lan: lan_address,
+        domain,
         wildcard,
     } in ready
     {
@@ -347,11 +355,20 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], lan: bool) -> R
                 wildcards.push(tenants);
             }
             routes.push(json!({"@id": format!("run-{}-{}", session.token, endpoint.service), "match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
-            if let Some(ip) = lan_address.filter(|ip| lan && crate::share::present(*ip)) {
+            if let Some(ip) = lan_address.filter(|ip| shared && crate::share::present(*ip)) {
                 let host = crate::share::local_host(&endpoint.hostname);
                 lan_listen.insert(format!("{ip}:{}", router.front_door.https));
                 lan_routes.push(json!({"match":[{"host":[host], "file":leased}], "handle":handle, "terminal": true}));
                 lan_hosts.push(host);
+            }
+            if let Some(domain) = domain.as_ref().filter(|_| shared) {
+                let host = domain.host(&endpoint.hostname);
+                let mut matched = vec![host.clone()];
+                if wildcard.contains(&endpoint.service) {
+                    matched.push(format!("*.{host}"));
+                }
+                domain_listen.insert(format!("127.0.0.1:{}", domain.port));
+                domain_routes.push(json!({"match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
             }
         }
     }
@@ -371,6 +388,14 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], lan: bool) -> R
         lan_routes.push(json!({"handle":[{"handler":"static_response", "status_code":404, "body":"No shared Parcela route\n"}], "terminal":true}));
         servers["lan"] = json!({"listen":lan_listen, "protocols":["h1","h2"],
             "listener_wrappers":wrappers, "tls_connection_policies":[{}], "automatic_https":{"disable_redirects":true}, "routes":lan_routes});
+    }
+    if !domain_routes.is_empty() {
+        domain_routes.push(json!({"handle":[{"handler":"static_response", "status_code":404, "body":"No shared Parcela route\n"}], "terminal":true}));
+        // The front proxy is the client here, so its X-Forwarded-Proto and -Host reach the app,
+        // which then builds https:// links to the name the browser asked for.
+        servers["domain"] = json!({"listen":domain_listen, "protocols":["h1"],
+            "trusted_proxies":{"source":"static", "ranges":["127.0.0.1/32", "::1/128"]},
+            "automatic_https":{"disable":true}, "routes":domain_routes});
     }
     let http_app = json!({"https_port": https_port, "servers": servers});
     let mut config = json!({

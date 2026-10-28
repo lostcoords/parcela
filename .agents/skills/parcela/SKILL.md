@@ -89,9 +89,10 @@ Only when the user asks for it, for the environment they name:
 ```sh
 parcela --path "$CHECKOUT" up --detach --lan        # https://<name>.local:1443 on the same network
 parcela --path "$CHECKOUT" up --detach --tailscale  # https://<machine>.<tailnet>.ts.net on the tailnet
+parcela --path "$CHECKOUT" up --detach --domain dev.example.com  # https://<name>.dev.example.com via the user's own proxy
 ```
 
-Shared URLs appear under each service in `up` and `status` output, and in `.live.endpoints.<service>.shared`. Sharing lasts for that run; `restart` needs the flag again and `down` ends it. Never use it as a default, and never use Tailscale Funnel. A dev server that rejects the host needs `PARCELA_SHARE_HOSTS` in its allowed hosts; that is a project change, so propose it rather than make it unasked.
+Shared URLs appear under each service in `up` and `status` output, and in `.live.endpoints.<service>.shared`. Sharing lasts for that run; `restart` needs the flag again and `down` ends it. Never use it as a default, and never use Tailscale Funnel. `--domain` serves plain HTTP on `127.0.0.1:1480` (`--domain-port`) for a front proxy the user already runs; do not set up that proxy or its DNS unasked. A dev server that rejects the host needs `PARCELA_SHARE_HOSTS` in its allowed hosts; that is a project change, so propose it rather than make it unasked.
 
 ## Diagnose
 

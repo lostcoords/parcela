@@ -209,7 +209,7 @@ pub fn detached(
     workspace: &Workspace,
     port: Option<u16>,
     timeout: u64,
-    share: crate::share::Request,
+    share: &crate::share::Request,
     manifest: &crate::config::Manifest,
 ) -> Result<Value> {
     let path = registry.runtime_path(workspace);
@@ -246,6 +246,12 @@ pub fn detached(
     }
     if share.tailscale {
         command.arg("--tailscale");
+    }
+    if let Some(domain) = &share.domain {
+        command.arg("--domain").arg(domain);
+    }
+    if let Some(port) = share.domain_port {
+        command.args(["--domain-port", &port.to_string()]);
     }
     private::write_json(
         &path.join("launch.json"),

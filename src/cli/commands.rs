@@ -313,7 +313,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                 parcela::runtime::Launch::Command(&argv),
                 backend_port,
                 readiness_timeout,
-                Default::default(),
+                &Default::default(),
             )
         }
         Command::Up {
@@ -326,6 +326,8 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             lan,
             lan_ip,
             tailscale,
+            domain,
+            domain_port,
             launch_file,
         } => start(
             &state,
@@ -341,6 +343,8 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     lan,
                     lan_ip,
                     tailscale,
+                    domain,
+                    domain_port,
                 },
                 launch_file,
             },
@@ -354,6 +358,8 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             lan,
             lan_ip,
             tailscale,
+            domain,
+            domain_port,
             launch_file,
         } => start(
             &state,
@@ -369,6 +375,8 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     lan,
                     lan_ip,
                     tailscale,
+                    domain,
+                    domain_port,
                 },
                 launch_file,
             },
@@ -549,7 +557,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
         launch,
         start.backend_port,
         readiness_timeout,
-        start.share,
+        &start.share,
     )?;
     let (mut registry, workspace) = if start.restart || snapshot.is_some() {
         ensure!(
@@ -595,7 +603,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
         out.emit(&result, |style| render::recovered(&result, style))?;
         return Ok(0);
     } else if !start.restart
-        && let Some(result) = already_running(&registry, &workspace, start.share)?
+        && let Some(result) = already_running(&registry, &workspace, &start.share)?
     {
         out.emit(&result, |style| render::started(&result, style))?;
         return Ok(0);
@@ -620,7 +628,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
             launch,
             start.backend_port,
             readiness_timeout,
-            start.share,
+            &start.share,
         )?;
     }
     if start.restart {
@@ -643,7 +651,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
             launch,
             start.backend_port,
             readiness_timeout,
-            start.share,
+            &start.share,
         )?;
         workspace
     } else {
@@ -669,7 +677,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
             launch,
             start.backend_port,
             readiness_timeout,
-            start.share,
+            &start.share,
         );
     }
     // Started here so its notice reaches this terminal, not the detached owner's log.
@@ -684,7 +692,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
         &workspace,
         start.backend_port,
         readiness_timeout,
-        start.share,
+        &start.share,
         &manifest,
     )
     .inspect_err(|_| print_new_log_lines(&log, offset, 20))?;
@@ -697,7 +705,7 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
 fn already_running(
     registry: &Registry,
     workspace: &Workspace,
-    share: Share,
+    share: &Share,
 ) -> Result<Option<serde_json::Value>> {
     if registry
         .session(&workspace.id)?
@@ -723,9 +731,18 @@ fn already_running(
         let authority = url.split('/').nth(2).unwrap_or_default();
         authority.split(':').next().unwrap_or_default().to_owned()
     };
+    let domain = share
+        .domain
+        .as_deref()
+        .map(|domain| format!(".{}", domain.trim_end_matches('.').to_ascii_lowercase()));
     for (asked, flag, suffix) in [
         (share.lan || share.lan_ip.is_some(), "--lan", ".local"),
         (share.tailscale, "--tailscale", ".ts.net"),
+        (
+            domain.is_some(),
+            "--domain",
+            domain.as_deref().unwrap_or_default(),
+        ),
     ] {
         ensure!(
             !asked || shared.iter().any(|url| host(url).ends_with(suffix)),

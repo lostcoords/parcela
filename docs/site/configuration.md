@@ -52,7 +52,7 @@ services:
 
 `up`, `status`, `logs`, `restart`, `down`, hooks, dependencies, tasks, and named `ports` work without HTTP. Readiness waits for hooks to complete and services to start. A service with `healthcheck` must pass that command before the environment is ready.
 
-`url` and `open` fail because there is no HTTP URL. `--backend-port`, `--lan`, `--lan-ip`, `--tailscale`, and literal `run` require an HTTP service. Status JSON has `url: null`; the session's `public_url`, `backend_port`, and `router_token` are null, and its HTTP endpoint set is empty. No `PORT`, `PARCELA_URL`, or `PARCELA_HOSTNAME` is supplied. Explicit named ports still use `PARCELA_PORT_<NAME>`.
+`url` and `open` fail because there is no HTTP URL. `--backend-port`, `--lan`, `--lan-ip`, `--tailscale`, `--domain`, and literal `run` require an HTTP service. Status JSON has `url: null`; the session's `public_url`, `backend_port`, and `router_token` are null, and its HTTP endpoint set is empty. No `PORT`, `PARCELA_URL`, or `PARCELA_HOSTNAME` is supplied. Explicit named ports still use `PARCELA_PORT_<NAME>`.
 
 A running proxy from an older Parcela must be restarted with the new binary before watcher-only sessions can share its registry. Parcela refuses that mixed-version start rather than changing the shared proxy itself.
 
@@ -120,7 +120,7 @@ services:
           healthcheck: /
 ```
 
-Each key under `http` is a service: `mail` is at `https://mail-shop.localhost:1443`, has `PARCELA_SERVICE_MAIL_URL`, waits for its `healthcheck`, and is shared by `up --lan` and `--tailscale` like any other. Its fields are those of [HTTP services](#http-services), plus:
+Each key under `http` is a service: `mail` is at `https://mail-shop.localhost:1443`, has `PARCELA_SERVICE_MAIL_URL`, waits for its `healthcheck`, and is shared by `up --lan`, `--tailscale` and `--domain` like any other. Its fields are those of [HTTP services](#http-services), plus:
 
 | Field | Meaning |
 |---|---|
@@ -293,7 +293,7 @@ Every service, hook and task receives these. Service names are uppercased, with 
 | `HOST` | `127.0.0.1` |
 | `PARCELA_URL` | `https://shop.localhost:1443`, the environment's URL, only when HTTP is configured |
 | `PARCELA_HOSTNAME` | `shop.localhost`, only when HTTP is configured |
-| `PARCELA_SHARE_HOSTS` | `shop.local,mb.tail1234.ts.net`, the hostnames other devices use after `up --lan` or `--tailscale`. Empty otherwise. Used for dev-server host allow lists. |
+| `PARCELA_SHARE_HOSTS` | `shop.local,mb.tail1234.ts.net,shop.dev.example.com`, the hostnames other devices use after `up --lan`, `--tailscale` or `--domain`. Empty otherwise. Used for dev-server host allow lists. |
 | `PARCELA_SERVICE_<NAME>_URL` | `PARCELA_SERVICE_API_URL=https://api-shop.localhost:1443` |
 | `PARCELA_SERVICE_<NAME>_HOSTNAME` | `PARCELA_SERVICE_API_HOSTNAME=api-shop.localhost` |
 | `PARCELA_SERVICE_<NAME>_PORT` | `PARCELA_SERVICE_API_PORT=26798` |

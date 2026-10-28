@@ -467,6 +467,91 @@ fn parallel_ups_in_two_checkouts_start_one_proxy_and_both_urls_answer() {
 }
 
 #[test]
+fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
+    if !["caddy", "curl", "python3"]
+        .iter()
+        .all(|program| on_path(program))
+    {
+        eprintln!("skipped: needs caddy, curl and python3 on PATH");
+        return;
+    }
+    let proxy = Proxy::new();
+    let checkout = proxy._t.path().canonicalize().unwrap().join("notes");
+    fs::create_dir(&checkout).unwrap();
+    // Answers with the forwarded headers and the hosts Parcela told it to allow.
+    fs::write(
+        checkout.join("echo.py"),
+        "import http.server, os, sys\n\
+         class H(http.server.BaseHTTPRequestHandler):\n\
+         \x20   def do_GET(self):\n\
+         \x20       body = '|'.join([self.headers.get('X-Forwarded-Proto', ''), self.headers.get('X-Forwarded-Host', ''), os.environ['PARCELA_SHARE_HOSTS']]).encode()\n\
+         \x20       self.send_response(200); self.end_headers(); self.wfile.write(body)\n\
+         http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()\n",
+    )
+    .unwrap();
+    fs::write(
+        checkout.join("parcela.yaml"),
+        "version: 1\nproject: notes\nservices: {web: {command: python3 echo.py $PORT, http: {healthcheck: /}}}\n",
+    )
+    .unwrap();
+    let environments = Environments {
+        state: &proxy.state,
+        paths: vec![checkout.clone()],
+    };
+    let https = free_port();
+    let domain_port = free_port();
+    let up = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--path")
+        .arg(&checkout)
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .env("PARCELA_HTTPS_PORT", https.to_string())
+        .args(["--json", "up", "--detach", "--domain", "Dev.Example.com"])
+        .args(["--domain-port", &domain_port.to_string()])
+        .output()
+        .unwrap();
+    assert!(up.status.success(), "{}", stderr(&up));
+    let status = json_of(&cli(
+        &proxy.state,
+        &["--path", checkout.to_str().unwrap(), "status"],
+    ));
+    assert_eq!(
+        status["live"]["endpoints"]["web"]["shared"],
+        json!(["https://notes.dev.example.com"])
+    );
+    let get = |host: &str| {
+        let curl = Command::new("curl")
+            .args([
+                "--silent",
+                "--max-time",
+                "5",
+                "--write-out",
+                "|%{http_code}",
+            ])
+            .args(["--header", &format!("Host: {host}")])
+            .args(["--header", "X-Forwarded-Proto: https"])
+            .arg(format!("http://127.0.0.1:{domain_port}/"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&curl.stdout).into_owned()
+    };
+    assert_eq!(
+        get("notes.dev.example.com"),
+        "https|notes.dev.example.com|notes.dev.example.com|200"
+    );
+    assert!(get("other.dev.example.com").ends_with("|404"));
+    drop(environments);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::net::TcpStream::connect(("127.0.0.1", domain_port)).is_ok() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "domain listener outlived down"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
 fn a_port_only_root_may_use_is_refused_with_the_reason() {
     // macOS lets only root listen on loopback ports below 1024.
     if !cfg!(target_os = "macos") || unsafe { libc::getuid() } == 0 {

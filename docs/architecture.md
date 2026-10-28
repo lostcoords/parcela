@@ -59,6 +59,8 @@ LAN sharing records the selected interface address with the run. Caddy adds a se
 
 mDNS publishers use `dns-sd` on macOS or `avahi-publish` on Linux. Tailscale sharing chooses free HTTPS ports from `tailscale serve status` and starts one foreground serve process per service. Tailnet requests reach backend ports directly.
 
+Domain sharing records the domain and a loopback port with the run. Caddy adds a plain-HTTP server on `127.0.0.1` at that port for `<name>.<domain>`, trusting forwarded headers from loopback. The person's own proxy terminates TLS in front of it, so Parcela never holds a public certificate or DNS credentials. Like the LAN server, a domain listener that cannot load is dropped so loopback routes remain available.
+
 Publishers belong to the process graph and stop with the run. Foreground Tailscale serve entries disappear when their owning process exits, including after SIGKILL. Parcela never uses Funnel.
 
 ## Durable state and sockets
@@ -93,7 +95,7 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `supervisor`, `logs` | Runs the process graph and retains process output. |
 | `owner`, `control`, `lifecycle` | Owns environments and handles stop, restart, and recovery. |
 | `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration and runs the proxy and optional macOS relay. |
-| `share` | Plans LAN and Tailscale sharing and allowed host variables. |
+| `share` | Plans LAN, Tailscale and domain sharing and allowed host variables. |
 | `process`, `http` | Checks process identity, listener ownership, and readiness. `http` is a client. |
 | `discovery` | Reads jj and Git checkout inventory without modifying it. Unresolvable jj roots are reported and omitted without hiding live checkouts. |
 | `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |

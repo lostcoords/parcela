@@ -181,7 +181,7 @@ pub fn run(
     launch: Launch<'_>,
     backend_port: Option<u16>,
     timeout: u64,
-    request: share::Request,
+    request: &share::Request,
 ) -> Result<i32> {
     preflight(
         registry,
@@ -493,7 +493,7 @@ pub fn validate_request(
     launch: Launch<'_>,
     port: Option<u16>,
     timeout: u64,
-    request: share::Request,
+    request: &share::Request,
 ) -> Result<()> {
     ensure!(
         matches!(launch, Launch::Up) || manifest.services.len() == 1,
@@ -504,9 +504,8 @@ pub fn validate_request(
         "readiness timeout must be between 1 and 86400"
     );
     ensure!(
-        !manifest.services.is_empty()
-            || (port.is_none() && !request.lan && request.lan_ip.is_none() && !request.tailscale),
-        "--backend-port, --lan, --lan-ip and --tailscale need an HTTP service"
+        !manifest.services.is_empty() || (port.is_none() && !request.any()),
+        "--backend-port, --lan, --lan-ip, --tailscale and --domain need an HTTP service"
     );
     Ok(())
 }
@@ -518,7 +517,7 @@ pub fn preflight(
     launch: Launch<'_>,
     port: Option<u16>,
     timeout: u64,
-    request: share::Request,
+    request: &share::Request,
 ) -> Result<()> {
     validate_request(manifest, launch, port, timeout, request)?;
     let path = registry.runtime_path(workspace);
@@ -595,7 +594,7 @@ pub fn preflight(
         .iter()
         .find(|endpoint| Some(endpoint.service.as_str()) == manifest.default_service.as_deref());
     ensure!(
-        matches!(launch, Launch::Up) || !request.lan && !request.tailscale,
+        matches!(launch, Launch::Up) || !request.any(),
         "sharing needs up; run starts no publishers"
     );
     let share = Share::plan(
