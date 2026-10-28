@@ -121,6 +121,12 @@ parcela --workspace "$ENVIRONMENT_ID" down
 - `rm` forgets a stopped environment and frees its URLs; `rm --prune` does so for every one whose checkout is gone. Both keep the runtime directory, but `hooks.teardown`, if declared, runs first and may delete data; read it before `rm`. Use them only on an explicit cleanup request.
 - Before `task NAME -- ARGS`, read that task's command and effects in `parcela.yaml`. Run only the requested task.
 
+## CLI updates
+
+`parcela upgrade` updates an install.sh installation and refreshes an older running proxy automatically. Homebrew and Cargo installations print their own update command; the next regular CLI invocation refreshes an older proxy after that update. App PIDs, data, hooks, the CA, and the front door stay in the same run. URLs briefly disconnect while routes return. Stopped proxies stay stopped. Do not run an extra proxy restart as an upgrade step.
+
+Interactive commands offer stable-release updates at most once a day. Piped commands, `--json`, internal owners, and shutdown commands never check or prompt. `PARCELA_NO_UPDATE=1` disables release checks, while local proxy maintenance still happens. Existing CLIs without this behavior need one explicit upgrade. Do not install or upgrade the CLI unless the user asks.
+
 ## Limits
 
 Parcela is a local development runner, not a sandbox. It does not restart individual services, snapshot undeclared or external data, transfer secrets, or prove browser trust. This skill and `--help` are not runtime proof.

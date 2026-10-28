@@ -151,7 +151,7 @@ Lists registered environments across projects. Inside a project, it also lists u
 parcela ui
 ```
 
-Prints the local dashboard URL, `https://parcela-ui.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, restart the proxy to make its new dashboard available. The hostname `parcela-ui.localhost` is reserved for the dashboard.
+Prints the local dashboard URL, `https://parcela-ui.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, the next regular command refreshes an older running proxy automatically. The hostname `parcela-ui.localhost` is reserved for the dashboard.
 
 The dashboard groups registered environments by project, discovers unregistered worktrees of known projects, and shows service URLs and process states. Search filters the list. Status refreshes in the background; a failed connection or an old timestamp marks the display as stale. The dashboard only shows status and navigation.
 
@@ -273,7 +273,13 @@ Adds Caddy's local CA to the system trust store using `caddy trust`. Prints the 
 parcela upgrade [--nightly]
 ```
 
-For shell-installer installations, downloads and runs the installer. Installs the latest release, or with `--nightly` the newest build of `main`. For Homebrew or Cargo, prints the matching upgrade command without changing the installation. Parcela does not check for updates automatically.
+For shell-installer installations, downloads and runs the installer. Installs the latest release, or with `--nightly` the newest build of `main`. A successful installation refreshes an older running proxy on its existing port. Application processes, data, and setup hooks keep their current run. URLs briefly disconnect while owners republish their routes. A deliberately stopped proxy stays stopped, and an older CLI never replaces a newer proxy.
+
+Normal interactive commands check for a stable release at most once a day. Shell-installer installations offer **Update now? [Y/n]**. Accepting installs the release, refreshes the running proxy, and resumes the original command with the new CLI. Declining continues the command and suppresses another prompt for a day. Offline release checks do not block the command.
+
+Piped commands, `--json`, background owners, shutdown commands, and diagnostic proxy commands never check for updates or prompt. `PARCELA_NO_UPDATE=1` disables automatic release checks. It does not disable local proxy maintenance after an update.
+
+For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade` prints the matching package-manager command without replacing the installation. After that update, the next regular CLI command refreshes an older running proxy. Builds outside known installation paths skip automatic release checks.
 
 ## telemetry
 

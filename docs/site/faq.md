@@ -120,13 +120,11 @@ Read the [changelog](https://github.com/lostcoords/parcela/blob/main/CHANGELOG.m
 
 `parcela upgrade` installs the latest release. Use `--nightly` for the newest build of `main`. For Homebrew and Cargo installations, it prints the appropriate command instead of replacing the binary.
 
-Update the shared proxy when a brief interruption to all environment URLs is acceptable:
+The installer refreshes an older running proxy automatically. If you update through Homebrew or Cargo, the next regular Parcela command does that refresh. Application processes keep running; their URLs briefly disconnect. Stopped proxies stay stopped.
 
-```sh
-parcela proxy restart
-```
+Interactive commands check for a stable release at most once a day and offer an update for shell-installer installations. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` to disable release checks.
 
-Parcela does not check for updates automatically.
+A CLI installed before automatic update checks needs one explicit `parcela upgrade` to acquire this behavior.
 
 ## Remove Parcela
 

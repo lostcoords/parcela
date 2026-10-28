@@ -23,6 +23,8 @@ scripts/check-live docs-example
 scripts/check-live recovery --case owner_crash
 ```
 
+The `updates` suite runs an installer round-trip with local download fixtures and a real proxy. It verifies that concurrent refreshes replace one proxy, preserve app PIDs and hooks, keep the CA and front door, and leave deliberately stopped or newer proxies alone.
+
 The `dashboard` suite checks the local UI over real Caddy. Set `PARCELA_PLAYWRIGHT_MODULE` to an installed Playwright module path to also run its Chromium interaction checks. `PARCELA_CHROMIUM_EXECUTABLE` can select an existing Chromium binary. The browser runs headless, and its HTTP requests verify Caddy with the fixture's CA without changing system trust. Set `PARCELA_DASHBOARD_ARTIFACTS` to a directory to retain desktop and mobile screenshots.
 
 Each fixture uses a disposable directory, isolated state, an untrusted test CA, and explicit ports from 30000 through 32767. The runner builds once and writes a JSON report per suite. `--output DIR` retains reports at a chosen path. `--caddy PATH` selects Caddy.

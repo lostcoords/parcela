@@ -322,6 +322,9 @@ pub enum ProxyCommand {
         #[command(flatten)]
         listen: Listen,
     },
+    /// Refresh a running proxy after an update
+    #[command(hide = true)]
+    Refresh,
     /// Show the proxy's status
     Status,
     /// Serve URLs without a port, on 443 (macOS)

@@ -100,7 +100,9 @@ parcela: no logs yet; run parcela up first
 parcela: the running proxy is from Parcela <old>, older than this <new>; run `parcela proxy restart` to update it
 ```
 
-Releases share a running proxy until one changes how the proxy works. This one did, and the old proxy is still running. It keeps serving. Run `parcela proxy restart` when nothing needs the URLs for a moment.
+Normal foreground commands refresh an older running proxy automatically after a CLI update. Diagnostic commands such as `proxy status` still show its recorded version without changing it. Run a regular command such as `parcela status` to perform the refresh.
+
+If automatic refresh fails, Parcela prints the reason. Check that Caddy 2 is available on PATH. Missing prerequisites leave the working proxy alone; unknown or unverifiable ownership is never taken over. `parcela proxy restart` remains available for an explicit restart.
 
 If the message says the proxy is newer, another Parcela on this machine is newer than the one you ran. Run `parcela upgrade`.
 

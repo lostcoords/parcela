@@ -99,6 +99,49 @@ pub fn ensure_running(state: &Path, host: &str) -> Result<Router> {
     Ok(started.router().clone())
 }
 
+/// Replace an older running proxy with this executable on its existing front door.
+/// The start lock covers the whole replacement, including concurrent refreshes and explicit stops.
+/// Stopped proxies stay stopped; environment owners rebind their existing processes afterward.
+pub fn refresh(state: &Path) -> Result<Option<Router>> {
+    if matches!(status(state)?, Status::Stopped) {
+        return Ok(None);
+    }
+    let directory = router::proxy_dir(state);
+    let _start = Lock::wait_for(&directory.join("start.lock"), STARTUP * 2)?;
+    let router = match status(state)? {
+        Status::Stopped => return Ok(None),
+        Status::Unhealthy(error) => {
+            return Err(error.context("cannot verify the running proxy for an automatic refresh"));
+        }
+        Status::Running(router) => router,
+    };
+    if router.version == VERSION && router.protocol == PROTOCOL {
+        return Ok(None);
+    }
+    let installed = semver::Version::parse(VERSION)?;
+    let running = semver::Version::parse(&router.version)?;
+    if router.protocol > PROTOCOL || running.cmp_precedence(&installed).is_gt() {
+        return Ok(None);
+    }
+    // Check the replacement binary before withdrawing working routes.
+    let backend = crate::process::version("caddy", "version")?;
+    ensure!(
+        backend.starts_with("v2."),
+        "unsupported Caddy version: {backend}"
+    );
+    eprintln!(
+        "parcela: updating the proxy from {} to {VERSION}; application processes keep running",
+        router.version
+    );
+    stop_locked(state)?;
+    let started = launch_locked(state, "caddy", router.front_door, true, false)?;
+    ensure!(
+        started.router().protocol == PROTOCOL && started.router().version == VERSION,
+        "replacement proxy does not match this Parcela"
+    );
+    Ok(Some(started.router().clone()))
+}
+
 /// The notice for a proxy `up` just started, naming `parcela trust` only while it is needed.
 pub fn started_hint(router: &Router, host: &str, trusted: bool) -> String {
     if trusted {
@@ -164,6 +207,17 @@ fn launch(
     let directory = router::proxy_dir(state);
     private::directory(&directory)?;
     let _start = Lock::wait_for(&directory.join("start.lock"), STARTUP)?;
+    launch_locked(state, caddy, front_door, explicit, revive)
+}
+
+fn launch_locked(
+    state: &Path,
+    caddy: &str,
+    front_door: FrontDoor,
+    explicit: bool,
+    revive: bool,
+) -> Result<Started> {
+    let directory = router::proxy_dir(state);
     // Checked under the start lock, so a revive never undoes a stop that ran meanwhile.
     if directory.join(STOPPED).exists() {
         ensure!(!revive, "the proxy was stopped on purpose");
@@ -265,6 +319,11 @@ pub fn stop(state: &Path) -> Result<bool> {
         return Ok(false);
     }
     let _start = Lock::wait_for(&directory.join("start.lock"), STARTUP)?;
+    stop_locked(state)
+}
+
+fn stop_locked(state: &Path) -> Result<bool> {
+    let directory = router::proxy_dir(state);
     private::write_bytes(&directory.join(STOPPED), b"")?;
     let lock = directory.join("owner.lock");
     let daemon_running =

@@ -14,6 +14,10 @@ use clap::Parser;
 
 pub fn main() {
     let args = args::Args::parse();
+    if let Err(error) = upgrade::prepare(&args) {
+        eprintln!("parcela: {error:#}");
+        std::process::exit(1);
+    }
     let session = telemetry::begin(args.global.state_dir.clone());
     let result = match args.command {
         Some(command) => commands::run(args::Cli::new(args.global, command)),

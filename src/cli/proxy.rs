@@ -82,6 +82,19 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             let front_door = requested(registry.state_path(), listen.port)?;
             parcela::router::run(&registry, &listen.caddy, front_door)
         }
+        ProxyCommand::Refresh => {
+            let refreshed = proxy::refresh(state)?;
+            out.emit(
+                &json!({"refreshed": refreshed.is_some()}),
+                |_| match refreshed {
+                    Some(_) => {
+                        "Updated the running proxy. Application processes keep running.\n".into()
+                    }
+                    None => "No proxy refresh needed.\n".into(),
+                },
+            )?;
+            Ok(0)
+        }
         ProxyCommand::Status => {
             let (report, code) = match proxy::status(state)? {
                 Status::Running(router) => (running(state, &router), 0),

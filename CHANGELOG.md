@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.7.5 - 2026-10-28
+
+### Fixed
+
+- CLI upgrades refresh an older running proxy automatically, preserving application PIDs, generations, setup/prestart hooks, the CA, and the existing front door. Concurrent CLI invocations perform one replacement. A stopped or newer proxy stays unchanged.
+- The installer passes maintenance to the newly installed CLI. `parcela upgrade --state-dir DIR` forwards the selected state directory.
+
+### Added
+
+- Interactive installed CLIs check for a stable release at most once a day. Shell-installer updates ask before installing, then resume the original command with the new CLI. Piped commands, JSON, internal owners, and shutdown commands never check or prompt. `PARCELA_NO_UPDATE=1` disables release checks.
+
 ## 0.7.4 - 2026-10-28
 
 ### Fixed

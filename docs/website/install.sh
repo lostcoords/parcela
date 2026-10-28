@@ -188,9 +188,17 @@ main() {
   path_hint
   echo
   current=$("$BIN/parcela" --version)
+  refreshed=
+  if "$BIN/parcela" proxy refresh --help >/dev/null 2>&1; then
+    "$BIN/parcela" proxy refresh >/dev/null
+    refreshed=1
+  fi
   if [ -n "$previous" ] && [ "$previous" != "$current" ]; then
-    echo "Upgraded from ${previous#parcela }. Run parcela proxy restart to use it; running"
-    echo "environments keep running. Breaking changes: https://github.com/lostcoords/parcela/blob/main/CHANGELOG.md"
+    echo "Upgraded from ${previous#parcela }."
+    if [ -z "$refreshed" ]; then
+      echo "This older release requires parcela proxy restart to refresh a running proxy."
+    fi
+    echo "Application processes keep running. Changes: https://github.com/lostcoords/parcela/blob/main/CHANGELOG.md"
   elif [ -z "$previous" ]; then
     echo "Next, in your project: parcela init, then parcela up"
   fi

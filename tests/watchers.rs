@@ -176,7 +176,7 @@ fn foreground_watcher_exit_propagates_without_starting_the_proxy() {
 }
 
 #[test]
-fn watcher_sessions_coexist_with_http_and_refuse_an_older_running_proxy() {
+fn watcher_sessions_coexist_with_http_and_refuse_a_newer_running_proxy() {
     if parcela::process::on_path("caddy").is_none() {
         return;
     }
@@ -201,7 +201,7 @@ fn watcher_sessions_coexist_with_http_and_refuse_an_older_running_proxy() {
     let metadata = env.path().join("state/proxy/router.json");
     let original = fs::read(&metadata).unwrap();
     let mut older: Value = serde_json::from_slice(&original).unwrap();
-    older["protocol"] = serde_json::json!(parcela::router::PROTOCOL - 1);
+    older["protocol"] = serde_json::json!(parcela::router::PROTOCOL + 1);
     fs::write(&metadata, serde_json::to_vec(&older).unwrap()).unwrap();
     let watcher_doctor = env.run(&["doctor"]);
     assert!(!watcher_doctor.status.success());

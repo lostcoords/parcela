@@ -212,7 +212,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         return Ok(0);
     }
     if let Command::Upgrade { nightly } = cli.command {
-        return super::upgrade::run(nightly);
+        return super::upgrade::run(nightly, &state_dir(cli.state_dir)?);
     }
     let state = state_dir(cli.state_dir)?;
     let mut id = None;

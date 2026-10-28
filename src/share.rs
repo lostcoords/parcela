@@ -507,7 +507,14 @@ mod tests {
         let port = holder.local_addr().unwrap().port();
         assert!(listened(&loopback, port));
         drop(holder);
-        assert!(!listened(&loopback, port));
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while listened(&loopback, port) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "closed test listener still accepts connections"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

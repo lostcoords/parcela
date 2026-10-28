@@ -1,8 +1,16 @@
 //! `parcela upgrade` reruns install.sh for an install.sh install and names the right command for
-//! any other. It only downloads when run; Parcela never checks for updates.
+//! any other. Interactive use checks stable releases at most once a day.
+use super::args::{Args, Command as CliCommand};
 use anyhow::{Context, Result, bail, ensure};
-use std::path::{Path, PathBuf};
+use parcela::{private, proxy, router::VERSION};
+use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::{
+    io::{IsTerminal, Write},
+    os::unix::process::CommandExt,
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 const INSTALLER: &str = "https://parcela.run/install.sh";
 
@@ -47,7 +55,7 @@ pub(super) fn install_method() -> &'static str {
     }
 }
 
-pub(super) fn run(nightly: bool) -> Result<i32> {
+pub(super) fn run(nightly: bool, state: &Path) -> Result<i32> {
     let home = PathBuf::from(std::env::var_os("HOME").context("HOME missing")?);
     let cargo_home =
         std::env::var_os("CARGO_HOME").map_or_else(|| home.join(".cargo"), PathBuf::from);
@@ -73,7 +81,7 @@ pub(super) fn run(nightly: bool) -> Result<i32> {
         .context("curl not found")?;
     ensure!(fetched.success(), "could not download {INSTALLER}");
     let mut install = Command::new("sh");
-    install.arg(&script);
+    install.arg(&script).env("PARCELA_STATE_DIR", state);
     if nightly {
         install.arg("--nightly");
     }
@@ -82,6 +90,182 @@ pub(super) fn run(nightly: bool) -> Result<i32> {
         .context("sh not found")?
         .code()
         .unwrap_or(1))
+}
+
+const LATEST: &str = "https://api.github.com/repos/lostcoords/parcela/releases/latest";
+const DAY: u64 = 24 * 60 * 60;
+
+#[derive(Default, Deserialize, Serialize)]
+struct UpdateCheck {
+    checked_at: u64,
+    latest: Option<String>,
+    prompted_at: u64,
+}
+#[derive(Deserialize)]
+struct Release {
+    tag_name: String,
+    draft: bool,
+    prerelease: bool,
+}
+
+fn latest_release() -> Result<String> {
+    let mut command = Command::new("curl");
+    command.args([
+        "--proto",
+        "=https",
+        "--tlsv1.2",
+        "-fsSL",
+        "--connect-timeout",
+        "1",
+        "--max-time",
+        "2",
+        "--max-filesize",
+        "65536",
+        "-H",
+        "Accept: application/vnd.github+json",
+        "-H",
+        "User-Agent: parcela",
+        LATEST,
+    ]);
+    let output = parcela::process::capture(&mut command, Duration::from_secs(3), 65536)?;
+    ensure!(output.status.success(), "release check unavailable");
+    let release: Release = serde_json::from_slice(&output.stdout)?;
+    let version = semver::Version::parse(release.tag_name.trim_start_matches('v'))?;
+    ensure!(
+        !release.draft && !release.prerelease && version.pre.is_empty(),
+        "not a stable release"
+    );
+    Ok(version.to_string())
+}
+
+fn offer_update(state: &Path) -> Result<Option<semver::Version>> {
+    if std::env::var_os("PARCELA_NO_UPDATE").is_some_and(|value| value == "1")
+        || !std::io::stdin().is_terminal()
+        || !std::io::stderr().is_terminal()
+        || !std::io::stdout().is_terminal()
+        || install_method() == "unknown"
+    {
+        return Ok(None);
+    }
+    private::directory(state)?;
+    let Some(_lock) = private::Lock::try_acquire(&state.join("update-check.lock"))? else {
+        return Ok(None);
+    };
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let file = state.join("update-check.json");
+    let mut check: UpdateCheck = private::read_json(&file).unwrap_or_default();
+    if now.saturating_sub(check.checked_at) >= DAY {
+        check.checked_at = now;
+        check.latest = latest_release().ok();
+        private::write_json(&file, &check)?;
+    }
+    if now.saturating_sub(check.prompted_at) < DAY {
+        return Ok(None);
+    }
+    let Some(latest) = check
+        .latest
+        .as_ref()
+        .and_then(|value| semver::Version::parse(value).ok())
+    else {
+        return Ok(None);
+    };
+    if !latest
+        .cmp_precedence(&semver::Version::parse(VERSION)?)
+        .is_gt()
+    {
+        return Ok(None);
+    }
+    check.prompted_at = now;
+    private::write_json(&file, &check)?;
+    if install_method() != "install.sh" {
+        eprintln!(
+            "parcela: {latest} is available (current {VERSION}); run `parcela upgrade` for your installation's update command"
+        );
+        return Ok(None);
+    }
+    eprint!("parcela: {latest} is available (current {VERSION}). Update now? [Y/n] ");
+    std::io::stderr().flush()?;
+    let mut answer = String::new();
+    if std::io::stdin().read_line(&mut answer)? == 0 {
+        return Ok(None);
+    }
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "" | "y" | "yes"
+    )
+    .then_some(latest))
+}
+
+/// Only foreground commands perform maintenance. Detached owners keep their original binary
+/// and must never replace a newer proxy after the CLI on disk has changed.
+pub(super) fn prepare(args: &Args) -> Result<()> {
+    let foreground = matches!(
+        args.command,
+        None | Some(
+            CliCommand::Status { .. }
+                | CliCommand::Ls
+                | CliCommand::Ui
+                | CliCommand::Open { .. }
+                | CliCommand::Url { .. }
+                | CliCommand::Logs { .. }
+                | CliCommand::Run { .. }
+                | CliCommand::Up {
+                    launch_file: None,
+                    ..
+                }
+                | CliCommand::Restart {
+                    launch_file: None,
+                    ..
+                }
+        )
+    );
+    if !foreground {
+        return Ok(());
+    }
+    let state = super::commands::state_dir(args.global.state_dir.clone())?;
+    // An offline update check never prevents the requested command.
+    let offered = if args.global.json {
+        Ok(None)
+    } else {
+        offer_update(&state)
+    };
+    match offered {
+        Ok(Some(latest)) => {
+            let executable = std::env::current_exe()?;
+            let code = run(false, &state)?;
+            ensure!(
+                code == 0,
+                "update did not complete (exit {code}); rerun your command to continue with the installed version"
+            );
+            let version = Command::new(&executable).arg("--version").output()?;
+            ensure!(
+                version.status.success(),
+                "updated executable could not report its version"
+            );
+            let version = String::from_utf8(version.stdout)?;
+            let version = semver::Version::parse(
+                version
+                    .trim()
+                    .strip_prefix("parcela ")
+                    .context("updated executable did not report its version")?,
+            )?;
+            ensure!(
+                !version.cmp_precedence(&latest).is_lt(),
+                "installer returned {version}, expected at least {latest}; run `parcela upgrade` to retry"
+            );
+            let error = Command::new(executable)
+                .args(std::env::args_os().skip(1))
+                .env("PARCELA_NO_UPDATE", "1")
+                .exec();
+            return Err(error.into());
+        }
+        Ok(None) => (),
+        Err(error) => eprintln!("parcela: update check skipped: {error:#}"),
+    }
+    if let Err(error) = proxy::refresh(&state) {
+        eprintln!("parcela: automatic proxy refresh failed: {error:#}");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

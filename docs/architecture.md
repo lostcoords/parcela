@@ -53,6 +53,14 @@ If the proxy dies, environment owners attempt to restart it within about two sec
 
 The proxy does not start at login or reboot. The next `up` starts it. By default it listens only on `127.0.0.1:1443`. A busy listener produces an error naming its owner.
 
+## CLI updates and proxy refresh
+
+Normal foreground CLI commands reconcile an older running proxy with the current executable. This is local maintenance even for an overview command; it never starts a deliberately stopped proxy. Background owners, shutdown commands, and explicit diagnostic commands skip this step, so an old owner cannot replace a newer proxy after the CLI on disk is upgraded.
+
+Refresh holds the existing start lock across stop and launch. Concurrent foreground commands converge on one replacement; an explicit stop that wins the lock stays stopped. Refresh verifies Caddy before withdrawing routes and preserves the running front door, state, and private CA. Existing environment owners rebind to the new router token and republish routes. App processes and hooks are not restarted. A proxy with a newer protocol or release version is preserved.
+
+Interactive installed CLIs check GitHub's latest stable release at most once a day. Check results and prompt time live in private `update-check.json`, with a lock preventing concurrent prompts. Accepting a shell-installer update runs the installer and then executes the original arguments with the new binary. The installer invokes a maintenance-only `proxy refresh` command and respects the selected state directory. JSON, pipes, and internal commands never perform a network update check. Release checks can be disabled independently of local proxy maintenance with `PARCELA_NO_UPDATE=1`.
+
 ## Browser inventory
 
 The shared proxy also owns a read-only dashboard at `parcela-ui.localhost`, on its existing loopback HTTPS listener. That hostname is reserved when adopting service names. Caddy forwards dashboard requests to a private Unix socket; the dashboard adds no public TCP listener and never exposes Caddy's admin API or owner control sockets.
