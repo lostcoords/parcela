@@ -281,10 +281,12 @@ impl Listeners {
             .args(["-sTCP:LISTEN", "-Fptn"])
             .output()
             .context("lsof is required to verify TCP listener ownership")?;
-        if output.stdout.is_empty() && output.status.code() == Some(1) {
-            return Ok(Self(Vec::new()));
-        }
-        ensure!(output.status.success(), "lsof listener inspection failed");
+        // lsof exits 1 when any -i selection matched nothing, even while printing
+        // the ports that did match: an idle port is not an inspection failure.
+        ensure!(
+            output.status.success() || output.status.code() == Some(1),
+            "lsof listener inspection failed"
+        );
         Self::parse(&String::from_utf8(output.stdout)?)
     }
     fn parse(text: &str) -> Result<Self> {
