@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{Ipv4Addr, TcpListener, UdpSocket},
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket},
     path::Path,
     process::Command,
     time::Duration,
@@ -210,10 +210,18 @@ impl Tailnet {
             &tailscale_json(&binary, &["serve", "status", "--json"])?,
             &mut used,
         );
+        // A process outside `tailscale serve`, such as a host-network proxy, can listen on the
+        // tailnet address itself. Serve would then retry its bind forever and answer TLS errors.
+        let addresses: Vec<IpAddr> = status["Self"]["TailscaleIPs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|ip| ip.as_str()?.parse().ok())
+            .collect();
         let mut free = TAILNET_PORTS
             .into_iter()
             .chain(TAILNET_PORTS[TAILNET_PORTS.len() - 1] + 1..=u16::MAX)
-            .filter(|port| !used.contains(port));
+            .filter(|port| !used.contains(port) && !listened(&addresses, *port));
         let ports = endpoints
             .iter()
             .map(|endpoint| {
@@ -327,6 +335,14 @@ fn has_capability(node: &Value, name: &str) -> bool {
     })
 }
 
+/// Whether another process listens on `port` at one of `addresses`. It connects rather than binds:
+/// without root, binding 443 fails with permission denied before the kernel checks who holds it.
+fn listened(addresses: &[IpAddr], port: u16) -> bool {
+    addresses.iter().any(|ip| {
+        TcpStream::connect_timeout(&SocketAddr::new(*ip, port), Duration::from_millis(300)).is_ok()
+    })
+}
+
 /// Every port in a `tailscale serve status --json`, background and foreground.
 fn used_ports(value: &Value, used: &mut BTreeSet<u16>) {
     let Some(object) = value.as_object() else {
@@ -394,6 +410,16 @@ mod tests {
         for ip in ["203.0.113.7", "8.8.8.8", "172.32.0.1", "100.100.1.1"] {
             assert!(!private_network(ip.parse().unwrap()), "{ip}");
         }
+    }
+
+    #[test]
+    fn tailnet_ports_skip_addresses_another_process_holds() {
+        let loopback = [IpAddr::V4(Ipv4Addr::LOCALHOST)];
+        let holder = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = holder.local_addr().unwrap().port();
+        assert!(listened(&loopback, port));
+        drop(holder);
+        assert!(!listened(&loopback, port));
     }
 
     #[test]
