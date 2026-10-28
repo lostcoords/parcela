@@ -314,7 +314,7 @@ fn lan_address() -> Result<Ipv4Addr> {
 
 /// A lowercase domain of at least two DNS labels. Each environment's name becomes one more label,
 /// so a single wildcard certificate covers them all.
-fn domain_name(value: &str) -> Result<String> {
+pub(crate) fn domain_name(value: &str) -> Result<String> {
     let name = value.trim_end_matches('.').to_ascii_lowercase();
     ensure!(
         name.contains('.'),

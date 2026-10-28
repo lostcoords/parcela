@@ -251,6 +251,29 @@
       ],
       "type": "object"
     },
+    "Sharing": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "domain_port": {
+          "default": null,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 1024,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Task": {
       "additionalProperties": false,
       "properties": {
@@ -335,6 +358,13 @@
       },
       "description": "Every long-running process, keyed by name.",
       "type": "object"
+    },
+    "sharing": {
+      "$ref": "#/$defs/Sharing",
+      "default": {
+        "domain": null,
+        "domain_port": null
+      }
     },
     "tasks": {
       "additionalProperties": {

@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+## 0.7.3 - 2026-10-28
+
 ### Added
 
+- Project-level `sharing.domain` and optional `sharing.domain_port` defaults for `up` and `restart`. CLI and environment settings override the project; `--no-share` disables all sharing for a local-only run.
 - `up --domain DOMAIN` also serves each service at `<name>.DOMAIN`, in plain HTTP on `127.0.0.1:1480` (`--domain-port`), for an HTTPS proxy you run in front with a wildcard certificate. Forwarded headers from loopback reach the app. Proxy protocol 3: run `parcela proxy restart` after upgrading.
 
 ### Fixed

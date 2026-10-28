@@ -174,7 +174,7 @@ Every environment's name becomes one label under your domain, so one wildcard ce
 }
 ```
 
-Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`.
+Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`. To make the domain a project default, set [`sharing.domain`](configuration.md#sharing) in `parcela.yaml`. Use `--no-share` for a local-only run.
 
 ### Let the dev server accept the names
 
@@ -190,7 +190,7 @@ The publishers show up in `parcela status` and `parcela logs` as `parcela-lan-<s
 
 ### Stop sharing
 
-Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach` without sharing flags. Unset `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN` first if you used those variables.
+Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach --no-share`. This overrides sharing flags, environment variables and project domain defaults.
 
 Check `parcela status`. For Tailscale, also check `tailscale serve status` to confirm the run's ports are gone. Parcela leaves unrelated serve configuration alone.
 

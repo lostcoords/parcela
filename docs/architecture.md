@@ -41,7 +41,7 @@ A dependency is ready after its readiness check passes, after it starts if it ha
 
 `down` asks the owner to withdraw routes and stop the graph. Once nothing that depends on a service is running or stopping, the owner runs the service's `stop` command, if it has one, then sends SIGTERM to its process group. After 10 seconds, remaining groups receive SIGKILL. A `stop` command runs even when its service already exited, because it manages what lives outside the process tree, like containers. Each success is saved in `owner.json`, so an owner that adopts a half-stopped run runs only the commands still owed. The run is stopped only when no recorded process is alive and every `stop` command succeeded. A failed one leaves the run interrupted until `down` runs it again.
 
-`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing flags belong to that generation and must be supplied again.
+`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing belongs to that generation. Domain defaults come from `sharing` in the project configuration; CLI and environment values override them. `--no-share` disables all sharing for the new generation. Detached owners receive the resolved sharing flags without reapplying defaults.
 
 If the owner dies, services may survive. The next lifecycle operation acquires the ownership lock and compares recorded PIDs, start times, and boot identity with live processes. Matching processes are adopted. Parcela never signals a bare PID from disk. A small check-to-signal PID reuse race remains possible.
 

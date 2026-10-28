@@ -84,6 +84,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--lan-ip IP` | Chooses the LAN IPv4 address. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
 | `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Also set by `PARCELA_DOMAIN`. |
+| `--no-share` | Disables all sharing for this run, including project defaults and environment variables. Use `restart --no-share` for an already shared run. |
 | `--domain-port N` | The loopback port for `--domain`, 1480 by default. Also set by `PARCELA_DOMAIN_PORT`. |
 
 `hooks.prestart` runs on every new start after setup. A hook failure, an HTTP service exit, or a nonzero process exit before first readiness stops startup. A non-HTTP process may finish with code 0.

@@ -238,6 +238,14 @@ pub fn detached(
     if let Some(port) = port {
         command.args(["--backend-port", &port.to_string()]);
     }
+    for name in [
+        "PARCELA_LAN",
+        "PARCELA_TAILSCALE",
+        "PARCELA_DOMAIN",
+        "PARCELA_DOMAIN_PORT",
+    ] {
+        command.env_remove(name);
+    }
     if share.lan {
         command.arg("--lan");
     }

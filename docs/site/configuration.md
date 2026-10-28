@@ -11,6 +11,22 @@ project: shop
 
 Both are required. `version` is the file format, and this Parcela reads `1`. A file without it, or with another number, is an error. `project` names the app in URLs, `https://shop.localhost:1443`, and groups every checkout of the repository. It is a DNS label: lowercase letters, digits and inner hyphens. `parcela init` writes both.
 
+## sharing
+
+For a project that uses an existing HTTPS proxy, declare its domain once:
+
+```yaml
+sharing:
+  domain: tower.davafons.cc
+  domain_port: 1480
+```
+
+`up` and `restart` use these defaults in every checkout. `domain_port` is optional and defaults to 1480; it requires `domain`. The port must be between 1024 and 65535. A project with `sharing.domain` needs an HTTP service.
+
+Command-line flags override `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT`, which override these project defaults. Top-level `env` configures app processes, not Parcela's sharing options. `up --no-share` or `restart --no-share` disables all sharing, including LAN/Tailscale flags and environment variables. If an existing run is shared, use `restart --no-share` to stop sharing; `up` does not change a running environment.
+
+Parcela serves domain routes on loopback only. Your outer proxy owns certificates, DNS and network access. Projects may use different domains with the same loopback port; Parcela routes them by hostname. Domain names do not select a Tailscale network. LAN and `tailscale serve` sharing still require their flags or environment variables; they cannot be enabled in this section.
+
 ## services
 
 `services` must contain at least one service. HTTP is optional. If any service has `http`, exactly one HTTP service must omit `subdomain`. Every long-running process is a service. Each one is a mapping with a `command`, or a `compose` file:

@@ -328,6 +328,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             tailscale,
             domain,
             domain_port,
+            no_share,
             launch_file,
         } => start(
             &state,
@@ -346,6 +347,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     domain,
                     domain_port,
                 },
+                no_share,
                 launch_file,
             },
             out,
@@ -360,6 +362,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             tailscale,
             domain,
             domain_port,
+            no_share,
             launch_file,
         } => start(
             &state,
@@ -378,6 +381,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     domain,
                     domain_port,
                 },
+                no_share,
                 launch_file,
             },
             out,
@@ -527,11 +531,12 @@ struct Start {
     detach: bool,
     setup: bool,
     share: Share,
+    no_share: bool,
     /// Set only for the detached owner `up --detach` launches, pinning its source and manifest.
     launch_file: Option<PathBuf>,
 }
 
-fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
+fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32> {
     let launch = parcela::runtime::Launch::Up;
     let snapshot: Option<lifecycle::LaunchSnapshot> = start
         .launch_file
@@ -549,6 +554,19 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
         parcela::compose::resolve(&mut manifest, &source)?;
         (source, manifest)
     };
+    if start.no_share {
+        start.share = Share::default();
+    } else if snapshot.is_none() {
+        start.share.domain = start
+            .share
+            .domain
+            .or_else(|| manifest.sharing.domain.clone());
+        start.share.domain_port = start.share.domain_port.or(manifest.sharing.domain_port);
+    }
+    ensure!(
+        start.share.domain_port.is_none() || start.share.domain.is_some(),
+        "--domain-port requires --domain or sharing.domain"
+    );
     let readiness_timeout = start
         .readiness_timeout
         .unwrap_or(manifest.readiness_timeout_seconds);
@@ -570,6 +588,23 @@ fn start(state: &Path, path: &Path, start: Start, out: Output) -> Result<i32> {
     } else {
         startup_registry(state, &source, &manifest, &start.request)?
     };
+    if start.no_share && !start.restart && registry.session(&workspace.id)?.is_some() {
+        let status = lifecycle::status(&registry, &workspace)?;
+        let state = status["state"].as_str().unwrap_or("unknown");
+        let shared = status["live"]["endpoints"]
+            .as_object()
+            .is_some_and(|endpoints| {
+                endpoints.values().any(|endpoint| {
+                    endpoint["shared"]
+                        .as_array()
+                        .is_some_and(|urls| !urls.is_empty())
+                })
+            });
+        ensure!(
+            state == "stopped" || (state == "ready" && !shared),
+            "existing run is shared or cannot be verified local-only; run `parcela restart --no-share`"
+        );
+    }
     if let Some(snapshot) = &snapshot {
         ensure!(
             start.launch_file.as_ref()

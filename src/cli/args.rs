@@ -125,8 +125,11 @@ pub enum Command {
         #[arg(long, env = "PARCELA_DOMAIN", value_name = "DOMAIN")]
         domain: Option<String>,
         /// Loopback HTTP port for --domain [default: 1480]
-        #[arg(long, env = "PARCELA_DOMAIN_PORT", requires = "domain", value_parser = clap::value_parser!(u16).range(1024..))]
+        #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
+        /// Disable all sharing for this run, including project and environment defaults
+        #[arg(long)]
+        no_share: bool,
         /// Readiness timeout in seconds, instead of readiness_timeout_seconds
         #[arg(long, value_parser = clap::value_parser!(u64).range(1..=86400), hide = true)]
         readiness_timeout: Option<u64>,
@@ -167,8 +170,11 @@ pub enum Command {
         #[arg(long, env = "PARCELA_DOMAIN", value_name = "DOMAIN")]
         domain: Option<String>,
         /// Loopback HTTP port for --domain [default: 1480]
-        #[arg(long, env = "PARCELA_DOMAIN_PORT", requires = "domain", value_parser = clap::value_parser!(u16).range(1024..))]
+        #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
+        /// Disable all sharing for this run, including project and environment defaults
+        #[arg(long)]
+        no_share: bool,
         /// Readiness timeout in seconds, instead of readiness_timeout_seconds
         #[arg(long, value_parser = clap::value_parser!(u64).range(1..=86400), hide = true)]
         readiness_timeout: Option<u64>,

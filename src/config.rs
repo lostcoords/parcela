@@ -27,6 +27,8 @@ pub struct Manifest {
     /// Non-HTTP ports leased per run and exported as `PARCELA_PORT_<NAME>`; never routed or probed.
     pub ports: Vec<String>,
     pub environment: BTreeMap<String, String>,
+    #[serde(default)]
+    pub sharing: Sharing,
     pub shutdown_timeout_seconds: u64,
     /// How long `up` waits for the services to be ready, unless `--readiness-timeout` says.
     #[serde(default = "default_readiness_timeout")]
@@ -239,6 +241,32 @@ fn default_readiness_timeout() -> u64 {
     READINESS_TIMEOUT_SECONDS
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(default, deny_unknown_fields)]
+pub struct Sharing {
+    pub domain: Option<String>,
+    #[cfg_attr(test, schemars(range(min = 1024)))]
+    pub domain_port: Option<u16>,
+}
+
+impl Sharing {
+    pub fn validate(&self) -> Result<()> {
+        if let Some(domain) = &self.domain {
+            crate::share::domain_name(domain)?;
+        }
+        ensure!(
+            self.domain_port.is_none() || self.domain.is_some(),
+            "sharing.domain_port requires sharing.domain"
+        );
+        ensure!(
+            self.domain_port.is_none_or(|port| port >= 1024),
+            "sharing.domain_port must be between 1024 and 65535"
+        );
+        Ok(())
+    }
+}
+
 /// `parcela.yaml` as written. Every field has one spelling and one shape.
 /// Reference: https://parcela.run/docs/configuration/
 #[derive(Deserialize)]
@@ -259,6 +287,8 @@ struct File {
     /// Variables for every service, hook and task. Values can use `${NAME}` for any variable Parcela sets.
     #[serde(default)]
     env: BTreeMap<String, String>,
+    #[serde(default)]
+    sharing: Sharing,
     /// Extra ports to lease per environment, exported as `PARCELA_PORT_<NAME>`.
     #[serde(default)]
     ports: Vec<String>,
@@ -626,6 +656,7 @@ impl Manifest {
             data: file.data,
             ports: file.ports,
             environment: file.env,
+            sharing: file.sharing,
             shutdown_timeout_seconds: SHUTDOWN_TIMEOUT_SECONDS,
             readiness_timeout_seconds: file
                 .readiness_timeout_seconds
@@ -635,6 +666,11 @@ impl Manifest {
 
     pub fn validate(&self) -> Result<()> {
         self.data.validate()?;
+        self.sharing.validate()?;
+        ensure!(
+            self.sharing.domain.is_none() || !self.services.is_empty(),
+            "sharing.domain needs an HTTP service"
+        );
         dns_label(&self.project.name)?;
         ensure!(
             !self.processes.is_empty(),
