@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.2 - 2026-10-28
+
 ### Fixed
 
 - `up --tailscale` skips tailnet HTTPS ports that another process already listens on at the machine's tailnet address, such as a host-network proxy on 443. Before, `tailscale serve` retried that bind forever and the shared URL failed TLS.
