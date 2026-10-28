@@ -267,17 +267,18 @@ struct Listener {
 }
 impl Listeners {
     pub fn inspect(ports: impl IntoIterator<Item = u16>) -> Result<Self> {
-        let ports: Vec<_> = ports.into_iter().map(|port| port.to_string()).collect();
+        // One -i per port, which lsof ORs: lsof 4.99.7 aborts on a comma-separated port list.
+        let ports: Vec<_> = ports
+            .into_iter()
+            .map(|port| format!("-iTCP:{port}"))
+            .collect();
         if ports.is_empty() {
             return Ok(Self(Vec::new()));
         }
         let output = Command::new(lsof())
-            .args([
-                "-nP",
-                &format!("-iTCP:{}", ports.join(",")),
-                "-sTCP:LISTEN",
-                "-Fptn",
-            ])
+            .arg("-nP")
+            .args(&ports)
+            .args(["-sTCP:LISTEN", "-Fptn"])
             .output()
             .context("lsof is required to verify TCP listener ownership")?;
         if output.stdout.is_empty() && output.status.code() == Some(1) {
