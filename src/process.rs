@@ -456,6 +456,9 @@ impl Identity {
     pub fn alive(&self) -> bool {
         Self::read(self.pid).is_ok_and(|current| current.as_ref() == Some(self))
     }
+    pub(crate) fn previous_boot(&self) -> Result<bool> {
+        Ok(self.boot != boot_id()?)
+    }
 }
 #[cfg(target_os = "linux")]
 fn boot_id() -> Result<String> {

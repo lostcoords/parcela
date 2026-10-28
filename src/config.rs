@@ -484,7 +484,15 @@ impl Manifest {
         }
         // `x-` keys are free for YAML anchors and other tools, as in Docker Compose.
         fields.retain(|key, _| !key.starts_with("x-"));
-        let file: File = serde_json::from_value(Value::Object(fields))?;
+        let file: File = serde_json::from_value(Value::Object(fields)).map_err(|error| {
+            if error.to_string().starts_with("unknown field `") {
+                anyhow::anyhow!(
+                    "{error}; check the field spelling at https://parcela.run/docs/configuration/; if this configuration needs a newer release, run `parcela upgrade` (or upgrade with your package manager)"
+                )
+            } else {
+                error.into()
+            }
+        })?;
         let manifest = Self::from_file(file)?;
         manifest.validate()?;
         Ok(manifest)

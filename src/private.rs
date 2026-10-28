@@ -163,6 +163,10 @@ impl Identity {
         );
         Ok(Self::from_metadata(&metadata))
     }
+    /// Device numbers can change across boots; the caller must prove the old boot ended.
+    pub(crate) fn same_inode(&self, other: &Self) -> bool {
+        self.inode == other.inode
+    }
     pub fn matches(&self, path: &Path) -> bool {
         Self::read(path).is_ok_and(|actual| actual == *self)
     }

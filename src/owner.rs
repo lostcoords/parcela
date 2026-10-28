@@ -134,9 +134,30 @@ impl Record {
                         .is_ok_and(|pids| !pids.is_empty())
                 })
     }
-    /// The recorded owner is gone and `lock` is the very ownership lock it held.
+    /// The owner is gone and the held lock matches. A changed device number is allowed only
+    /// after every recorded process's boot ended, with the lock inode still unchanged.
     pub fn abandoned(&self, lock: &private::Lock) -> Result<bool> {
-        Ok(!self.owner.alive() && lock.identity()? == self.lock)
+        let actual = lock.identity()?;
+        if self.owner.alive() {
+            return Ok(false);
+        }
+        if actual == self.lock {
+            return Ok(true);
+        }
+        if !self.lock.same_inode(&actual) || !self.owner.previous_boot()? {
+            return Ok(false);
+        }
+        for identity in self
+            .children
+            .values()
+            .filter_map(|child| child.identity.as_ref())
+            .chain(self.processes.iter())
+        {
+            if !identity.previous_boot()? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
     /// No recorded child or descendant is alive.
     pub fn quiescent(&self) -> bool {

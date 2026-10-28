@@ -37,6 +37,38 @@ fn checkout(root: &Path, name: &str, manifest: &str) -> PathBuf {
 }
 
 #[test]
+fn unknown_config_fields_explain_how_to_check_and_upgrade() {
+    let t = TempDir::new().unwrap();
+    let root = t.path().canonicalize().unwrap();
+    let state = root.join("state");
+    for (name, manifest, field) in [
+        (
+            "future",
+            "version: 1\nproject: demo\nservices: {}\nfuture_feature: true\n",
+            "future_feature",
+        ),
+        (
+            "typo",
+            "version: 1\nproject: demo\nservices: {web: {commmand: bin/web}}\n",
+            "commmand",
+        ),
+    ] {
+        let path = checkout(&root, name, manifest);
+        let output = cli(&path, &state, &["up"]);
+        assert_eq!(output.status.code(), Some(1));
+        let message = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            message.contains(&format!("unknown field `{field}`")),
+            "{message}"
+        );
+        assert!(message.contains("check the field spelling"), "{message}");
+        assert!(message.contains("newer release"), "{message}");
+        assert!(message.contains("parcela upgrade"), "{message}");
+        assert!(!state.exists(), "invalid config must not create state");
+    }
+}
+
+#[test]
 fn registration_conflicts_name_the_holder_and_the_fix() {
     let t = TempDir::new().unwrap();
     let root = t.path().canonicalize().unwrap();

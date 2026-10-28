@@ -781,6 +781,42 @@ def crashed_tree_down(f):
     assert f.cli(app['path'], 'down').returncode == 0
     return {'first_down': 'stopped', 'second_down': 'already_stopped', 'next_generation': after['generation'], 'https_code': 200}
 
+def rebooted_device_down(f):
+    """Simulate persisted pre-reboot evidence; no host reboot or mount changes."""
+    app = f.app('rebootdown')
+    app['manifest']['services']['web']['stop'] = 'echo stopped >> "$PARCELA_RUNTIME_DIR/stop-command-runs"'
+    (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
+    before = crash_whole_tree(f, app)
+    path = app['runtime'] / 'owner.json'
+    record = json.loads(path.read_text())
+    identities = [record['owner'], *record['processes'],
+                  *(child['identity'] for child in record['children'].values() if child['identity'])]
+    for identity in identities:
+        identity['boot'] = '00000000-0000-4000-8000-000000000001'
+    record['lock']['device'] += 1
+    path.write_text(json.dumps(record))
+    socket_path(app, 'control').unlink()
+    sentinel = app['runtime'] / 'data' / 'keep.txt'
+    sentinel.parent.mkdir(exist_ok=True)
+    sentinel.write_text('keep environment data')
+    down = f.cli(app['path'], 'down')
+    assert down.returncode == 0, down.stderr
+    assert f.session(app)['status'] == 'stopped'
+    again = f.cli(app['path'], 'down')
+    assert again.returncode == 0 and json.loads(again.stdout)['already_stopped'] is True, again.stderr
+    assert (app['runtime'] / 'stop-command-runs').read_text().splitlines() == ['stopped']
+    retry = f.cli(app['path'], 'up', '--detach', '--backend-port', str(app['port']), '--readiness-timeout', '10')
+    assert retry.returncode == 0, retry.stderr
+    after = f.session(app)
+    assert after['generation'] == before['generation'] + 1 and after['status'] == 'ready'
+    assert f.probe(app)[0] == 200
+    assert sentinel.read_text() == 'keep environment data'
+    assert f.cli(app['path'], 'down').returncode == 0
+    assert not listening(app['port'])
+    return {'simulated_previous_boot': True, 'changed_device_same_inode': True, 'repeated_down': 'already_stopped',
+            'owed_stop_command_ran_once': True, 'data_preserved': True, 'new_generation_https': 200}
+
+
 def crashed_tree_up(f):
     app = f.app('crashup')
     before = crash_whole_tree(f, app)
@@ -965,7 +1001,7 @@ CASES = [owner_crash, graceful_stop, duplicate_stop, restart_preflight, proxy_ou
          recover_before_readiness, stop_before_readiness, allocation_without_launch_evidence, recover_racing_stop,
          occupied_replacement_port, invalid_replacement_port, restart_owned_port, leased_replacement_port, detached_recover_running,
          detached_recover_stopping, detached_recover_quiescent, recovered_owner_initialization,
-         crashed_tree_down, crashed_tree_up, stop_command_after_crash,
+         crashed_tree_down, crashed_tree_up, rebooted_device_down, stop_command_after_crash,
          concurrent_up_same_checkout, detached_configuration_changes, concurrent_restart, worker_exit_after_readiness]
 
 

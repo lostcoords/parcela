@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Unknown configuration fields now suggest checking the spelling and upgrading Parcela if the configuration requires a newer release.
+- `up` and `down` can reconcile a run left behind by a reboot when the filesystem device number changed but the ownership lock's inode did not. Recovery requires every recorded process to belong to a previous boot; replaced locks and control sockets remain protected.
+
 ## 0.7.0 - 2026-10-26
 
 Create a named test checkout through Parcela, then seed, snapshot and reproduce its declared data without copying a live SQLite file or touching another environment.

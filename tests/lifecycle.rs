@@ -565,6 +565,103 @@ fn unfinished_open_owner_request_is_rejected_within_a_bounded_wait() {
 }
 
 #[test]
+fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
+    use parcela::owner::{Phase, Record};
+    use serde_json::json;
+
+    for case in [
+        "down",
+        "up",
+        "same-boot",
+        "replaced-lock",
+        "live-process",
+        "live-child",
+        "replaced-socket",
+    ] {
+        let (_temp, mut registry, workspace, session) = fixture();
+        registry
+            .session_status(&session, SessionStatus::Ready)
+            .unwrap();
+        let session = registry.session(&workspace.id).unwrap().unwrap();
+        let path = registry.runtime_path(&workspace);
+        private::directory(&path).unwrap();
+        let lock = private::Lock::acquire(&path.join("owner.lock")).unwrap();
+        let control = Server::bind(&path).unwrap();
+        let socket = control_socket(&path);
+        let control_identity = private::Identity::read(&socket).unwrap();
+        drop(control);
+        // Reboot removes the temporary control socket, but leaves the persistent lock file.
+        if socket.exists() {
+            fs::remove_file(&socket).unwrap();
+        }
+        let replacement = (case == "replaced-socket").then(|| UnixListener::bind(&socket).unwrap());
+        let current = process::Identity::read(std::process::id())
+            .unwrap()
+            .unwrap();
+        let mut old = serde_json::to_value(&current).unwrap();
+        old["boot"] = json!("previous-boot");
+        let old: process::Identity = serde_json::from_value(old).unwrap();
+        let mut dead = Command::new("sleep").arg("60").spawn().unwrap();
+        let dead_identity = process::Identity::read(dead.id()).unwrap().unwrap();
+        dead.kill().unwrap();
+        dead.wait().unwrap();
+        let mut recorded_lock = serde_json::to_value(lock.identity().unwrap()).unwrap();
+        recorded_lock["device"] = json!(recorded_lock["device"].as_u64().unwrap() + 1);
+        if case == "replaced-lock" {
+            recorded_lock["inode"] = json!(recorded_lock["inode"].as_u64().unwrap() + 1);
+        }
+        let record = Record {
+            session: session.clone(),
+            phase: Phase::Running,
+            owner: if case == "same-boot" {
+                dead_identity
+            } else {
+                old.clone()
+            },
+            lock: serde_json::from_value(recorded_lock).unwrap(),
+            control: control_identity,
+            children: web(if case == "live-child" { &current } else { &old }),
+            processes: vec![if case == "live-process" { current.clone() } else { old }],
+            manifest: Manifest::parse("version: 1\nproject: app\nservices: {web: {command: bin/web, http: {healthcheck: /}}}\n").unwrap(),
+            diagnostic: None,
+            share: Default::default(),
+        };
+        record.save(&path).unwrap();
+        drop(lock);
+        let result = if case == "up" {
+            let lock = private::Lock::acquire(&path.join("owner.lock")).unwrap();
+            parcela::runtime::converge_crashed_session(&mut registry, &workspace, &lock).map(
+                |converged| {
+                    assert!(converged);
+                },
+            )
+        } else {
+            lifecycle::down(&registry, &workspace).map(|_| ())
+        };
+        let succeeds = matches!(case, "down" | "up");
+        assert_eq!(result.is_ok(), succeeds, "{case}: {result:?}");
+        assert_eq!(
+            registry.session(&workspace.id).unwrap().unwrap().status,
+            if succeeds {
+                SessionStatus::Stopped
+            } else {
+                SessionStatus::Ready
+            }
+        );
+        assert!(current.alive(), "reused PIDs must never be signaled");
+        if succeeds {
+            assert_eq!(
+                lifecycle::down(&registry, &workspace).unwrap()["already_stopped"],
+                true
+            );
+        }
+        if replacement.is_some() {
+            assert!(socket.exists(), "replacement socket must be preserved");
+        }
+    }
+}
+
+#[test]
 fn down_stops_what_survives_a_crashed_owner_by_recorded_identity() {
     use parcela::owner::{Phase, Record};
 
