@@ -216,3 +216,77 @@ fn down_all_selects_running_environments_by_project_and_reports_each() {
     );
     assert_eq!(rejected.status.code(), Some(2));
 }
+
+#[test]
+fn status_overview_works_anywhere_and_explicit_selection_keeps_process_details() {
+    let f = Fixture::new();
+    let (notes, id) = f.checkout("notes", "notes", Role::Primary, "primary");
+    let (review, _) = f.checkout("notes", "notes-review", Role::Preview, "review");
+    f.checkout("shop", "shop", Role::Primary, "primary");
+    let before = f.ids();
+    let overview = json_of(&cli(&review, &f.state, &["status"]));
+    let rows = overview["workspaces"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0]["workspace"]["label"], "review");
+    assert_eq!(rows[0]["current"], true);
+    assert_eq!(rows[1]["workspace"]["project_id"], "notes");
+    assert_eq!(rows[2]["workspace"]["project_id"], "shop");
+    assert!(human(&review, &f.state, &["status"]).contains("review *"));
+    assert_eq!(
+        json_of(&cli(&f.root, &f.state, &["status"]))["workspaces"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    let current = json_of(&cli(&notes, &f.state, &["status", "--current"]));
+    assert_eq!(current["workspace"]["id"], id);
+    assert_eq!(current["processes"], json!([]));
+    assert_eq!(current["state"], "stopped");
+    let selected = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--state-dir")
+        .arg(&f.state)
+        .args(["--workspace", &id, "status"])
+        .output()
+        .unwrap();
+    assert_eq!(json_of(&selected)["workspace"]["id"], id);
+    assert_eq!(f.ids(), before);
+}
+
+#[test]
+fn status_overview_does_not_create_state_or_register_unstarted_checkouts() {
+    let f = Fixture::new();
+    let empty = json_of(&cli(&f.root, &f.state, &["status"]));
+    assert_eq!(empty["workspaces"], json!([]));
+    assert!(!f.state.exists());
+    let path = f.root.join("unstarted");
+    fs::create_dir(&path).unwrap();
+    fs::write(
+        path.join("parcela.yaml"),
+        "version: 1\nproject: fresh\nservices: {web: {command: unused, http: {healthcheck: /}}}\n",
+    )
+    .unwrap();
+    let overview = json_of(&cli(&path, &f.state, &["status"]));
+    assert_eq!(overview["unregistered"][0]["state"], "not started");
+    assert_eq!(overview["unregistered"][0]["current"], true);
+    assert!(!f.state.exists());
+}
+
+#[test]
+fn dashboard_hostname_cannot_be_adopted_by_an_application() {
+    let f = Fixture::new();
+    let path = f.root.join("collision");
+    fs::create_dir(&path).unwrap();
+    fs::write(path.join("parcela.yaml"), "version: 1\nproject: parcela-ui\nservices: {web: {command: unused, http: {healthcheck: /}}}\n").unwrap();
+    let manifest = Manifest::load(&path.join("parcela.yaml")).unwrap();
+    let mut registry = Registry::open(&f.state, true).unwrap().unwrap();
+    let error = registry
+        .adopt(&manifest, &path, Role::Primary, "primary")
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("reserved for the Parcela dashboard")
+    );
+    assert!(registry.list(None).unwrap().is_empty());
+}

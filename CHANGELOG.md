@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.7.4 - 2026-10-28
+
+### Fixed
+
+- `parcela status` now shows an overview across registered projects and worktrees, with URLs and a marker for the current checkout. Inside a project it also includes unregistered worktrees, so finding another environment no longer requires changing directories.
+- A deleted registered checkout no longer hides other worktrees from the browser inventory.
+
+### Added
+
+- `parcela ui` prints the local dashboard URL. The dashboard shows searchable environments, service links, and process states, with an iframe workspace and direct navigation for apps that block framing.
+- An optional dashboard script adds a collapsed side tab to local apps. The panel supports keyboard closing, focus return, and a current-environment marker. It does not transform app responses or relax their CSP.
+
+### Changed
+
+- `status --current` and `--workspace ENV status` keep the detailed environment response. Plain `status --json` now returns the overview envelope with `workspaces` and `unregistered`; scripts reading `.state` must select an environment. Bare `parcela` keeps its detailed checkout view.
+- Proxy protocol 4 adds the read-only loopback dashboard at the reserved hostname `parcela-ui.localhost`. Run `parcela proxy restart` after upgrading. The dashboard is excluded from shared LAN, Tailscale, and domain routes.
+
 ## 0.7.3 - 2026-10-28
 
 ### Added

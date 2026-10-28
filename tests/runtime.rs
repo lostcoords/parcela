@@ -132,7 +132,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
             .as_array()
             .unwrap()
             .len(),
-        2
+        3
     );
     registry
         .session_status(&session, SessionStatus::Ready)
@@ -163,7 +163,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
     );
     assert_eq!(
         config["apps"]["http"]["servers"]["https"]["routes"][0]["match"][0]["host"][0],
-        "auth-app.localhost"
+        parcela::dashboard::HOST
     );
     assert_eq!(
         config["apps"]["tls"]["automation"]["policies"][0]["issuers"][0]["module"],
@@ -172,7 +172,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
     registry
         .session_status(&session, SessionStatus::Stopping)
         .unwrap();
-    assert_eq!(router::configuration(&registry,&router).unwrap()["apps"]["http"]["servers"]["https"]["routes"].as_array().unwrap().len(),2);
+    assert_eq!(router::configuration(&registry,&router).unwrap()["apps"]["http"]["servers"]["https"]["routes"].as_array().unwrap().len(),3);
     let replacement = Router {
         token: Uuid::new_v4().to_string(),
         ..router
@@ -186,7 +186,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
             .as_array()
             .unwrap()
             .len(),
-        2
+        3
     );
 }
 #[test]

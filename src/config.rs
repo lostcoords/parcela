@@ -898,7 +898,9 @@ impl Manifest {
                     format!("{}-{base}", service.subdomain.as_deref().unwrap_or(name))
                 };
                 dns_label(&label)?;
-                Ok((name.clone(), format!("{label}.localhost")))
+                let host = format!("{label}.localhost");
+                ensure!(host != crate::dashboard::HOST, "{host} is reserved for the Parcela dashboard; choose another project name, preview name or service subdomain");
+                Ok((name.clone(), host))
             })
             .collect()
     }

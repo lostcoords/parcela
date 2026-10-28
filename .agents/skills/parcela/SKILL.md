@@ -18,11 +18,12 @@ Set `CHECKOUT` to the absolute path of the checkout the user means. Never infer 
 ```sh
 parcela --json ls
 parcela --json --path "$CHECKOUT" doctor
-parcela --path "$CHECKOUT" status
+parcela --path "$CHECKOUT" status --current
 ```
 
 - `ls` returns `.workspaces`, each with `.workspace.id`, `.workspace.source`, `.workspace.role` and live status. Inside a project it also returns `.unregistered`: worktrees never started, with the URL `up` would give them. Listing registers nothing.
-- `status` returns the environment's `.workspace`, `.url`, `.state` and `.processes`.
+- `status` returns the overview envelope, with `.workspaces` and `.unregistered`. `status --current` or `--workspace ENV status` returns one environment's `.workspace`, `.url`, `.state` and `.processes`.
+- `ui` prints the local dashboard URL when the proxy is running. It starts nothing and opens no browser. The dashboard and optional `/widget.js` offer read-only status and navigation on loopback.
 - `doctor` returns `{ready, checks: [{name, ok, detail, fix}], notes}` and exits 1 until ready. Report failed checks and their `fix`. Do not apply a fix that installs tools or changes trust without authorization.
 
 From another directory, target an environment by its ID: `parcela --workspace "$ENVIRONMENT_ID" status`. `--workspace` also takes the environment's URL or hostname, such as `signup-shop`; prefer the ID in scripts. `--path` and `--workspace` conflict. Keep any `--state-dir` on every call.
@@ -68,7 +69,7 @@ Seed and external data operations remain project-defined tasks, such as `parcela
 
 ```sh
 parcela --path "$CHECKOUT" up --detach
-parcela --path "$CHECKOUT" status
+parcela --path "$CHECKOUT" status --current
 parcela --path "$CHECKOUT" url api
 ```
 

@@ -11,6 +11,10 @@ pub struct Environment {
     pub control: PathBuf,
 }
 
+pub fn dashboard(state: &Path) -> Result<PathBuf> {
+    Ok(directory(state)?.join("dashboard.sock"))
+}
+
 pub fn proxy_admin(state: &Path) -> Result<PathBuf> {
     Ok(directory(state)?.join("proxy-admin.sock"))
 }

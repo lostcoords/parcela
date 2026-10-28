@@ -70,13 +70,13 @@ def run(caddy, **_):
         owner = live.spawn(compose_path, 'up')
         wait_for(lambda: request('compose-live.localhost'), [proxy, preview, owner])
         assert request('compose-live.localhost')['id'] == compose_id
-        status = live.json(compose_path, 'status')
+        status = live.json(compose_path, 'status', '--current')
         assert status['state'] == 'ready' and status['live_health_verified']
         assert status['live']['http_ready'] and status['live']['listener_owned']
         assert {item['name']: item['state'] for item in status['processes']} == {'web': 'running', 'worker': 'running'}
         assert all(item['pid'] for item in status['processes']), status['processes']
         wait_for(lambda: 'cli-worker-ready' in cli(compose_path, 'logs', 'worker', '--tail', '10').stdout, [owner])
-        assert 'PROCESS' in live.human(compose_path, 'status')
+        assert 'PROCESS' in live.human(compose_path, 'status', '--current')
         assert 'worker | cli-worker-ready' in cli(compose_path, 'logs', '--tail', '10').stdout
         follower = subprocess.Popen(live.argv(compose_path, 'logs', '--follow', '--tail', '10'), stdout=subprocess.PIPE, text=True)
         assert any('worker | cli-worker-ready' in follower.stdout.readline() for _ in range(20)), 'logs --follow prints every process'
@@ -92,7 +92,7 @@ def run(caddy, **_):
         runtime = live.state / 'environments' / compose_id
         (runtime / 'data' / 'retain.txt').write_text('preserve application data')
         (runtime / 'unhealthy').touch()
-        unhealthy = live.json(compose_path, 'status')
+        unhealthy = live.json(compose_path, 'status', '--current')
         assert unhealthy['state'] == 'unhealthy' and unhealthy['recorded_session']['status'] == 'ready'
         assert unhealthy['live_health_verified'] and not unhealthy['live']['http_ready']
         (runtime / 'unhealthy').unlink()
@@ -132,7 +132,7 @@ def run(caddy, **_):
             assert failed.returncode != 0 and control_socket(runtime).exists()
         control_socket(runtime).unlink()
         assert cli(compose_path, 'up', '--detach', '--lan-ip', '192.0.2.1', check=False).returncode != 0
-        assert live.json(compose_path, 'status')['state'] == 'stopped'
+        assert live.json(compose_path, 'status', '--current')['state'] == 'stopped'
         assert not control_socket(runtime).exists()
         assert request('auth-live.localhost')['id'] == auth_id
         return {'https_port': live.https, 'verified': [

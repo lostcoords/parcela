@@ -23,7 +23,7 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 3;
+pub const PROTOCOL: u32 = 4;
 
 /// The running proxy: its ownership token, the front door it serves and the release that started
 /// it. Unknown fields are ignored, so a newer proxy's record stays readable by older releases.
@@ -306,6 +306,15 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
     for workspace in &workspaces {
         hosts.extend(registry.hosts(&workspace.id)?.into_values());
     }
+    if router.protocol >= 4 {
+        ensure!(
+            !hosts.contains(crate::dashboard::HOST),
+            "{} is reserved for the Parcela dashboard; rename the conflicting environment before starting this proxy",
+            crate::dashboard::HOST
+        );
+        hosts.insert(crate::dashboard::HOST.to_owned());
+        routes.push(json!({"match":[{"host":[crate::dashboard::HOST]}], "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":format!("unix/{}", crate::sockets::dashboard(state)?.display())}]}], "terminal":true}));
+    }
     let hosts: Vec<_> = hosts.into_iter().collect();
     for host in &hosts {
         crate::config::dns_label(
@@ -457,6 +466,7 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
         protocol: PROTOCOL,
     };
     let config = configuration(registry, &router)?;
+    let _dashboard = crate::dashboard::Server::start(state, front_door)?;
     let config_path = directory.join("caddy.json");
     private::write_json(&config_path, &config)?;
     private::directory(&directory.join("data"))?;

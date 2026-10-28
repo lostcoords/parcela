@@ -16,13 +16,14 @@ use std::{
 };
 
 pub fn status(registry: &Registry, workspace: &Workspace) -> Result<Value> {
-    Ok(status_and_services(registry, workspace)?.0)
+    Ok(status_and_services(registry, workspace, Duration::from_secs(6))?.0)
 }
 
 /// The status, plus the process list when the owner sent one with it.
 fn status_and_services(
     registry: &Registry,
     workspace: &Workspace,
+    timeout: Duration,
 ) -> Result<(Value, Option<Value>)> {
     let recorded = registry.session(&workspace.id)?;
     let mut live = None;
@@ -33,12 +34,16 @@ fn status_and_services(
         && session.status != SessionStatus::Stopped
     {
         state = "unknown";
-        match control::request(&registry.runtime_path(workspace), session, Action::Status).and_then(
-            |mut value| {
-                services = value.get_mut("services").map(Value::take);
-                Ok(serde_json::from_value::<LiveStatus>(value)?)
-            },
-        ) {
+        match control::request_with_timeout(
+            &registry.runtime_path(workspace),
+            session,
+            Action::Status,
+            timeout,
+        )
+        .and_then(|mut value| {
+            services = value.get_mut("services").map(Value::take);
+            Ok(serde_json::from_value::<LiveStatus>(value)?)
+        }) {
             Ok(value) => {
                 state = match value.state {
                     LiveState::Ready => "ready",
@@ -61,13 +66,26 @@ fn status_and_services(
 /// One environment's status plus `processes`: every service, hook and worker of the run with its
 /// `name`, `state` and `pid` (null when not running). The list is empty unless a live owner answers.
 pub fn status_with_processes(registry: &Registry, workspace: &Workspace) -> Result<Value> {
-    let (mut status, services) = status_and_services(registry, workspace)?;
+    inventory_status(registry, workspace, Duration::from_secs(6))
+}
+
+pub(crate) fn inventory_status(
+    registry: &Registry,
+    workspace: &Workspace,
+    timeout: Duration,
+) -> Result<Value> {
+    let (mut status, services) = status_and_services(registry, workspace, timeout)?;
     let mut processes = Vec::new();
     if status["live_health_verified"] == true && status["recorded_session"]["kind"] == "up" {
         // Owners from releases before the list came with the status still answer separately.
         let listed = match services {
             Some(services) => Ok(json!({ "services": services })),
-            None => service_request(registry, workspace, Action::Services),
+            None => control::request_with_timeout(
+                &registry.runtime_path(workspace),
+                &serde_json::from_value(status["recorded_session"].clone())?,
+                Action::Services,
+                timeout,
+            ),
         };
         match listed {
             Ok(listed) => {

@@ -75,7 +75,7 @@ def run(caddy, **_):
             live.cli(beta, 'up', '--detach', '--name', 'beta', timeout=180)
             ports = {}
             for source, label in ((alpha, 'primary'), (beta, 'beta')):
-                session = live.json(source, 'status')['recorded_session']
+                session = live.json(source, 'status', '--current')['recorded_session']
                 port = session['ports']['files']
                 ports[label] = port
                 body = urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=5).read().decode().strip()
@@ -109,7 +109,7 @@ def run(caddy, **_):
             cases.append('down-stops-only-its-own-containers-and-keeps-their-volumes')
 
             live.cli(alpha, 'up', '--detach', timeout=180)
-            port = live.json(alpha, 'status')['recorded_session']['ports']['files']
+            port = live.json(alpha, 'status', '--current')['recorded_session']['ports']['files']
             assert port == ports['primary'], (port, ports)
             wait_for(lambda: urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=5).read().decode().strip() == 'primary')
             cases.append('up-again-reuses-the-port-and-the-containers')

@@ -1,86 +1,51 @@
 //! Commands that act on many registered environments at once.
 use super::{
-    commands::{project, target_workspace},
+    commands::target_workspace,
     output::{Output, cell, status_diagnostics, status_rows, table},
     render,
 };
 use anyhow::{Context, Result};
 use parcela::{
     config::Manifest,
-    discovery,
-    frontdoor::FrontDoor,
     lifecycle,
-    registry::{Registry, Role, SessionStatus, Workspace},
-    startup,
+    registry::{Registry, SessionStatus, Workspace},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::path::Path;
 
-/// Every registered environment, then the unregistered checkouts of the project at `path`.
-pub fn list(state: &Path, path: &Path, out: Output) -> Result<()> {
-    let registry = Registry::open(state, false)?;
-    let mut rows = Vec::new();
-    if let Some(registry) = &registry {
-        for workspace in registry.list(None)? {
-            rows.push(lifecycle::status(registry, &workspace)?);
-        }
+pub fn list(state: &Path, path: &Path, out: Output, overview: bool) -> Result<()> {
+    let mut inventory = parcela::inventory::collect(state, Some(path))?;
+    if overview {
+        inventory.prioritize(path);
     }
-    let unregistered = match unregistered(state, registry.as_ref(), path) {
-        Ok(found) => found,
-        Err(error) => {
-            eprintln!("parcela: cannot list this project's other checkouts: {error:#}");
-            Vec::new()
-        }
-    };
     if out == Output::Human {
-        status_diagnostics(&rows);
+        status_diagnostics(&inventory.workspaces);
     }
-    let verified = !rows.is_empty() && rows.iter().all(|row| row["live_health_verified"] == true);
-    out.emit(
-        &json!({"runtime_verified": verified, "workspaces": rows, "unregistered": unregistered}),
-        |style| status_rows(&[rows.as_slice(), unregistered.as_slice()].concat(), style),
-    )
-}
-
-/// The jj workspaces and Git worktrees of the project at `path` that no environment holds,
-/// with the name and URL `parcela up` would give them. Read-only: registers nothing.
-fn unregistered(state: &Path, registry: Option<&Registry>, path: &Path) -> Result<Vec<Value>> {
-    let Ok((source, current)) = project(path) else {
-        return Ok(Vec::new());
-    };
-    let registered = match registry {
-        Some(registry) => registry.list(None)?,
-        None => Vec::new(),
-    };
-    let front_door = FrontDoor::load(state)?;
-    let mut rows = Vec::new();
-    for checkout in discovery::discover(&source)? {
-        let Ok(source) = checkout.source.canonicalize() else {
-            continue;
-        };
-        if registered
-            .iter()
-            .any(|workspace| workspace.source == source)
-        {
-            continue;
+    out.emit(&inventory, |style| {
+        let mut rows = inventory.workspaces.clone();
+        rows.extend(inventory.unregistered.clone());
+        if overview {
+            let current_project = rows
+                .iter()
+                .find(|row| row["current"] == true)
+                .map(|row| row["workspace"]["project_id"].clone());
+            rows.sort_by_key(|row| {
+                (
+                    Some(&row["workspace"]["project_id"]) != current_project.as_ref(),
+                    row["workspace"]["project_id"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                    row["current"] != true,
+                    row["workspace"]["label"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            });
         }
-        let Ok(manifest) = Manifest::load(&source.join("parcela.yaml")) else {
-            continue;
-        };
-        if manifest.project.id != current.project.id {
-            continue;
-        }
-        let Ok(identity) = startup::Request::default().resolve(registry, &manifest, &source) else {
-            continue;
-        };
-        let hostname = manifest.hostname(identity.role == Role::Primary, &identity.label)?;
-        rows.push(json!({
-            "workspace": {"project_id": manifest.project.id, "source": source, "role": identity.role, "label": identity.label, "hostname": hostname},
-            "url": front_door.url(&hostname),
-            "state": "not started",
-        }));
-    }
-    Ok(rows)
+        status_rows(&rows, style)
+    })
 }
 
 fn running(registry: &Registry, workspace: &Workspace) -> Result<bool> {

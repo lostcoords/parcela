@@ -181,8 +181,14 @@ pub enum Command {
         #[arg(long, hide = true)]
         launch_file: Option<PathBuf>,
     },
-    /// Show the environment's status
-    Status,
+    /// Show all environments and their URLs
+    Status {
+        /// Show process details for the current checkout
+        #[arg(long, conflicts_with = "workspace")]
+        current: bool,
+    },
+    /// Print the local dashboard URL
+    Ui,
     /// List environments
     Ls,
     /// Show logs

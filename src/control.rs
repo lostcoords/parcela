@@ -204,6 +204,16 @@ impl Drop for Server {
 }
 
 pub fn request(runtime: &Path, session: &Session, action: Action) -> Result<Value> {
+    request_with_timeout(runtime, session, action, Duration::from_secs(6))
+}
+
+pub(crate) fn request_with_timeout(
+    runtime: &Path,
+    session: &Session,
+    action: Action,
+    timeout: Duration,
+) -> Result<Value> {
+    ensure!(!timeout.is_zero(), "inventory probe budget exhausted");
     private::existing_directory(runtime)?;
     let path = crate::sockets::environment(runtime)?.control;
     crate::sockets::verify(&path).context("live owner unavailable; interrupted runs require explicit reconciliation, never PID signaling")?;
@@ -217,8 +227,8 @@ pub fn request(runtime: &Path, session: &Session, action: Action) -> Result<Valu
     );
     let mut stream =
         UnixStream::connect(&path).context("live owner unavailable; no process was signaled")?;
-    stream.set_read_timeout(Some(Duration::from_secs(6)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(1)))?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout.min(Duration::from_secs(1))))?;
     serde_json::to_writer(
         &mut stream,
         &Request {

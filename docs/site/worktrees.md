@@ -186,7 +186,7 @@ server: {
 },
 ```
 
-The publishers show up in `parcela status` and `parcela logs` as `parcela-lan-<service>` and `parcela-tailscale-<service>`. `--domain` has no publisher: the proxy serves its names. A link that the app builds from `PARCELA_URL` still points at `.localhost`, which other devices cannot open.
+The publishers show up in `parcela status --current` and `parcela logs` as `parcela-lan-<service>` and `parcela-tailscale-<service>`. `--domain` has no publisher: the proxy serves its names. A link that the app builds from `PARCELA_URL` still points at `.localhost`, which other devices cannot open.
 
 ### Stop sharing
 

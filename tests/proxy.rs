@@ -513,7 +513,7 @@ fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
     assert!(up.status.success(), "{}", stderr(&up));
     let status = json_of(&cli(
         &proxy.state,
-        &["--path", checkout.to_str().unwrap(), "status"],
+        &["--path", checkout.to_str().unwrap(), "status", "--current"],
     ));
     assert_eq!(
         status["live"]["endpoints"]["web"]["shared"],

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parcela · Local environments</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside id="sidebar">
+    <header><a class="brand" href="/" target="_top">parcela<span>LOCAL WORKSPACE</span></a><button id="close" hidden aria-label="Close Parcela">×</button></header>
+    <div class="intro"><h1>Your environments</h1><p>A place for everything you're working on.</p></div>
+    <label class="search"><span>Find an environment</span><input id="search" type="search" placeholder="Search projects or names…" autocomplete="off"></label>
+    <p id="health" role="status" aria-live="polite">Connecting to Parcela…</p>
+    <nav id="environments" aria-label="Local environments"></nav>
+    <footer>Local to this machine <span>·</span> Status and navigation only</footer>
+  </aside>
+  <main id="workspace" hidden>
+    <header class="workspace-header"><div><span class="eyebrow">WORKSPACE</span><h2 id="workspace-title"></h2></div><a id="direct" target="_blank" rel="noopener noreferrer">Open directly ↗</a></header>
+    <p class="frame-note">This is your app in a frame. If it won't load or sign in, use Open directly.</p>
+    <iframe id="application" title="Selected local application" referrerpolicy="no-referrer"></iframe>
+  </main>
+  <main id="welcome"><span class="eyebrow">ROOM TO BUILD</span><h2>Pick up where<br>you left off.</h2><p>Choose a ready environment to open it directly,<br>or keep this switcher beside it in a workspace.</p><div class="illustration" aria-hidden="true"><div>web <span>ready</span></div><div>api <span>ready</span></div><div>worker <span>running</span></div></div><p class="hint">Add the optional Parcela script to your app<br>to open this switcher from any page.</p></main>
+</body>
+</html>

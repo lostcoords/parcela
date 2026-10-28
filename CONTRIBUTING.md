@@ -23,6 +23,8 @@ scripts/check-live docs-example
 scripts/check-live recovery --case owner_crash
 ```
 
+The `dashboard` suite checks the local UI over real Caddy. Set `PARCELA_PLAYWRIGHT_MODULE` to an installed Playwright module path to also run its Chromium interaction checks. `PARCELA_CHROMIUM_EXECUTABLE` can select an existing Chromium binary. The browser runs headless, and its HTTP requests verify Caddy with the fixture's CA without changing system trust. Set `PARCELA_DASHBOARD_ARTIFACTS` to a directory to retain desktop and mobile screenshots.
+
 Each fixture uses a disposable directory, isolated state, an untrusted test CA, and explicit ports from 30000 through 32767. The runner builds once and writes a JSON report per suite. `--output DIR` retains reports at a chosen path. `--caddy PATH` selects Caddy.
 
 Do not change system trust or take over occupied listeners. Tests with a terminal must set `PARCELA_NO_TRUST=1`. Live sharing tests need disposable environments and must verify that shutdown removes mDNS names and Tailscale serve entries. Follow [AGENTS.md](https://github.com/lostcoords/parcela/blob/main/AGENTS.md) for the full project constraints.

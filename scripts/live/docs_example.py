@@ -41,7 +41,7 @@ def run(caddy, **_):
         sessions = []
         for path, base, name in [(primary, 'hello.localhost', 'primary'), (signup, 'signup-hello.localhost', 'signup')]:
             sessions.append(remember(live.json(path, 'up', '--detach')))
-            status = live.json(path, 'status')
+            status = live.json(path, 'status', '--current')
             assert status['state'] == 'ready' and status['live_health_verified']
             assert all(endpoint['listener_owned'] and endpoint['http_ready'] for endpoint in status['live']['endpoints'].values())
             assert live.cli(path, 'url').stdout.strip() == f'https://{base}:{live.https}'
@@ -58,7 +58,7 @@ def run(caddy, **_):
         assert restarted['generation'] == sessions[0]['generation'] + 1 and restarted['token'] != sessions[0]['token']
         assert live.cli(primary, 'task', 'messages').stdout == 'hello from primary\n', 'restart keeps the database and skips setup'
         live.cli(primary, 'down')
-        assert live.json(primary, 'status')['state'] == 'stopped'
+        assert live.json(primary, 'status', '--current')['state'] == 'stopped'
         live.request('hello.localhost', 503, path='/')
         assert b'Hello from Parcela' in live.request('signup-hello.localhost', path='/')
         live.cli(primary, 'down', '--all')

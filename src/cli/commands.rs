@@ -152,7 +152,7 @@ pub fn bare(global: Global) -> Result<i32> {
             let registered = Registry::open(&state_dir(global.state_dir.clone())?, false)?
                 .is_some_and(|registry| registry.current(&source, &manifest).is_ok());
             if registered {
-                return run(Cli::new(global, Command::Status));
+                return run(Cli::new(global, Command::Status { current: true }));
             }
             "Not started yet. Run `parcela up`."
         }
@@ -423,10 +423,24 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Command::Ls => {
-            super::inventory::list(&state, &cli.path, out)?;
+            super::inventory::list(&state, &cli.path, out, false)?;
             Ok(0)
         }
-        Command::Status => {
+        Command::Ui => {
+            let router = parcela::router::current(&state)?;
+            ensure!(
+                router.protocol == parcela::router::PROTOCOL,
+                "the running proxy does not provide this dashboard; run `parcela proxy restart` to upgrade it"
+            );
+            let url = router.url(parcela::dashboard::HOST);
+            out.emit(&serde_json::json!({"url": url}), |_| format!("{url}\n"))?;
+            Ok(0)
+        }
+        Command::Status { current: false } if id.is_none() => {
+            super::inventory::list(&state, &cli.path, out, true)?;
+            Ok(0)
+        }
+        Command::Status { .. } => {
             let (registry, workspace) = reader()?;
             let status = lifecycle::status_with_processes(&registry, &workspace)?;
             if out == Output::Human {

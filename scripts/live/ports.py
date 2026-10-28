@@ -30,7 +30,7 @@ def run(caddy, **_):
 
         def observe(source, label):
             """Every view of one run's named ports must agree: process argv and env, context.json, context and status."""
-            status = live.json(source, 'status')
+            status = live.json(source, 'status', '--current')
             session = status['recorded_session']
             runtime = live.state / 'environments' / status['workspace']['id']
             record_path = runtime / 'port-listener.json'
@@ -44,7 +44,7 @@ def run(caddy, **_):
             assert {key: environment[key] for key in expected} == expected, environment
             assert environment['DATABASE_URL'] == f"postgres://127.0.0.1:{ports['db']}/app", environment
             assert live.json(source, 'context')['ports'] == ports
-            human = live.human(source, 'status')
+            human = live.human(source, 'status', '--current')
             assert f"{ports['db']}" in human and 'PARCELA_PORT_VITE_HMR' in human, human
             assert 'PARCELA_PORT_DB' in live.human(source, 'context')
             with socket.socket() as probe:

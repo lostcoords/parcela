@@ -178,7 +178,7 @@ def owner_crash(f):
     owner = f.start(app)
     owner.kill()
     assert owner.wait(timeout=5) == -signal.SIGKILL
-    status = json.loads(f.cli(app['path'], 'status').stdout)
+    status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
     assert status['state'] == 'unknown'
     wait_for(lambda: f.probe(app)[0] == 503, timeout=10)
     down = f.cli(app['path'], 'down')
@@ -312,7 +312,7 @@ def up_recovers_surviving_graph(f):
     after = f.session(app)
     assert (after['token'], after['generation'], after['status']) == (before['token'], before['generation'], 'ready')
     assert json.loads(f.probe(app)[1])['pid'] == service['pid'], 'up must reattach, not replay the service'
-    status = json.loads(f.cli(app['path'], 'status').stdout)
+    status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
     assert status['state'] == 'ready' and [process['name'] for process in status['processes']] == ['web'], status
     assert status['processes'][0]['state'] == 'running' and status['processes'][0]['pid'], status
     duplicate = f.cli(app['path'], 'up', '--detach', '--backend-port', str(app['port']))
@@ -333,7 +333,7 @@ def up_foreground_recovers_surviving_graph(f):
     owner.wait(timeout=5)
     recovered = f.spawn(app['path'], 'up', '--backend-port', str(app['port']))
     def reattached():
-        live = json.loads(f.cli(app['path'], 'status').stdout)['live']
+        live = json.loads(f.cli(app['path'], 'status', '--current').stdout)['live']
         return live and live['owner_pid'] == recovered.pid and live['state'] == 'ready'
     wait_for(reattached)
     after = f.session(app)
@@ -354,7 +354,7 @@ def guardian_death(f):
     f.proxy.wait(timeout=5)
     wait_for(lambda: f.probe(app)[0] == 503, timeout=10)
     assert owner.poll() is None and listening(app['port'])
-    status = json.loads(f.cli(app['path'], 'status').stdout)
+    status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
     assert status['state'] == 'unhealthy' and not status['live']['route_published']
     f.start_proxy()
     wait_for(lambda: f.probe(app)[0] == 200)
@@ -440,7 +440,7 @@ def recover_before_readiness(f):
     owner.wait(timeout=5)
     recovered = f.spawn(app['path'], 'recover')
     def starting_owner():
-        status = f.cli(app['path'], 'status')
+        status = f.cli(app['path'], 'status', '--current')
         live = json.loads(status.stdout).get('live')
         return live and live['owner_pid'] == recovered.pid and live['state'] == 'starting'
     wait_for(starting_owner)
@@ -922,20 +922,20 @@ def detached_configuration_changes(f):
     wait_for(lambda: f.probe(app)[0] == 200)
     before = json.loads(f.probe(app)[1])
     assert before['revision'] == 'before', before
-    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status').stdout)['processes']}
+    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status', '--current').stdout)['processes']}
     restarted = f.cli(app['path'], 'restart', '--detach', timeout=40)
     assert restarted.returncode == 0, restarted.stderr
     after = json.loads(f.probe(app)[1])
     assert after['revision'] == 'after' and int(after['generation']) > int(before['generation']), after
     assert _dead(before['pid'])
-    workers = json.loads(f.cli(app['path'], 'status').stdout)['processes']
+    workers = json.loads(f.cli(app['path'], 'status', '--current').stdout)['processes']
     worker_pid = next(item['pid'] for item in workers if item['name'] == 'worker')
     assert worker_pid and not _dead(worker_pid)
     del app['manifest']['services']['worker']
     (app['path'] / 'parcela.yaml').write_text(json.dumps(app['manifest']))
     restarted = f.cli(app['path'], 'restart', '--detach', timeout=40)
     assert restarted.returncode == 0, restarted.stderr
-    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status').stdout)['processes']}
+    assert 'worker' not in {item['name'] for item in json.loads(f.cli(app['path'], 'status', '--current').stdout)['processes']}
     wait_for(lambda: _dead(worker_pid))
     assert f.session(other)['token'] == other_session['token'] and f.probe(other)[0] == 200
     return {'pending_start_keeps_original_configuration': True, 'restart_reads_changed_environment': True,
@@ -962,7 +962,7 @@ def concurrent_restart(f):
     launched = [int(pid) for pid in (app['runtime'] / 'service-starts').read_text().splitlines()]
     assert len(launched) == 3, launched
     wait_for(lambda: all(_dead(pid) for pid in launched if pid != response['pid']))
-    status = json.loads(f.cli(app['path'], 'status').stdout)
+    status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
     assert status['state'] == 'ready' and status['live']['listener_owned'], status
     assert f.cli(app['path'], 'down').returncode == 0
     assert not listening(app['port'])
@@ -980,10 +980,10 @@ def worker_exit_after_readiness(f):
     owner = f.start(app)
     (app['runtime'] / 'exit-worker').touch()
     def worker_exited():
-        status = json.loads(f.cli(app['path'], 'status').stdout)
+        status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
         return any(process['name'] == 'jobs' and process['state'] == 'exited' for process in status['processes'])
     wait_for(worker_exited)
-    assert json.loads(f.cli(app['path'], 'status').stdout)['state'] == 'ready'
+    assert json.loads(f.cli(app['path'], 'status', '--current').stdout)['state'] == 'ready'
     assert owner.poll() is None and f.probe(app)[0] == 200
     return {'worker_exit_reported': True, 'http_environment_stays_ready': True, 'https_code': 200}
 

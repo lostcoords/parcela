@@ -53,6 +53,14 @@ If the proxy dies, environment owners attempt to restart it within about two sec
 
 The proxy does not start at login or reboot. The next `up` starts it. By default it listens only on `127.0.0.1:1443`. A busy listener produces an error naming its owner.
 
+## Browser inventory
+
+The shared proxy also owns a read-only dashboard at `parcela-ui.localhost`, on its existing loopback HTTPS listener. That hostname is reserved when adopting service names. Caddy forwards dashboard requests to a private Unix socket; the dashboard adds no public TCP listener and never exposes Caddy's admin API or owner control sockets.
+
+An inventory worker reads the registry and probes live owners outside the route-renewal loop. Owner probes share a short budget; missed replies appear as unknown. A separate worker serves a cached, allowlisted browser response with a timestamp. It omits saved sessions, owner credentials, commands, and environment variables. Checkout discovery remains read-only. The CLI overview and dashboard share the inventory collector.
+
+The dashboard can embed a ready app in an iframe, preserving the app's origin and response policy. An optional script supplied by the app opens the dashboard in a side panel. Parcela does not transform proxied application HTML or relax its CSP. App framing policies may require direct navigation instead. Dashboard routes exist only on the loopback HTTPS server, never the LAN or domain servers; Tailscale still reaches app backends directly.
+
 ## Sharing for one run
 
 LAN sharing records the selected interface address with the run. Caddy adds a server on that address and the HTTPS port for the shared environment's `.local` names. It serves those names only while the interface still holds the address. If the LAN listener cannot load, the proxy retries configuration without it so loopback routes can remain available.
@@ -101,6 +109,7 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |
 | `snapshots` | Saves declared environment data with SQLite backups and checksums; restores only to absent data directories. |
 | `private`, `sockets` | Owns private files, locks, and socket placement. |
+| `inventory`, `dashboard` | Collects read-only environment status and serves the local browser dashboard and switcher. |
 | `src/cli` | Parses arguments, selects commands, and renders output. |
 
 ## Privileged changes

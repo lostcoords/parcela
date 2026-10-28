@@ -142,7 +142,11 @@ pub fn status_rows(rows: &[Value], style: &Style) -> String {
             let workspace = &row["workspace"];
             vec![
                 cell(&workspace["project_id"]),
-                cell(&workspace["label"]),
+                format!(
+                    "{}{}",
+                    cell(&workspace["label"]),
+                    if row["current"] == true { " *" } else { "" }
+                ),
                 style.state(&cell(&row["state"])),
                 url_of(row),
                 cell(&workspace["source"]),

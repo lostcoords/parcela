@@ -100,7 +100,7 @@ fn a_terminal_gets_aligned_text() {
         )
     );
     let status: serde_json::Value =
-        serde_json::from_slice(&piped(&path, &state, &["status"]).stdout).unwrap();
+        serde_json::from_slice(&piped(&path, &state, &["status", "--current"]).stdout).unwrap();
     assert_eq!(
         (&status["state"], &status["processes"]),
         (&serde_json::json!("stopped"), &serde_json::json!([]))

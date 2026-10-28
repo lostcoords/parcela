@@ -98,7 +98,7 @@ class Live:
         primary, secondary = pty.openpty()
         try:
             process = subprocess.Popen(self.argv(path, *argv), stdin=subprocess.DEVNULL, stdout=secondary,
-                                       stderr=subprocess.DEVNULL, env={**os.environ, 'NO_COLOR': '1'})
+                                       stderr=subprocess.DEVNULL, env={**os.environ, 'NO_COLOR': '1', 'PARCELA_NO_TRUST': '1'})
         finally:
             os.close(secondary)
         output = b''
@@ -129,7 +129,7 @@ class Live:
         naming = ['--primary'] if role == 'primary' else ['--name', label]
         started = self.cli(path, 'up', *naming, '--lan-ip', '192.0.2.1', check=False)
         assert started.returncode == 1 and 'no network interface has that address' in started.stderr, started.stderr
-        workspace = self.json(path, '--json', 'status')['workspace']
+        workspace = self.json(path, '--json', 'status', '--current')['workspace']
         assert (workspace['role'], workspace['label']) == (role, label), workspace
         return workspace
 

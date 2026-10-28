@@ -71,7 +71,7 @@ fn watcher_lifecycle_needs_no_proxy_ports_or_url() {
     assert_eq!(first["session"]["endpoints"], serde_json::json!([]));
     assert_eq!(first["session"]["ports"], serde_json::json!({}));
     assert!(!env.path().join("state/proxy").exists());
-    let status = env.success(&["status"]);
+    let status = env.success(&["status", "--current"]);
     assert_eq!(status["state"], "ready");
     assert!(status["url"].is_null());
     assert_eq!(status["processes"][0]["name"], "build");
@@ -94,7 +94,7 @@ fn watcher_lifecycle_needs_no_proxy_ports_or_url() {
     assert!(restarted["session"]["generation"].as_i64() > first["session"]["generation"].as_i64());
     assert_eq!(env.success(&["up", "--detach"])["already_running"], true);
     assert_eq!(env.success(&["down"])["state"], "stopped");
-    assert_eq!(env.success(&["status"])["state"], "stopped");
+    assert_eq!(env.success(&["status", "--current"])["state"], "stopped");
     assert!(!env.path().join("state/proxy").exists());
 }
 
@@ -146,7 +146,7 @@ fn watcher_owner_recovery_adopts_the_same_process_without_a_proxy() {
     let env = Environment::new(WATCHER);
     let started = env.success(&["up", "--detach"]);
     let owner = started["live"]["owner_pid"].as_u64().unwrap() as u32;
-    let process = env.success(&["status"])["processes"][0]["pid"]
+    let process = env.success(&["status", "--current"])["processes"][0]["pid"]
         .as_u64()
         .unwrap();
     let identity = parcela::process::Identity::read(owner).unwrap().unwrap();
@@ -158,7 +158,10 @@ fn watcher_owner_recovery_adopts_the_same_process_without_a_proxy() {
     }
     let recovered = env.success(&["up", "--detach"]);
     assert_eq!(recovered["session"]["token"], started["session"]["token"]);
-    assert_eq!(env.success(&["status"])["processes"][0]["pid"], process);
+    assert_eq!(
+        env.success(&["status", "--current"])["processes"][0]["pid"],
+        process
+    );
     assert!(!env.path().join("state/proxy").exists());
 }
 
@@ -223,15 +226,16 @@ fn watcher_sessions_coexist_with_http_and_refuse_an_older_running_proxy() {
         !unverified.status.success(),
         "a live proxy with unverifiable ownership must not be treated as absent"
     );
-    assert!(env.success(&["status"])["recorded_session"].is_null());
+    assert!(env.success(&["status", "--current"])["recorded_session"].is_null());
     env.success(&["up", "--detach"]);
-    let status = env.run_at(&web, &["status"]);
+    let status = env.run_at(&web, &["status", "--current"]);
     assert!(status.status.success());
     let status: Value = serde_json::from_slice(&status.stdout).unwrap();
     assert_eq!(status["state"], "ready");
     assert_eq!(status["live"]["route_published"], true);
     env.success(&["down"]);
-    let status: Value = serde_json::from_slice(&env.run_at(&web, &["status"]).stdout).unwrap();
+    let status: Value =
+        serde_json::from_slice(&env.run_at(&web, &["status", "--current"]).stdout).unwrap();
     assert_eq!(status["state"], "ready");
 }
 
@@ -257,7 +261,7 @@ fn watcher_doctor_and_up_both_refuse_an_unverified_live_proxy() {
     let output = env.run(&["up", "--detach"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be verified"));
-    assert!(env.success(&["status"])["recorded_session"].is_null());
+    assert!(env.success(&["status", "--current"])["recorded_session"].is_null());
 }
 
 #[test]
@@ -275,7 +279,7 @@ fn invalid_http_to_watcher_restart_preserves_the_running_generation_and_setup() 
         .to_string();
     env.success(&["proxy", "start", "--port", &port]);
     let first = env.success(&["up", "--detach"]);
-    let pid = env.success(&["status"])["processes"][0]["pid"].clone();
+    let pid = env.success(&["status", "--current"])["processes"][0]["pid"].clone();
     fs::write(env.path().join("parcela.yaml"), WATCHER).unwrap();
     for flags in [
         vec!["--lan"],
@@ -289,7 +293,7 @@ fn invalid_http_to_watcher_restart_preserves_the_running_generation_and_setup() 
         let refused = env.run(&args);
         assert!(!refused.status.success());
         assert!(String::from_utf8_lossy(&refused.stderr).contains("need an HTTP service"));
-        let status = env.success(&["status"]);
+        let status = env.success(&["status", "--current"]);
         assert_eq!(status["state"], "ready", "{status}");
         assert_eq!(status["processes"][0]["pid"], pid);
         assert_eq!(

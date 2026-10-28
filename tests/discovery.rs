@@ -160,8 +160,31 @@ fn ls_shows_unregistered_jj_workspaces_without_snapshotting_or_registering() {
             .collect::<Vec<_>>(),
         ["preview"]
     );
+    let browser_inventory = parcela::inventory::collect(&state, None).unwrap();
+    assert_eq!(browser_inventory.workspaces.len(), 1);
+    assert_eq!(browser_inventory.unregistered.len(), 1);
+    assert_eq!(
+        browser_inventory.unregistered[0]["workspace"]["label"],
+        "preview"
+    );
     let registry = Registry::open(&state, false).unwrap().unwrap();
     assert_eq!(registry.list(None).unwrap().len(), 1);
+    let missing = root.join("missing");
+    fs::create_dir(&missing).unwrap();
+    fs::write(missing.join("parcela.yaml"), MANIFEST).unwrap();
+    Registry::open(&state, true)
+        .unwrap()
+        .unwrap()
+        .adopt(&manifest, &missing, Role::Preview, "absent")
+        .unwrap();
+    fs::remove_dir_all(&missing).unwrap();
+    let browser_inventory = parcela::inventory::collect(&state, None).unwrap();
+    assert_eq!(browser_inventory.workspaces.len(), 2);
+    assert_eq!(browser_inventory.unregistered.len(), 1);
+    assert_eq!(
+        browser_inventory.unregistered[0]["workspace"]["label"],
+        "preview"
+    );
     assert_eq!(before, operation(&source));
 }
 

@@ -112,7 +112,15 @@ fn missing_manifest_and_unstarted_checkout_point_to_the_next_command() {
         root.display()
     );
     for command in ["status", "up", "url", "logs"] {
-        let output = cli(&root, &state, &[command]);
+        let output = cli(
+            &root,
+            &state,
+            &if command == "status" {
+                vec![command, "--current"]
+            } else {
+                vec![command]
+            },
+        );
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
             no_manifest,
@@ -156,7 +164,15 @@ fn missing_manifest_and_unstarted_checkout_point_to_the_next_command() {
         serde_json::json!({"hint": "Not started yet. Run `parcela up`."})
     );
     for command in ["status", "url"] {
-        let output = cli(&app, &state, &[command]);
+        let output = cli(
+            &app,
+            &state,
+            &if command == "status" {
+                vec![command, "--current"]
+            } else {
+                vec![command]
+            },
+        );
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
             "parcela: this checkout has not been started; start it with `parcela up`\n",
@@ -168,7 +184,15 @@ fn missing_manifest_and_unstarted_checkout_point_to_the_next_command() {
     let status: serde_json::Value = serde_json::from_slice(&bare.stdout).unwrap();
     assert_eq!(status["state"], "stopped");
     for command in ["status", "url"] {
-        let output = cli(&app, &state, &[command]);
+        let output = cli(
+            &app,
+            &state,
+            &if command == "status" {
+                vec![command, "--current"]
+            } else {
+                vec![command]
+            },
+        );
         assert!(output.status.success(), "{command}");
     }
 
@@ -179,7 +203,7 @@ fn missing_manifest_and_unstarted_checkout_point_to_the_next_command() {
     )
     .unwrap();
     let id = status["workspace"]["id"].as_str().unwrap();
-    let renamed = cli(&app, &state, &["status"]);
+    let renamed = cli(&app, &state, &["status", "--current"]);
     assert_eq!(
         String::from_utf8_lossy(&renamed.stderr),
         format!(

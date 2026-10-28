@@ -1,5 +1,5 @@
 ---
-description: What to check when an environment does not start, a URL does not load or the browser does not trust the certificate, starting with parcela doctor and parcela status.
+description: What to check when an environment does not start, a URL does not load or the browser does not trust the certificate, starting with parcela doctor and parcela status --current.
 ---
 
 # Troubleshooting
@@ -8,7 +8,7 @@ Check tools and configuration, then inspect the selected environment:
 
 ```sh
 parcela doctor
-parcela status
+parcela status --current
 ```
 
 ## The browser warns about the certificate
@@ -56,11 +56,11 @@ The setup or prestart command exited nonzero, so no other service started and th
 
 ## The URL answers 503
 
-The environment is registered but not running, or it is still starting. Run `parcela status`. If it says `stopped`, run `parcela up --detach`.
+The environment is registered but not running, or it is still starting. Run `parcela status --current`. If it says `stopped`, run `parcela up --detach`.
 
 ## Another device cannot open a shared URL
 
-Run `parcela status` and look at the `parcela-lan-*` and `parcela-tailscale-*` processes. `parcela logs parcela-tailscale-web` shows why one stopped.
+Run `parcela status --current` and look at the `parcela-lan-*` and `parcela-tailscale-*` processes. `parcela logs parcela-tailscale-web` shows why one stopped.
 
 - **A `.local` name does not resolve.** The device must be on the same network, and some guest or office Wi-Fi blocks mDNS. After the laptop changes networks, run `parcela restart --detach --lan`.
 - **The page says the host is not allowed.** The dev server refuses the shared name. Add `PARCELA_SHARE_HOSTS` to its allowed hosts, as shown in [the sharing guide](worktrees.md#let-the-dev-server-accept-the-names).
@@ -114,4 +114,4 @@ Don't kill processes by PID or delete files in the state directory to fix this. 
 
 ## Something else
 
-Run `parcela status --json` and read its `diagnostic` field. Review the output and matching `owner.log` for secrets or private paths before including them in a [bug report](https://github.com/lostcoords/parcela/issues).
+Run `parcela status --current --json` and read its `diagnostic` field. Review the output and matching `owner.log` for secrets or private paths before including them in a [bug report](https://github.com/lostcoords/parcela/issues).

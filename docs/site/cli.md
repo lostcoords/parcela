@@ -17,7 +17,7 @@
 
 Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url` and `logs`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `NO_COLOR` disables terminal colors.
 
-For example, `parcela status --json | jq -r .state` reads the environment state.
+For example, `parcela status --current --json | jq -r .state` reads the environment state.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -116,9 +116,15 @@ Checks the replacement configuration, then stops and starts the whole environmen
 
 ```text
 parcela status
+parcela status --current
+parcela --workspace ENV status
 ```
 
-Shows registered URLs, live HTTP health, process state, and named ports.
+With no selection, shows an overview of registered environments across projects, including their state, URL, and source path. The current checkout has a `*` marker and its project appears first. Inside a project, unregistered sibling worktrees also appear as `not started`. The overview works outside a project and never registers or starts environments.
+
+`--current` shows the current checkout's registered URLs, live HTTP health, process state, and named ports. `--workspace ENV` selects that detailed view from any directory. Bare `parcela` keeps the detailed checkout view.
+
+Overview JSON uses the same envelope as `ls`: `{runtime_verified, workspaces, unregistered}`. Overview rows have a `current` marker and a `urls` map. Registered rows also include `processes`. Scripts that previously read `.state` from plain `status --json` must use `status --current --json` or select `--workspace ENV`.
 
 | Environment state | Meaning |
 | --- | --- |
@@ -138,6 +144,26 @@ parcela ls
 ```
 
 Lists registered environments across projects. Inside a project, it also lists unregistered sibling jj workspaces and Git worktrees as `not started`. Listing creates no registrations.
+
+## ui
+
+```text
+parcela ui
+```
+
+Prints the local dashboard URL, `https://parcela-ui.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, restart the proxy to make its new dashboard available. The hostname `parcela-ui.localhost` is reserved for the dashboard.
+
+The dashboard groups registered environments by project, discovers unregistered worktrees of known projects, and shows service URLs and process states. Search filters the list. Status refreshes in the background; a failed connection or an old timestamp marks the display as stale. The dashboard only shows status and navigation.
+
+**Open directly** opens a ready service at its own URL. **In workspace** keeps the switcher beside the app in an iframe. Relative app links remain on the app's origin. Apps that set `X-Frame-Options` or a restrictive `frame-ancestors` policy may refuse embedding. Login, cookies, and top-level navigation can also behave differently inside a frame. Use **Open directly** in those cases.
+
+To add the collapsed side tab to your own app, include this optional script in its HTML, using the dashboard origin printed by `parcela ui`:
+
+<code>&lt;script defer src="https://parcela-ui.localhost:1443/widget.js"&gt;&lt;/script&gt;</code>
+
+Click the tab or activate it with the keyboard to open the panel. Escape or the close button closes it and returns focus to the tab. The panel marks the current environment and lists its processes. Switching opens the selected service's root URL.
+
+The script does not rewrite application responses. Your app's CSP must allow the dashboard script and frame, and the widget's styles. Parcela does not weaken the app's CSP; use the standalone dashboard when the policy blocks the widget. The dashboard and its inventory API are available only on the loopback proxy, including when an app is shared over LAN, Tailscale, or a domain. The widget is for local `.localhost` pages.
 
 ## logs
 
