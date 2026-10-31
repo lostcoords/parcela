@@ -590,11 +590,18 @@ fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
         let socket = control_socket(&path);
         let control_identity = private::Identity::read(&socket).unwrap();
         drop(control);
+        // Bound while the original still exists, so the filesystem cannot reuse its inode.
+        let replacement = (case == "replaced-socket").then(|| {
+            let aside = socket.with_extension("replacement");
+            (UnixListener::bind(&aside).unwrap(), aside)
+        });
         // Reboot removes the temporary control socket, but leaves the persistent lock file.
         if socket.exists() {
             fs::remove_file(&socket).unwrap();
         }
-        let replacement = (case == "replaced-socket").then(|| UnixListener::bind(&socket).unwrap());
+        if let Some((_, aside)) = &replacement {
+            fs::rename(aside, &socket).unwrap();
+        }
         let current = process::Identity::read(std::process::id())
             .unwrap()
             .unwrap();

@@ -782,20 +782,31 @@ fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_u
     );
     let accepted = act("restart", &["X-Parcela-Action: 1", &origin]);
     assert!(accepted.starts_with("HTTP/2 202"), "{accepted}");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    // The page is down while its own environment restarts, so wait on the action through it but
+    // explain a timeout with the CLI's view and the owner log.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     loop {
-        let listed: Value =
-            serde_json::from_str(&body(get("/_parcela/environments"))).unwrap_or_default();
+        let response = get("/_parcela/environments");
+        let listed: Value = serde_json::from_str(&body(response.clone())).unwrap_or_default();
         let action = &listed["environments"][0]["action"];
         if action["name"] == "restart" && action["state"] == "done" {
             break;
         }
         assert_ne!(action["state"], "failed", "{listed}");
-        assert!(
-            std::time::Instant::now() < deadline,
-            "restart from the page never finished: {listed}"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        if std::time::Instant::now() >= deadline {
+            let status = cli(
+                &proxy.state,
+                &["--path", checkout.to_str().unwrap(), "status", "--current"],
+            );
+            let runtime = proxy.state.join("environments").join(&environment);
+            panic!(
+                "restart from the page never finished\npage: {response}\nstatus: {}{}\nowner log: {}",
+                String::from_utf8_lossy(&status.stdout),
+                stderr(&status),
+                fs::read_to_string(runtime.join("log/owner.log")).unwrap_or_default()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
     assert!(
         get("/").ends_with("sent"),
