@@ -23,7 +23,9 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 4;
+pub const PROTOCOL: u32 = 5;
+/// Paths on every loopback app host that Parcela answers for that environment instead of the app.
+pub const ENVIRONMENT_PATHS: &str = "/_parcela/*";
 
 /// The running proxy: its ownership token, the front door it serves and the release that started
 /// it. Unknown fields are ignored, so a newer proxy's record stays readable by older releases.
@@ -300,6 +302,7 @@ pub fn configuration(registry: &Registry, router: &Router) -> Result<Value> {
 /// the person's own front proxy to terminate TLS in front of it.
 fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -> Result<Value> {
     let state = registry.state_path();
+    let dashboard = format!("unix/{}", crate::sockets::dashboard(state)?.display());
     let workspaces = registry.list(None)?;
     let mut routes = Vec::new();
     let mut hosts = std::collections::BTreeSet::new();
@@ -313,7 +316,8 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
             crate::dashboard::HOST
         );
         hosts.insert(crate::dashboard::HOST.to_owned());
-        routes.push(json!({"match":[{"host":[crate::dashboard::HOST]}], "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":format!("unix/{}", crate::sockets::dashboard(state)?.display())}]}], "terminal":true}));
+        routes.push(json!({"match":[{"host":[crate::dashboard::HOST]}], "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":dashboard.clone()}],
+            "headers":{"request":{"delete":["X-Parcela-Environment", "X-Parcela-Hostname", "X-Parcela-Access"]}}}], "terminal":true}));
     }
     let hosts: Vec<_> = hosts.into_iter().collect();
     for host in &hosts {
@@ -355,6 +359,12 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                 "handler":"reverse_proxy", "upstreams":[{"dial":address.to_string()}],
                 "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Generation":[session.generation.to_string()]}}}
             }]);
+            // Only loopback names reach Parcela's own paths; on LAN and domain names they are the
+            // app's. Caddy always sets `X-Parcela-Access`, which the dashboard requires.
+            let environment = (router.protocol >= 5).then(|| json!([{
+                "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Hostname":[endpoint.hostname], "X-Parcela-Access":["local"]}}}
+            }]));
             let mut matched = vec![endpoint.hostname.clone()];
             if wildcard.contains(&endpoint.service) {
                 // Subdomains of an environment's host are never another environment's: those
@@ -362,6 +372,9 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                 let tenants = format!("*.{}", endpoint.hostname);
                 matched.push(tenants.clone());
                 wildcards.push(tenants);
+            }
+            if let Some(environment) = environment {
+                routes.push(json!({"match":[{"host":matched, "path":[ENVIRONMENT_PATHS], "file":leased}], "handle":environment, "terminal": true}));
             }
             routes.push(json!({"@id": format!("run-{}-{}", session.token, endpoint.service), "match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
             if let Some(ip) = lan_address.filter(|ip| shared && crate::share::present(*ip)) {

@@ -189,6 +189,12 @@ pub enum Command {
     },
     /// Print the local dashboard URL
     Ui,
+    /// Offer URLs or files to the browsers showing this environment; processes get it as $BROWSER
+    Browse {
+        /// http(s) URLs, file:// URLs or absolute file paths
+        #[arg(required = true)]
+        targets: Vec<String>,
+    },
     /// List environments
     Ls,
     /// Show logs

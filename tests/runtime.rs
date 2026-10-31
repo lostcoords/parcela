@@ -487,7 +487,7 @@ fn task_runtime_has_only_generic_dirs_and_strips_only_parcela_variables() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "cache/\ndata/\nlog/\ntask.lock\ntmp/\ninherited unset\n"
+        "bin/\ncache/\ndata/\nlog/\ntask.lock\ntmp/\ninherited unset\n"
     );
 }
 

@@ -26,6 +26,17 @@ impl Fixture {
         let exe = home.join(".local/bin/parcela");
         fs::create_dir_all(exe.parent().unwrap()).unwrap();
         fs::copy(env!("CARGO_BIN_EXE_parcela"), &exe).unwrap();
+        // Another test thread's fork can briefly hold the fresh copy open for writing, and Linux
+        // refuses to run it until that fork execs.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while let Err(error) = Command::new(&exe).arg("--version").output() {
+            assert!(
+                error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && std::time::Instant::now() < deadline,
+                "{error}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         let fake = path.join("fake");
         fs::create_dir(&fake).unwrap();
         executable(

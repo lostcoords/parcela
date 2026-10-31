@@ -476,6 +476,20 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             }
             Ok(0)
         }
+        Command::Browse { targets } => {
+            let runtime = std::env::var_os("PARCELA_RUNTIME_DIR")
+                .context("parcela browse runs inside a Parcela environment, as its $BROWSER")?;
+            let targets = targets
+                .iter()
+                .map(|target| parcela::opens::Target::parse(target))
+                .collect::<Result<Vec<_>>>()?;
+            let opens = targets
+                .into_iter()
+                .map(|target| parcela::opens::record(Path::new(&runtime), target))
+                .collect::<Result<Vec<_>>>()?;
+            out.emit(&serde_json::json!({"opens": opens}), |_| String::new())?;
+            Ok(0)
+        }
         Command::Url { service } => {
             let (registry, workspace) = reader()?;
             let url = service_url(&registry, &workspace, service)?;

@@ -552,6 +552,279 @@ fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
 }
 
 #[test]
+fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_unshared() {
+    if !["caddy", "curl", "python3"]
+        .iter()
+        .all(|program| on_path(program))
+    {
+        eprintln!("skipped: needs caddy, curl and python3 on PATH");
+        return;
+    }
+    let proxy = Proxy::new();
+    let checkout = proxy._t.path().canonicalize().unwrap().join("notes");
+    fs::create_dir(&checkout).unwrap();
+    let https = free_port();
+    let domain_port = free_port();
+    fs::write(
+        checkout.join("mailer.py"),
+        "import http.server, os, subprocess, sys\n\
+         class H(http.server.BaseHTTPRequestHandler):\n\
+         \x20   def do_GET(self):\n\
+         \x20       if self.path == '/send':\n\
+         \x20           os.makedirs('mail', exist_ok=True)\n\
+         \x20           open('mail/rich.html', 'w').write('<title>\\n Your sign-in link </title><a href=\"plain.html\">plain</a>')\n\
+         \x20           open('mail/plain.html', 'w').write('plain text')\n\
+         \x20           subprocess.run([os.environ['BROWSER'], 'file://' + os.path.abspath('mail/rich.html'), os.environ['PARCELA_URL'] + '/welcome?x=1'], check=True)\n\
+         \x20       self.send_response(200); self.end_headers(); self.wfile.write(b'sent')\n\
+         http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()\n",
+    )
+    .unwrap();
+    fs::write(checkout.join("secret"), "secret").unwrap();
+    fs::write(
+        checkout.join("parcela.yaml"),
+        "version: 1\nproject: notes\nservices: {web: {command: python3 mailer.py $PORT, http: {healthcheck: /}}}\n",
+    )
+    .unwrap();
+    let environments = Environments {
+        state: &proxy.state,
+        paths: vec![checkout.clone()],
+    };
+    // Sharing through the environment, so the proxy this run starts is spawned with it too.
+    let up = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--path")
+        .arg(&checkout)
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .env("PARCELA_HTTPS_PORT", https.to_string())
+        .env("PARCELA_DOMAIN", "dev.example.com")
+        .env("PARCELA_DOMAIN_PORT", domain_port.to_string())
+        .args(["--json", "up", "--detach"])
+        .output()
+        .unwrap();
+    assert!(up.status.success(), "{}", stderr(&up));
+    let local = |method: &str, path: &str, headers: &[&str]| {
+        let mut curl = Command::new("curl");
+        curl.args(["--silent", "--insecure", "--max-time", "5", "--include"])
+            .args(["--request", method])
+            .args(["--resolve", &format!("notes.localhost:{https}:127.0.0.1")])
+            .args([
+                "--resolve",
+                &format!("parcela-ui.localhost:{https}:127.0.0.1"),
+            ]);
+        for header in headers {
+            curl.args(["--header", header]);
+        }
+        String::from_utf8_lossy(&curl.arg(path).output().unwrap().stdout).into_owned()
+    };
+    let shared = |method: &str, path: &str, headers: &[&str]| {
+        let mut curl = Command::new("curl");
+        curl.args(["--silent", "--max-time", "5", "--include"])
+            .args(["--request", method])
+            .args(["--header", "Host: notes.dev.example.com"]);
+        for header in headers {
+            curl.args(["--header", header]);
+        }
+        let output = curl
+            .arg(format!("http://127.0.0.1:{domain_port}{path}"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    };
+    let body = |response: String| {
+        response
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let app = format!("https://notes.localhost:{https}");
+    let get = |path: &str| local("GET", &format!("{app}{path}"), &[]);
+    assert!(get("/send").ends_with("sent"));
+
+    let opens: Value = serde_json::from_str(&body(get("/_parcela/opens"))).unwrap();
+    let opens = opens["opens"].as_array().unwrap();
+    assert_eq!(opens.len(), 2);
+    let file = opens[0]["href"].as_str().unwrap().to_owned();
+    assert_eq!(opens[0]["label"], "Your sign-in link");
+    assert_eq!(
+        file,
+        format!(
+            "/_parcela/files/{}/rich.html",
+            opens[0]["id"].as_str().unwrap()
+        )
+    );
+    assert_eq!(
+        opens[1]["href"], "/welcome?x=1",
+        "a URL on its own host becomes a path"
+    );
+    let page = get(&file);
+    assert!(page.starts_with("HTTP/2 200"), "{page}");
+    assert!(
+        page.contains("content-security-policy: sandbox "),
+        "opened files never run scripts on the app's origin: {page}"
+    );
+    assert!(page.ends_with("<a href=\"plain.html\">plain</a>"));
+    let directory = file.trim_end_matches("rich.html");
+    fs::write(checkout.join("mail/.env"), "TOKEN=1").unwrap();
+    fs::write(checkout.join("mail/notes.yaml"), "token: 1").unwrap();
+    assert!(get(&format!("{directory}plain.html")).ends_with("plain text"));
+    for refused in ["..%2Fsecret", ".env", "notes.yaml"] {
+        let response = get(&format!("{directory}{refused}"));
+        assert!(response.starts_with("HTTP/2 404"), "{refused}: {response}");
+    }
+    let menu = get("/_parcela/");
+    assert!(
+        menu.starts_with("HTTP/2 200")
+            && menu.contains("<script src=\"/_parcela/widget.js\" data-page>"),
+        "{menu}"
+    );
+
+    // LAN and domain names never reach Parcela's paths: the app answers them, here with `sent`.
+    assert!(
+        shared("GET", "/", &[]).ends_with("sent"),
+        "the run is shared"
+    );
+    let environment = json_of(&cli(
+        &proxy.state,
+        &["--path", checkout.to_str().unwrap(), "status", "--current"],
+    ))["workspace"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let restart = format!("/_parcela/environments/{environment}/restart");
+    for path in [
+        "/_parcela/opens".to_owned(),
+        file.clone(),
+        "/_parcela/environments".to_owned(),
+        format!("/_parcela/logs?environment={environment}"),
+    ] {
+        let response = shared("GET", &path, &["X-Parcela-Access: local"]);
+        assert!(response.ends_with("sent"), "{path}: {response}");
+    }
+    let refused = shared(
+        "POST",
+        &restart,
+        &[
+            "X-Parcela-Action: 1",
+            "Origin: https://notes.dev.example.com",
+            "X-Parcela-Access: local",
+        ],
+    );
+    assert!(!refused.contains("accepted"), "{refused}");
+
+    let spoofed = local(
+        "GET",
+        &format!("https://parcela-ui.localhost:{https}/_parcela/opens"),
+        &[
+            &format!("X-Parcela-Environment: {environment}"),
+            "X-Parcela-Hostname: notes.localhost",
+            "X-Parcela-Access: local",
+        ],
+    );
+    assert!(
+        spoofed.starts_with("HTTP/2 404"),
+        "the dashboard name never answers for an environment: {spoofed}"
+    );
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let listed = loop {
+        let listed: Value = serde_json::from_str(&body(get("/_parcela/environments"))).unwrap();
+        if listed["environments"][0]["url"].is_string() {
+            break listed;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the local page never listed the environment: {listed}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let this = &listed["environments"][0];
+    assert_eq!(this["current"], true);
+    assert_eq!(this["key"], environment.as_str());
+    assert_eq!(this["url"], app.as_str());
+    assert!(
+        this.get("source").is_none(),
+        "pages never see checkout paths"
+    );
+    let logs: Value = serde_json::from_str(&body(get(&format!(
+        "/_parcela/logs?environment={environment}"
+    ))))
+    .unwrap();
+    assert_eq!(logs["process"], "web");
+
+    let act = |action: &str, headers: &[&str]| {
+        local(
+            "POST",
+            &format!("{app}/_parcela/environments/{environment}/{action}"),
+            headers,
+        )
+    };
+    let origin = format!("Origin: {app}");
+    assert!(act("restart", &[]).starts_with("HTTP/2 403"));
+    assert!(
+        act(
+            "restart",
+            &["X-Parcela-Action: 1", "Origin: https://evil.example"]
+        )
+        .starts_with("HTTP/2 403")
+    );
+    let unregistered = local(
+        "POST",
+        &format!(
+            "{app}/_parcela/environments/{}/start",
+            checkout.to_str().unwrap().replace('/', "%2F")
+        ),
+        &["X-Parcela-Action: 1", &origin],
+    );
+    assert!(
+        unregistered.starts_with("HTTP/2 404"),
+        "pages never start a checkout by path: {unregistered}"
+    );
+    let accepted = act("restart", &["X-Parcela-Action: 1", &origin]);
+    assert!(accepted.starts_with("HTTP/2 202"), "{accepted}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let listed: Value =
+            serde_json::from_str(&body(get("/_parcela/environments"))).unwrap_or_default();
+        let action = &listed["environments"][0]["action"];
+        if action["name"] == "restart" && action["state"] == "done" {
+            break;
+        }
+        assert_ne!(action["state"], "failed", "{listed}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "restart from the page never finished: {listed}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(
+        get("/").ends_with("sent"),
+        "the restarted run answers locally"
+    );
+    assert!(
+        !shared("GET", "/", &[]).ends_with("sent"),
+        "a page never shares what it starts, whatever the proxy was started with"
+    );
+
+    let accepted = act("stop", &["X-Parcela-Action: 1", &origin]);
+    assert!(accepted.starts_with("HTTP/2 202"), "{accepted}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while json_of(&cli(
+        &proxy.state,
+        &["--path", checkout.to_str().unwrap(), "status", "--current"],
+    ))["state"]
+        != "stopped"
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "stop from the page never stopped the environment"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    drop(environments);
+}
+
+#[test]
 fn a_port_only_root_may_use_is_refused_with_the_reason() {
     // macOS lets only root listen on loopback ports below 1024.
     if !cfg!(target_os = "macos") || unsafe { libc::getuid() } == 0 {

@@ -307,6 +307,7 @@ Every service, hook and task receives these. Service names are uppercased, with 
 |---|---|
 | `PORT` | `29381`, the service's own port. Only HTTP services get one. In tasks it is the port of the service at the environment's URL. |
 | `HOST` | `127.0.0.1` |
+| `BROWSER` | A shim that runs `parcela browse`, so a process asking for a browser offers the URL to the browsers showing the environment. Set `BROWSER` in `env:` to keep another browser. |
 | `PARCELA_URL` | `https://shop.localhost:1443`, the environment's URL, only when HTTP is configured |
 | `PARCELA_HOSTNAME` | `shop.localhost`, only when HTTP is configured |
 | `PARCELA_SHARE_HOSTS` | `shop.local,mb.tail1234.ts.net,shop.dev.example.com`, the hostnames other devices use after `up --lan`, `--tailscale` or `--domain`. Empty otherwise. Used for dev-server host allow lists. |

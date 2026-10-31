@@ -157,13 +157,31 @@ The dashboard groups registered environments by project, discovers unregistered 
 
 **Open directly** opens a ready service at its own URL. **In workspace** keeps the switcher beside the app in an iframe. Relative app links remain on the app's origin. Apps that set `X-Frame-Options` or a restrictive `frame-ancestors` policy may refuse embedding. Login, cookies, and top-level navigation can also behave differently inside a frame. Use **Open directly** in those cases.
 
-To add the collapsed side tab to your own app, include this optional script in its HTML, using the dashboard origin printed by `parcela ui`:
+To add Parcela's debug menu to your own app in development, include its script from the app's own host:
 
-<code>&lt;script defer src="https://parcela-ui.localhost:1443/widget.js"&gt;&lt;/script&gt;</code>
+<code>&lt;script defer src="/_parcela/widget.js"&gt;&lt;/script&gt;</code>
 
-Click the tab or activate it with the keyboard to open the panel. Escape or the close button closes it and returns focus to the tab. The panel marks the current environment and lists its processes. Switching opens the selected service's root URL.
+Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
 
-The script does not rewrite application responses. Your app's CSP must allow the dashboard script and frame, and the widget's styles. Parcela does not weaken the app's CSP; use the standalone dashboard when the policy blocks the widget. The dashboard and its inventory API are available only on the loopback proxy, including when an app is shared over LAN, Tailscale, or a domain. The widget is for local `.localhost` pages.
+- **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
+- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions never share: they ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, though project `sharing` defaults still apply. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+- **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
+
+The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
+
+Escape, the close button or a click outside closes the panel. Actions accept only same-origin requests that carry `X-Parcela-Action`. Any script on a `.localhost` page can use the menu's requests for every registered environment, as the menu does, so leave the script out of pages that load code you do not trust.
+
+## browse
+
+```text
+parcela browse TARGET...
+```
+
+Offers http(s) URLs, `file://` URLs or absolute file paths to the browsers showing this environment. Processes get it as `BROWSER`, through a shim at `bin/browser` in the runtime directory, so a mail preview, an OAuth helper or a `rails` command that opens a browser reaches the person instead of the machine running the server. It only runs inside an environment and starts nothing.
+
+Each `.localhost` page running the debug menu script shows a toast with an **Open** link for requests made from 15 seconds before the page loaded onward, once per tab. A URL on the environment's own host becomes a path, so it opens on the name the browser is using. A file opens at `/_parcela/files/ID/NAME`; page assets beside it (HTML, CSS, images, icons and fonts, but never dotfiles) resolve too, so relative links work. Opened files are served with a sandbox policy and never run scripts on the app's origin. Parcela keeps the last 20 requests per environment.
+
+What the environment opened, such as mail previews with sign-in links, is offered only on `.localhost` names. LAN, domain and Tailscale names do not serve `/_parcela/`.
 
 ## logs
 

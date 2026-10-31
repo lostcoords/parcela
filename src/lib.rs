@@ -11,6 +11,7 @@ pub mod http;
 pub mod inventory;
 pub mod lifecycle;
 pub mod logs;
+pub mod opens;
 pub mod owner;
 pub mod paint;
 pub mod ports;

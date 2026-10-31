@@ -18,6 +18,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+mod environment;
+
 pub const HOST: &str = "parcela-ui.localhost";
 
 #[derive(Default, Serialize)]
@@ -25,6 +27,8 @@ struct Snapshot {
     checked_at_unix_ms: Option<u128>,
     environments: Vec<Environment>,
     error: Option<String>,
+    #[serde(skip)]
+    rows: Vec<Value>,
 }
 #[derive(Serialize)]
 struct Environment {
@@ -109,6 +113,7 @@ impl Server {
         let stopped = Arc::new(AtomicBool::new(false));
         let snapshot = Arc::new(Mutex::new(Snapshot::default()));
         let state = state.to_owned();
+        let served_state = state.clone();
         let collecting = Arc::clone(&stopped);
         let collected = Arc::clone(&snapshot);
         // This thread never holds the proxy's registry, route locks or renewal loop.
@@ -129,6 +134,11 @@ impl Server {
                                 .map(Environment::from_row)
                                 .collect(),
                             error: None,
+                            rows: inventory
+                                .workspaces
+                                .into_iter()
+                                .chain(inventory.unregistered)
+                                .collect(),
                         },
                         Err(error) => {
                             eprintln!("parcela: dashboard inventory unavailable: {error:#}");
@@ -153,13 +163,15 @@ impl Server {
                 }
             })?;
         let serving = Arc::clone(&stopped);
+        let actions = environment::Actions::default();
         let worker = thread::Builder::new()
             .name("parcela-dashboard".into())
             .spawn(move || {
                 while !serving.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
-                            let _ = serve(&mut stream, front_door, &snapshot);
+                            let _ =
+                                serve(&mut stream, &served_state, front_door, &snapshot, &actions);
                         }
                         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(20))
@@ -189,7 +201,13 @@ impl Drop for Server {
     }
 }
 
-fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapshot>) -> Result<()> {
+fn serve(
+    stream: &mut UnixStream,
+    state: &Path,
+    front_door: FrontDoor,
+    snapshot: &Mutex<Snapshot>,
+    actions: &environment::Actions,
+) -> Result<()> {
     stream.set_write_timeout(Some(Duration::from_millis(250)))?;
     let deadline = Instant::now() + Duration::from_millis(250);
     let mut bytes = Vec::new();
@@ -213,6 +231,10 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
     let mut host = None;
     let mut origin = None;
     let mut fetch_site = None;
+    let mut environment = None;
+    let mut hostname = None;
+    let mut acting = false;
+    let mut access = None;
     for line in lines.take_while(|line| !line.is_empty()) {
         let (name, value) = line.split_once(':').context("invalid dashboard header")?;
         match name.to_ascii_lowercase().as_str() {
@@ -225,6 +247,13 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
                 origin = Some(value.trim());
             }
             "sec-fetch-site" => fetch_site = Some(value.trim()),
+            "x-parcela-environment" => environment = Some(value.trim()),
+            "x-parcela-hostname" => hostname = Some(value.trim()),
+            "x-parcela-action" => acting = true,
+            "x-parcela-access" => {
+                ensure!(access.is_none(), "duplicate dashboard access");
+                access = Some(value.trim());
+            }
             _ => (),
         }
     }
@@ -235,7 +264,31 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
     let path = target.split('?').next().unwrap_or_default();
     let public_asset = path == "/widget.js";
     let foreign = origin.is_some_and(|origin| origin != front_door.url(HOST));
-    let (status, mime, body) = if host != Some(authority.as_str()) {
+    let mut policy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src https://*.localhost:*; frame-ancestors https://*.localhost:*; base-uri 'none'; form-action 'none'";
+    let (status, mime, body) = if let (Some(environment), Some(hostname), Some(path)) =
+        (environment, hostname, target.strip_prefix("/_parcela/"))
+    {
+        let response = environment::respond(
+            &environment::Request {
+                method,
+                target: path,
+                host,
+                origin,
+                acting,
+                local: access == Some("local"),
+                environment,
+                hostname,
+            },
+            state,
+            &front_door.url(HOST),
+            snapshot,
+            actions,
+        );
+        if let Some(response_policy) = response.policy {
+            policy = response_policy;
+        }
+        (response.status, response.mime, response.body)
+    } else if host != Some(authority.as_str()) {
         (403, "text/plain", b"Unknown dashboard host\n".to_vec())
     } else if method != "GET" && method != "HEAD" {
         (405, "text/plain", b"Read-only dashboard\n".to_vec())
@@ -267,7 +320,7 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
             "/widget.js" => (
                 200,
                 "text/javascript; charset=utf-8",
-                include_bytes!("dashboard/widget.js").to_vec(),
+                widget(&front_door.url(HOST)),
             ),
             "/api/status" => (
                 200,
@@ -281,15 +334,18 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
             _ => (404, "text/plain", b"No Parcela page here\n".to_vec()),
         }
     };
-    let policy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src https://*.localhost:*; frame-ancestors https://*.localhost:*; base-uri 'none'; form-action 'none'";
     write!(
         stream,
         "HTTP/1.1 {status} {}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: {policy}\r\nConnection: close\r\n\r\n",
         match status {
             200 => "OK",
+            202 => "Accepted",
+            400 => "Bad Request",
             403 => "Forbidden",
             404 => "Not Found",
             405 => "Method Not Allowed",
+            409 => "Conflict",
+            500 => "Internal Server Error",
             _ => "Error",
         },
         body.len()
@@ -298,6 +354,15 @@ fn serve(stream: &mut UnixStream, front_door: FrontDoor, snapshot: &Mutex<Snapsh
         stream.write_all(&body)?;
     }
     Ok(())
+}
+
+fn widget(dashboard: &str) -> Vec<u8> {
+    include_str!("dashboard/widget.js")
+        .replace(
+            "'__PARCELA_DASHBOARD__'",
+            &Value::from(dashboard).to_string(),
+        )
+        .into_bytes()
 }
 
 #[cfg(test)]
@@ -327,8 +392,10 @@ mod tests {
         let worker = thread::spawn(move || {
             serve(
                 &mut server,
+                Path::new("/nonexistent"),
                 FrontDoor::on(1443),
                 &Mutex::new(Snapshot::default()),
+                &environment::Actions::default(),
             )
         });
         client.write_all(request.as_bytes()).unwrap();

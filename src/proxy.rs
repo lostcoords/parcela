@@ -261,6 +261,10 @@ fn launch_locked(
         .stdout(log.try_clone()?)
         .stderr(log);
     command.args(["--port", &front_door.https.to_string()]);
+    // Sharing is per run: the long-lived proxy, and what its pages start, never inherit one.
+    for name in crate::share::VARIABLES {
+        command.env_remove(name);
+    }
     // SAFETY: setsid is async-signal-safe and touches no memory; a new session keeps terminal
     // signals for the caller away from the daemon.
     unsafe {

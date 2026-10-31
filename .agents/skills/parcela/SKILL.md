@@ -23,7 +23,8 @@ parcela --path "$CHECKOUT" status --current
 
 - `ls` returns `.workspaces`, each with `.workspace.id`, `.workspace.source`, `.workspace.role` and live status. Inside a project it also returns `.unregistered`: worktrees never started, with the URL `up` would give them. Listing registers nothing.
 - `status` returns the overview envelope, with `.workspaces` and `.unregistered`. `status --current` or `--workspace ENV status` returns one environment's `.workspace`, `.url`, `.state` and `.processes`.
-- `ui` prints the local dashboard URL when the proxy is running. It starts nothing and opens no browser. The dashboard and optional `/widget.js` offer read-only status and navigation on loopback.
+- `ui` prints the local dashboard URL when the proxy is running. It starts nothing and opens no browser. The dashboard offers status and navigation on loopback.
+- Processes get `BROWSER` as `parcela browse`. A `.localhost` page that loads `/_parcela/widget.js` from the app's own host gets a debug menu: what the app opened, every environment, start/stop/restart of registered ones, and process logs. Shared names never serve it. Adding that script tag to a project is a project change; propose it.
 - `doctor` returns `{ready, checks: [{name, ok, detail, fix}], notes}` and exits 1 until ready. Report failed checks and their `fix`. Do not apply a fix that installs tools or changes trust without authorization.
 
 From another directory, target an environment by its ID: `parcela --workspace "$ENVIRONMENT_ID" status`. `--workspace` also takes the environment's URL or hostname, such as `signup-shop`; prefer the ID in scripts. `--path` and `--workspace` conflict. Keep any `--state-dir` on every call.

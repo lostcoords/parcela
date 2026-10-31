@@ -19,14 +19,24 @@ fn upgrade(relative: &str, args: &[&str]) -> Output {
     .unwrap();
     std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o755)).unwrap();
     let path = format!("{}:/usr/bin:/bin", fake.display());
-    Command::new(&exe)
-        .arg("upgrade")
-        .args(args)
-        .env("HOME", &home)
-        .env("PATH", path)
-        .env_remove("CARGO_HOME")
-        .output()
-        .unwrap()
+    // Another test thread's fork can briefly hold the fresh copy open for writing, and Linux then
+    // refuses to run it.
+    for _ in 0..50 {
+        match Command::new(&exe)
+            .arg("upgrade")
+            .args(args)
+            .env("HOME", &home)
+            .env("PATH", &path)
+            .env_remove("CARGO_HOME")
+            .output()
+        {
+            Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            output => return output.unwrap(),
+        }
+    }
+    panic!("the copied parcela stayed busy");
 }
 
 fn text(output: &Output) -> String {

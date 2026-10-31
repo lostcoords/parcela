@@ -99,6 +99,13 @@ pub fn write_json(path: &Path, value: &impl serde::Serialize) -> Result<()> {
     write_bytes(path, &serde_json::to_vec_pretty(value)?)
 }
 pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    write_mode(path, bytes, 0o600)
+}
+/// A private script, executable from the moment it appears at `path`.
+pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<()> {
+    write_mode(path, bytes, 0o700)
+}
+fn write_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {
     let parent = path.parent().context("file needs a parent directory")?;
     directory(parent)?;
     if path.exists() {
@@ -109,7 +116,7 @@ pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .mode(0o600)
+            .mode(mode)
             .open(&temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;

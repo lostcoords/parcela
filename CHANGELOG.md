@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.7.6 - 2026-10-31
+
+### Added
+
+- Processes get `BROWSER` pointing at `parcela browse`, so tools that open a browser (letter_opener, Python's `webbrowser`, `xdg-open` where it honors `BROWSER`) hand the URL or file to Parcela instead of a browser on the machine running the server. Pages on `.localhost` names that include the debug menu offer it in a toast; LAN and domain names never serve what the environment opened. URLs on the environment's own host open as paths on that host; opened files and the page assets beside them, never dotfiles, are served without scripts.
+- A debug menu for development pages. Include `<script defer src="/_parcela/widget.js"></script>` and a `parcela` badge appears in the top-right corner on `.localhost` names. **Opened** lists what the app opened, with per-item removal and Clear all, kept per browser. **Environments** lists every project and worktree, stopped ones included, with Open, Start, Stop, Restart and Logs for registered ones. Actions never apply share settings from the proxy's environment. **Logs** tails each process with highlighting, a line filter and wrapping. The panel expands to the window or opens as a full page at `/_parcela/`.
+
+### Changed
+
+- Proxy protocol 5 routes `/_parcela/` on `.localhost` app hosts to Parcela; LAN and domain names leave it to the app. The proxy refreshes on the next regular command.
+
+### Fixed
+
+- The widget survives libraries such as Turbo that replace `<body>` without rerunning head scripts.
+- `parcela logs` and the menu's Logs read only the end of a large log instead of the whole file.
+- The proxy starts without the `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN` settings of the shell that started it.
 
 ## 0.7.5 - 2026-10-28
 

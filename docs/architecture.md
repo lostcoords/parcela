@@ -63,11 +63,13 @@ Interactive installed CLIs check GitHub's latest stable release at most once a d
 
 ## Browser inventory
 
-The shared proxy also owns a read-only dashboard at `parcela-ui.localhost`, on its existing loopback HTTPS listener. That hostname is reserved when adopting service names. Caddy forwards dashboard requests to a private Unix socket; the dashboard adds no public TCP listener and never exposes Caddy's admin API or owner control sockets.
+The shared proxy also owns a dashboard at `parcela-ui.localhost`, on its existing loopback HTTPS listener. That hostname is reserved when adopting service names. Caddy forwards dashboard requests to a private Unix socket; the dashboard adds no public TCP listener and never exposes Caddy's admin API or owner control sockets.
 
 An inventory worker reads the registry and probes live owners outside the route-renewal loop. Owner probes share a short budget; missed replies appear as unknown. A separate worker serves a cached, allowlisted browser response with a timestamp. It omits saved sessions, owner credentials, commands, and environment variables. Checkout discovery remains read-only. The CLI overview and dashboard share the inventory collector.
 
-The dashboard can embed a ready app in an iframe, preserving the app's origin and response policy. An optional script supplied by the app opens the dashboard in a side panel. Parcela does not transform proxied application HTML or relax its CSP. App framing policies may require direct navigation instead. Dashboard routes exist only on the loopback HTTPS server, never the LAN or domain servers; Tailscale still reaches app backends directly.
+The dashboard can embed a ready app in an iframe, preserving the app's origin and response policy. An optional script supplied by the app opens the dashboard in a side panel. Parcela does not transform proxied application HTML or relax its CSP. App framing policies may require direct navigation instead. Dashboard routes, including every app's `/_parcela/*`, exist only on the loopback HTTPS server, never the LAN or domain servers; on those names the path is the app's own. Tailscale still reaches app backends directly.
+
+Every loopback app route also sends `/_parcela/*` to the dashboard socket, with Caddy setting `X-Parcela-Environment`, `X-Parcela-Hostname` and `X-Parcela-Access: local`. Caddy always sets them, and the dashboard name deletes them, so a client cannot claim an environment; the dashboard refuses app requests without `local` access. That path serves the debug menu script; its own environment's opened URLs, the opened files and the page assets beside them, never dotfiles; the inventory and process logs of registered environments; and start, stop and restart, which the proxy runs as background `parcela --workspace ID` CLI commands. Actions name registered environments only, so a page never starts a checkout nobody has started, and they run without the share settings in the proxy's environment, so a page never shares what it starts. Actions also require a same-origin request with `X-Parcela-Action`, so a cross-site page cannot trigger them; any page served on a loopback name can use them for every environment. `parcela browse` writes those requests to `opens.json` in the runtime directory under a lock, keeping the last 20.
 
 ## Sharing for one run
 
@@ -117,7 +119,8 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |
 | `snapshots` | Saves declared environment data with SQLite backups and checksums; restores only to absent data directories. |
 | `private`, `sockets` | Owns private files, locks, and socket placement. |
-| `inventory`, `dashboard` | Collects read-only environment status and serves the local browser dashboard and switcher. |
+| `inventory`, `dashboard` | Collects read-only environment status and serves the local browser dashboard, switcher and app debug menu. |
+| `opens` | Records what processes hand to `BROWSER` and resolves opened files and their page assets. |
 | `src/cli` | Parses arguments, selects commands, and renders output. |
 
 ## Privileged changes

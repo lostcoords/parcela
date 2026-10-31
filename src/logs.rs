@@ -69,11 +69,30 @@ pub fn names(directory: &Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// The last `count` lines `name` wrote.
+/// The last `count` lines `name` wrote, reading back from the end only as far as they reach.
 pub fn tail(directory: &Path, name: &str, count: usize) -> Result<Vec<String>> {
     ensure!(valid(name), "invalid process name {name:?}");
-    let mut bytes = Vec::new();
-    read_private(&directory.join(format!("{name}.log")))?.read_to_end(&mut bytes)?;
+    let mut file = read_private(&directory.join(format!("{name}.log")))?;
+    let length = file.metadata()?.len();
+    let mut window = 64 * 1024u64;
+    let bytes = loop {
+        let start = length.saturating_sub(window);
+        file.seek(SeekFrom::Start(start))?;
+        let mut bytes = Vec::new();
+        file.by_ref().take(length - start).read_to_end(&mut bytes)?;
+        if start == 0 {
+            break bytes;
+        }
+        // More newlines than lines wanted: the first, possibly cut, line is not among them.
+        if bytes.iter().filter(|byte| **byte == b'\n').count() > count {
+            let first = bytes
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(0, |end| end + 1);
+            break bytes.split_off(first);
+        }
+        window *= 4;
+    };
     let lines: Vec<String> = String::from_utf8_lossy(&bytes).lines().map(clean).collect();
     Ok(lines[lines.len().saturating_sub(count)..].to_vec())
 }
@@ -291,6 +310,30 @@ mod tests {
         assert_eq!(clean("\x1b[\r\x08mspoof"), "mspoof");
         assert_eq!(clean("a\x1b7b\u{9b}2Jc"), "ab2Jc");
         assert_eq!(clean("\x1bPq#0\x1b\\d"), "d");
+    }
+
+    #[test]
+    fn a_tail_reads_back_only_as_far_as_its_lines() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let directory = temp.path();
+        let mut web = open(directory, "web").unwrap();
+        for line in 0..20_000 {
+            writeln!(web, "line {line:05} {}", "x".repeat(20)).unwrap();
+        }
+        write!(web, "partial").unwrap();
+        let x = "x".repeat(20);
+        assert_eq!(
+            tail(directory, "web", 3).unwrap(),
+            [
+                format!("line 19998 {x}"),
+                format!("line 19999 {x}"),
+                "partial".into()
+            ]
+        );
+        let many = tail(directory, "web", 5000).unwrap();
+        assert_eq!(many.len(), 5000);
+        assert_eq!(many[0], format!("line 15001 {x}"));
+        assert_eq!(tail(directory, "web", 30_000).unwrap().len(), 20_001);
     }
 
     #[test]

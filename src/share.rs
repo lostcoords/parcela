@@ -81,6 +81,13 @@ const PREFIX: &str = "parcela-";
 const TAILNET_PORTS: [u16; 9] = [443, 8443, 8444, 8445, 8446, 8447, 8448, 8449, 8450];
 /// Where Caddy answers `--domain` names, so a front proxy can be configured once.
 pub const DOMAIN_PORT: u16 = 1480;
+/// Environment settings that share a run. Processes that outlive or act beyond one run remove them.
+pub const VARIABLES: [&str; 4] = [
+    "PARCELA_LAN",
+    "PARCELA_TAILSCALE",
+    "PARCELA_DOMAIN",
+    "PARCELA_DOMAIN_PORT",
+];
 
 impl Share {
     /// Check the request can be met now and choose addresses and ports for `endpoints`.

@@ -85,6 +85,13 @@ pub fn environment(
         ("PARCELA_HOSTNAME".into(), workspace.hostname.clone()),
         ("PARCELA_SHARE_HOSTS".into(), share.hosts(endpoints)),
         ("HOST".into(), "127.0.0.1".into()),
+        (
+            "BROWSER".into(),
+            browser(runtime)
+                .to_str()
+                .context("non-UTF-8 runtime path")?
+                .into(),
+        ),
     ]);
     if manifest.services.is_empty() {
         context.remove("PARCELA_URL");
@@ -161,10 +168,25 @@ fn runtime(registry: &Registry, workspace: &Workspace) -> Result<PathBuf> {
     private::directory(&registry.state_path().join("environments"))?;
     let path = registry.runtime_path(workspace);
     private::directory(&path)?;
-    for name in ["data", "tmp", "log", "cache"] {
+    for name in ["data", "tmp", "log", "cache", "bin"] {
         private::directory(&path.join(name))?;
     }
+    let parcela = std::env::current_exe()?;
+    let parcela = parcela.to_str().context("non-UTF-8 Parcela path")?;
+    let shim = browser(&path);
+    let script = format!(
+        "#!/bin/sh\nexec '{}' browse \"$@\"\n",
+        parcela.replace('\'', "'\\''")
+    );
+    // Running processes may call the shim at any moment, so it is replaced only when it changes.
+    if std::fs::read(&shim).ok().as_deref() != Some(script.as_bytes()) {
+        private::write_executable(&shim, script.as_bytes())?;
+    }
     Ok(path)
+}
+/// The `BROWSER` every process sees: one executable path, as Python's `webbrowser` requires.
+fn browser(runtime: &std::path::Path) -> PathBuf {
+    runtime.join("bin").join("browser")
 }
 
 #[derive(Clone, Copy)]
