@@ -589,12 +589,13 @@ fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
         let control = Server::bind(&path).unwrap();
         let socket = control_socket(&path);
         let control_identity = private::Identity::read(&socket).unwrap();
-        drop(control);
-        // Bound while the original still exists, so the filesystem cannot reuse its inode.
+        // Bound while the original still exists, so the filesystem cannot reuse its inode;
+        // dropping the server removes the original.
         let replacement = (case == "replaced-socket").then(|| {
             let aside = socket.with_extension("replacement");
             (UnixListener::bind(&aside).unwrap(), aside)
         });
+        drop(control);
         // Reboot removes the temporary control socket, but leaves the persistent lock file.
         if socket.exists() {
             fs::remove_file(&socket).unwrap();
