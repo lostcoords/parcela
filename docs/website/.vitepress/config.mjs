@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress';
+import tailwindcss from '@tailwindcss/vite';
 import { slug } from 'github-slugger';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,8 @@ export default defineConfig({
   srcDir,
   // `parcela up --lan` or `--tailscale` lists the names other devices use, for Vite's host check.
   vite: {
-    plugins: [watchSources],
+    plugins: [watchSources, tailwindcss()],
+    resolve: { alias: { '@': resolve(project, 'src') } },
     server: { allowedHosts: (process.env.PARCELA_SHARE_HOSTS ?? '').split(',').filter(Boolean) },
   },
   base,
@@ -28,13 +30,14 @@ export default defineConfig({
   cleanUrls: true,
   lang: 'en',
   title: 'Parcela',
-  description: 'Deployable dev environments for your AI agents.',
+  description: 'Isolated dev environments for your AI agents.',
   sitemap: { hostname: site },
   head: [
+    ['meta', { name: 'darkreader-lock' }],
     ['link', { rel: 'icon', href: `${base}assets/logo.svg?v=picket-a` }],
     ['link', { rel: 'apple-touch-icon', href: `${base}apple-touch-icon.png` }],
     ['meta', { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' }],
-    ['meta', { name: 'theme-color', content: '#181c20', media: '(prefers-color-scheme: dark)' }],
+    ['meta', { name: 'theme-color', content: '#171717', media: '(prefers-color-scheme: dark)' }],
   ],
   // Each page's title and description come from its source (see content.mjs).
   transformPageData(pageData) {
@@ -87,6 +90,10 @@ export default defineConfig({
   },
   themeConfig: {
     logo: '/assets/logo.svg',
+    release: {
+      tag: 'v0.7.6',
+      link: 'https://github.com/lostcoords/parcela/releases/tag/v0.7.6',
+    },
     nav: [
       { text: 'Docs', link: route('docs') },
       { text: 'Get started', link: route('getting-started') },

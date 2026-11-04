@@ -1,161 +1,212 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useHomeMotion } from './useHomeMotion.js';
 
-// Land plots behind the home hero, laid out from the page itself: fences fall on the content
-// edges and the gap between the demo columns, and stop short of every text block and widget.
-const root = ref(null);
+const moving = useHomeMotion();
+
 const field = ref(null);
+const mesh = ref(null);
+let context;
+let hero;
 let observer;
 let frame = 0;
+let width = 0;
+let height = 0;
+let ratio = 1;
+let active = false;
+let targetX = -1000;
+let targetY = -1000;
+let pointerX = targetX;
+let pointerY = targetY;
 
-const pad = 22;
-const feather = 12;
+const spacing = 28;
+const bulgeRadius = 280;
+const revealRadius = 500;
 
-// The text of the headline, without the rotator's hidden names (they are wider than the shown one).
-function headline() {
-  const heading = document.querySelector('.VPHero .heading');
-  if (!heading) return [];
-  const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
-  const found = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!node.textContent.trim() || node.parentElement.closest('.rotator, .sr')) continue;
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    found.push(...range.getClientRects());
+function draw() {
+  frame = 0;
+  if (!active || !context) return;
+
+  pointerX += (targetX - pointerX) * 0.32;
+  pointerY += (targetY - pointerY) * 0.32;
+  field.value.style.setProperty('--pointer-x', `${pointerX}px`);
+  field.value.style.setProperty('--pointer-y', `${pointerY}px`);
+
+  context.clearRect(0, 0, width, height);
+  context.save();
+  context.beginPath();
+  context.arc(pointerX, pointerY, revealRadius, 0, Math.PI * 2);
+  context.clip();
+
+  const origin = spacing / 2;
+  const firstX = Math.floor((pointerX - revealRadius - origin) / spacing) * spacing + origin;
+  const lastX = Math.ceil((pointerX + revealRadius - origin) / spacing) * spacing + origin;
+  const firstY = Math.floor((pointerY - revealRadius - origin) / spacing) * spacing + origin;
+  const lastY = Math.ceil((pointerY + revealRadius - origin) / spacing) * spacing + origin;
+
+  function point(x, y) {
+    const dx = x - pointerX;
+    const dy = y - pointerY;
+    const distance = Math.hypot(dx, dy);
+    const scaled = distance / bulgeRadius;
+    const lift = Math.exp(-Math.pow(scaled / 0.55, 2));
+    const push = 64 * scaled * lift;
+    const direction = distance ? push / distance : 0;
+    return {
+      x: x + dx * direction,
+      y: y + dy * direction - lift * 12,
+      height: lift,
+    };
   }
-  return found;
+
+  context.fillStyle = getComputedStyle(field.value).color;
+  for (let x = firstX; x <= lastX; x += spacing) {
+    for (let y = firstY; y <= lastY; y += spacing) {
+      const dot = point(x, y);
+      context.globalAlpha = 0.64 + dot.height * 0.36;
+      context.beginPath();
+      context.arc(dot.x, dot.y, 1 + dot.height * 1.2, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+  context.restore();
+
+  if (Math.abs(targetX - pointerX) > 0.5 || Math.abs(targetY - pointerY) > 0.5) {
+    frame = requestAnimationFrame(draw);
+  }
 }
 
-function rects(selector, tight) {
-  return [...document.querySelectorAll(selector)].flatMap((element) => {
-    if (!tight) return [element.getBoundingClientRect()];
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    return [...range.getClientRects()];
-  });
+function scheduleDraw() {
+  if (!frame) frame = requestAnimationFrame(draw);
 }
 
-function measure() {
-  cancelAnimationFrame(frame);
-  frame = requestAnimationFrame(() => {
-    const box = root.value?.getBoundingClientRect();
-    const terminal = document.querySelector('.demo .terminal')?.getBoundingClientRect();
-    const grid = document.querySelector('.demo .zone')?.getBoundingClientRect();
-    if (!box || !terminal || !grid) return;
-    const left = terminal.left - box.left;
-    const right = Math.max(terminal.right, grid.right) - box.left;
-    const across = right - left > 700 ? 8 : 4;
-    const size = (right - left) / across;
-    const top = terminal.top - box.top;
-    // The field runs on under the landing sections and fades out where the Markdown content,
-    // starting with Install, begins.
-    const next = document.querySelector('.VPHome .vp-doc h2')?.getBoundingClientRect();
-    const end = next ? next.top - 24 : Math.max(terminal.bottom, grid.bottom) + 72;
-    const height = Math.round(end - box.top);
-    const xs = [];
-    for (let x = left - Math.ceil(left / size) * size; x <= box.width + 1; x += size) xs.push(x);
-    const ys = [];
-    for (let y = top - Math.ceil(top / size) * size; y <= height + 1; y += size) ys.push(y);
-    // Every text block and widget, from the hero down, keeps the same clear margin. In the sharing
-    // diagram only the hub, devices and wire labels clear the field, so fences run between them.
-    const holes = [
-      ...headline(),
-      ...rects('.VPHero .heading .rotator', false),
-      ...rects('.VPHero .tagline', true),
-      ...rects('.VPHero .install, .VPHero .agent-install a', false),
-      ...rects('.VPHero .actions .action', false),
-      terminal,
-      grid,
-      ...rects('.why h2, .share h2', true),
-      ...rects('.why .lead, .share .lead', true),
-      ...rects('.why .panel, .share .hub, .share .dev, .share .wire code', false),
-    ].filter((rect) => rect.width && rect.height).map((rect) => ({
-      x: rect.left - box.left - pad,
-      y: rect.top - box.top - pad,
-      w: rect.width + pad * 2,
-      h: rect.height + pad * 2,
-    }));
-    field.value = { width: box.width, height, xs, ys, size, left, top, holes };
-  });
+function move(event) {
+  if (!moving.value) return;
+  if (event.pointerType !== 'mouse') return;
+  const bounds = field.value.getBoundingClientRect();
+  const x = event.clientX - bounds.left;
+  const y = event.clientY - bounds.top;
+  if (!active) {
+    pointerX = x;
+    pointerY = y;
+  }
+  targetX = x;
+  targetY = y;
+  active = true;
+  field.value?.classList.add('active');
+  scheduleDraw();
+}
+
+function leave() {
+  active = false;
+  field.value?.classList.remove('active');
+}
+
+function resize() {
+  const bounds = hero.getBoundingClientRect();
+  const home = field.value.parentElement.getBoundingClientRect();
+  width = bounds.width;
+  height = bounds.height;
+  field.value.style.top = `${bounds.top - home.top}px`;
+  field.value.style.height = `${height}px`;
+  ratio = Math.min(window.devicePixelRatio || 1, 2);
+  mesh.value.width = Math.round(width * ratio);
+  mesh.value.height = Math.round(height * ratio);
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  scheduleDraw();
 }
 
 onMounted(() => {
-  measure();
-  observer = new ResizeObserver(measure);
-  observer.observe(document.body);
-  const rotator = document.querySelector('.VPHero .heading .rotator');
-  if (rotator) observer.observe(rotator);
-  document.fonts?.ready.then(measure);
+  hero = field.value.parentElement.querySelector('.VPHero');
+  context = mesh.value.getContext('2d');
+  observer = new ResizeObserver(resize);
+  observer.observe(hero);
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  hero.addEventListener('pointermove', move, { passive: true });
+  hero.addEventListener('pointerleave', leave);
 });
 
 onBeforeUnmount(() => {
-  observer?.disconnect();
   cancelAnimationFrame(frame);
+  observer?.disconnect();
+  hero?.removeEventListener('pointermove', move);
+  hero?.removeEventListener('pointerleave', leave);
+  window.removeEventListener('resize', resize);
 });
 </script>
 
 <template>
-  <div ref="root" class="background" :style="field ? { height: `${field.height}px` } : null" aria-hidden="true">
-    <svg v-if="field" :width="field.width" :height="field.height">
-      <defs>
-        <!-- Fences and dots fade out around each hole instead of stopping at a hard edge. -->
-        <filter id="parcela-plots-feather" x="-10%" y="-10%" width="120%" height="120%">
-          <feGaussianBlur :stdDeviation="feather" />
-        </filter>
-        <mask id="parcela-plots-mask" maskUnits="userSpaceOnUse" x="0" y="0" :width="field.width" :height="field.height">
-          <rect :width="field.width" :height="field.height" fill="#fff" />
-          <g filter="url(#parcela-plots-feather)">
-            <rect v-for="(hole, i) in field.holes" :key="i" :x="hole.x" :y="hole.y" :width="hole.w" :height="hole.h" rx="18" fill="#000" />
-          </g>
-        </mask>
-        <pattern
-          id="parcela-plots-dots"
-          patternUnits="userSpaceOnUse"
-          :width="field.size / 8"
-          :height="field.size / 8"
-          :x="field.left + field.size / 16"
-          :y="field.top + field.size / 16"
-        >
-          <circle :cx="field.size / 16" :cy="field.size / 16" r="1" class="dot" />
-        </pattern>
-      </defs>
-      <g mask="url(#parcela-plots-mask)">
-        <rect :width="field.width" :height="field.height" fill="url(#parcela-plots-dots)" />
-        <line v-for="x in field.xs" :key="`x${x}`" :x1="x" :x2="x" y1="0" :y2="field.height" class="fence" />
-        <line v-for="y in field.ys" :key="`y${y}`" x1="0" :x2="field.width" :y1="y" :y2="y" class="fence" />
-      </g>
-    </svg>
+  <div ref="field" class="background" :style="{ '--reveal-radius': `${revealRadius}px` }" aria-hidden="true">
+    <canvas ref="mesh" class="mesh" />
   </div>
 </template>
 
 <style scoped>
-/* Faint on purpose: it frames the hero without competing with it. */
 .background {
   position: absolute;
   z-index: -1;
   top: 0;
-  left: 0;
   right: 0;
-  height: 1300px;
+  left: 0;
+  height: 0;
   overflow: hidden;
   pointer-events: none;
-  opacity: 0.6;
-  /* It starts right under the nav bar, so only its bottom edge fades. */
-  -webkit-mask-image: linear-gradient(#000 calc(100% - 160px), transparent);
-  mask-image: linear-gradient(#000 calc(100% - 160px), transparent);
+  color: var(--hero-dot);
+  --pointer-x: -1000px;
+  --pointer-y: -1000px;
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 100px), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 100px), transparent);
 }
 
-svg {
-  display: block;
+.background::before {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--hero-dot) 1px, transparent 1.25px);
+  background-size: 28px 28px;
+  content: '';
+  opacity: 0.16;
 }
 
-.fence {
-  stroke: var(--parcela-bg-mark);
-  stroke-width: 1;
-  shape-rendering: crispEdges;
+.mesh {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 180ms ease;
+  -webkit-mask-image: radial-gradient(
+    circle var(--reveal-radius) at var(--pointer-x) var(--pointer-y),
+    #000 0%,
+    rgb(0 0 0 / 0.72) 48%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle var(--reveal-radius) at var(--pointer-x) var(--pointer-y),
+    #000 0%,
+    rgb(0 0 0 / 0.72) 48%,
+    transparent 100%
+  );
 }
 
-.dot {
-  fill: var(--parcela-bg-mark);
+.background.active .mesh {
+  opacity: 0.92;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .background {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .background::before {
+    opacity: 0.08;
+  }
+
+  .mesh {
+    display: none;
+  }
 }
 </style>
