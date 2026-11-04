@@ -1,139 +1,192 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { withBase } from 'vitepress';
+import { ArrowRight, Plus } from '@lucide/vue';
+import { Button } from '@/components/ui/button';
 import InstallCommand from './InstallCommand.vue';
+import SectionHeading from './SectionHeading.vue';
 
-// The closing call to action above the footer: the install command and the mascot.
-const root = ref(null);
-const shown = ref(true);
-let observer;
-
-onMounted(() => {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  shown.value = false;
-  observer = new IntersectionObserver(([entry]) => {
-    if (!entry.isIntersecting) return;
-    shown.value = true;
-    observer.disconnect();
-  }, { threshold: 0.35 });
-  observer.observe(root.value);
-});
-
-onBeforeUnmount(() => {
-  observer?.disconnect();
-});
+const questions = [
+  {
+    question: 'Does it work with my project?',
+    answer:
+      'Parcela runs the commands you put in parcela.yaml. Use it with native web servers, workers, and setup scripts. It supports macOS and Linux, with jj workspaces or Git worktrees.',
+  },
+  {
+    question: 'How separate are the environments?',
+    answer:
+      'Each checkout gets its own processes, ports, and URLs. Your project configuration decides how databases, queues, and uploads are separated. Services run as native processes on your machine.',
+  },
+  {
+    question: 'How does local HTTPS work?',
+    answer:
+      'Caddy handles routing and TLS. The default address uses .localhost on port 1443. Your first terminal up offers to trust the local CA behind the system password prompt. Scripts and agents never change system trust.',
+  },
+  {
+    question: 'What happens when I stop an environment?',
+    answer:
+      "parcela down stops the environment's processes and removes its routes. Source and data are retained. LAN and Tailscale sharing stop with that run.",
+  },
+];
 </script>
 
 <template>
-  <section ref="root" class="cta" :class="{ shown }">
-    <div class="inner">
-      <div class="pitch">
-        <h2>Give every agent its own running app</h2>
-        <p>Install Parcela, describe your app once, and every worktree runs at its own HTTPS URL.</p>
-        <InstallCommand class="install" />
-        <a class="go" :href="withBase('/docs/getting-started/')">Get started</a>
+  <div class="home-closing">
+    <section class="home-section questions" aria-labelledby="faq">
+      <div class="questions-intro">
+        <SectionHeading id="faq">Common questions</SectionHeading>
+        <div class="section-actions">
+          <Button as-child variant="secondary"><a :href="withBase('/docs/faq/')">Read the FAQ <ArrowRight aria-hidden="true" /></a></Button>
+        </div>
       </div>
-      <img class="mascot" :src="withBase('/assets/logo.svg')" alt="" width="200" height="200" aria-hidden="true" />
-    </div>
-  </section>
+      <div class="question-list">
+        <details v-for="item in questions" :key="item.question">
+          <summary>{{ item.question }}<Plus aria-hidden="true" /></summary>
+          <p>{{ item.answer }}</p>
+        </details>
+      </div>
+    </section>
+    <section class="home-section cta" aria-labelledby="install">
+      <div class="cta-inner">
+        <div class="pitch">
+          <div class="mascot-reveal"><img class="mascot" :src="withBase('/assets/logo.svg')" alt="" width="120" height="120" /></div>
+          <SectionHeading id="install">Install Parcela</SectionHeading>
+          <p class="cta-lead">Install the CLI, then run <code class="inline-code">parcela init</code> in your project.</p>
+          <InstallCommand class="install" />
+          <div class="cta-actions">
+            <Button as-child size="lg" class="home-start">
+              <a :href="withBase('/docs/getting-started/')">Get started <ArrowRight aria-hidden="true" /></a>
+            </Button>
+            <Button as-child variant="secondary" size="lg"><a :href="withBase('/docs/')">Read the docs</a></Button>
+          </div>
+          <p class="project-note">Experimental · macOS &amp; Linux · AGPL-3.0-only</p>
+          <p class="telemetry-note">
+            Anonymous command telemetry is on by default.
+            <a :href="withBase('/docs/telemetry/')">See what is collected and how to turn it off.</a>
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
 </template>
 
 <style scoped>
-/* A full-width blue band that runs straight into the footer. */
-.cta {
-  order: 1;
-  margin-top: 112px;
-  background: #0877b3;
-  color: #ffffff;
+.home-closing {
+  width: 100%;
 }
-
-.inner {
+.questions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 72px;
+}
+.question-list {
+  margin-top: -6px;
+}
+details {
+  box-shadow: inset 0 -1px var(--border);
+}
+summary {
+  display: flex;
   align-items: center;
-  box-sizing: border-box;
-  margin: 0 auto;
-  padding: 64px 24px;
-  max-width: 1280px;
-}
-
-@media (min-width: 640px) {
-  .inner {
-    padding: 72px 48px;
-  }
-}
-
-@media (min-width: 960px) {
-  .inner {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 64px;
-    padding: 80px 64px;
-  }
-}
-
-h2 {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  text-wrap: balance;
-}
-
-@media (min-width: 960px) {
-  h2 {
-    font-size: 44px;
-  }
-}
-
-p {
-  margin: 14px 0 0;
-  max-width: 560px;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 18px;
-  line-height: 1.55;
-}
-
-.install {
-  margin-top: 24px;
-  max-width: 600px;
-}
-
-.go {
-  display: inline-block;
-  margin-top: 24px;
-  padding: 0 28px;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #0868a0;
-  font-size: 17px;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 0;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 48px;
-  text-decoration: none;
-  transition: box-shadow 0.2s ease;
+  list-style: none;
+  cursor: pointer;
 }
-
-.go:hover {
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.3);
+summary::-webkit-details-marker {
+  display: none;
 }
-
+summary svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--subtle-foreground);
+  transition: transform 0.2s ease;
+}
+details[open] summary svg {
+  transform: rotate(45deg);
+}
+details > p {
+  margin: -6px 40px 22px 0;
+  color: var(--muted-foreground);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.cta-inner {
+  padding: 24px 0 0;
+  text-align: center;
+}
+.pitch {
+  max-width: 620px;
+  margin: 0 auto;
+}
+.mascot-reveal {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
 .mascot {
-  justify-self: center;
-  width: 200px;
-  height: 200px;
+  width: 120px;
+  height: 120px;
   transform-origin: 50% 90%;
 }
-
-.shown .mascot {
-  animation: hop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both, sway 4s ease-in-out 0.8s infinite;
+.cta-lead {
+  margin: 14px 0 0;
+  color: var(--muted-foreground);
+  font-size: 17px;
 }
-
-@keyframes hop {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: none; }
+.cta .install {
+  max-width: 480px;
+  margin: 32px auto 0;
 }
-
+.cta-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  margin-top: 24px;
+}
+.pitch > .project-note {
+  margin: 28px 0 0;
+  color: var(--subtle-foreground);
+  font-size: 13px;
+}
+.pitch > .telemetry-note {
+  margin: 6px 0 0;
+  color: var(--subtle-foreground);
+  font-size: 12px;
+}
+.telemetry-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 819px) {
+  .questions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+@media (max-width: 699px) {
+  .cta-inner {
+    padding: 8px 0 0;
+  }
+  .mascot {
+    width: 96px;
+    height: 96px;
+  }
+  .install :deep(code) {
+    padding: 0 42px 0 12px;
+    font-size: clamp(9px, 2.5vw, 12px);
+    letter-spacing: -0.03em;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mascot { animation: sway 4s ease-in-out 0.8s infinite; }
+}
 @keyframes sway {
   0%, 70%, 100% { rotate: 0deg; }
   78% { rotate: -6deg; }
