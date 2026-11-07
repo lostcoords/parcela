@@ -24,6 +24,7 @@
 - `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
 - Errors and notices show the command to run in cyan.
 - `parcela config` lists keys in columns, with each unset key's default.
+- `parcela --help` lists everyday commands first, with shorter descriptions.
 - `ls`, `status` and the checkout view show paths under the home directory as `~/…`.
 - `parcela doctor` suggests `parcela open` when the environment already runs, and `parcela autostart` and `parcela relay` say how to turn them on.
 - Ready environments check their processes and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.

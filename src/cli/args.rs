@@ -63,6 +63,7 @@ impl Cli {
 #[derive(Subcommand)]
 pub enum Command {
     /// Create a parcela.yaml
+    #[command(display_order = 0)]
     Init {
         /// Project name
         #[arg(long)]
@@ -71,7 +72,8 @@ pub enum Command {
         #[arg(long)]
         command: Option<String>,
     },
-    /// Create and register a new Git worktree or jj workspace without starting it
+    /// Create a worktree or jj workspace without starting it
+    #[command(display_order = 12)]
     Create {
         /// Preview environment name
         name: String,
@@ -85,17 +87,20 @@ pub enum Command {
         #[arg(long)]
         from: Option<String>,
     },
-    /// Save declared data from a stopped environment to an immutable named snapshot
+    /// Save a stopped environment's data
+    #[command(display_order = 14)]
     Snapshot {
         /// New immutable snapshot name
         name: String,
     },
-    /// Restore a data snapshot into a fresh registered environment; never replaces data
+    /// Restore a data snapshot into a new environment
+    #[command(display_order = 15)]
     Restore {
         /// Snapshot to restore
         name: String,
     },
     /// Start the environment
+    #[command(display_order = 1)]
     Up {
         /// Environment name (default: the worktree name)
         #[arg(long, conflicts_with_all = ["primary", "workspace"])]
@@ -143,6 +148,7 @@ pub enum Command {
     },
     /// Stop the environment
     #[command(visible_alias = "stop")]
+    #[command(display_order = 2)]
     Down {
         /// Stop all of this project's environments
         #[arg(long, conflicts_with = "workspace")]
@@ -152,6 +158,7 @@ pub enum Command {
         all_projects: bool,
     },
     /// Restart the environment
+    #[command(display_order = 3)]
     Restart {
         /// Run in the background
         #[arg(short, long)]
@@ -191,23 +198,28 @@ pub enum Command {
         #[arg(long, hide = true)]
         launch_file: Option<PathBuf>,
     },
-    /// Show all environments and their URLs
+    /// Show environments and their URLs
+    #[command(display_order = 4)]
     Status {
         /// Show process details for the current checkout
         #[arg(long, conflicts_with = "workspace")]
         current: bool,
     },
     /// Print the local dashboard URL
+    #[command(display_order = 9)]
     Ui,
-    /// Offer URLs or files to the browsers showing this environment; processes get it as $BROWSER
+    /// Offer URLs or files to the environment's browsers ($BROWSER)
+    #[command(display_order = 16)]
     Browse {
         /// http(s) URLs, file:// URLs or absolute file paths
         #[arg(required = true)]
         targets: Vec<String>,
     },
     /// List environments
+    #[command(display_order = 5)]
     Ls,
     /// Show logs
+    #[command(display_order = 6)]
     Logs {
         /// Service name
         service: Option<String>,
@@ -219,43 +231,51 @@ pub enum Command {
         follow: bool,
     },
     /// Print the environment's URL
+    #[command(display_order = 7)]
     Url {
         /// Service name
         service: Option<String>,
     },
     /// Open the environment's URL in the browser
+    #[command(display_order = 8)]
     Open {
         /// Service name
         service: Option<String>,
     },
     /// Remove a stopped environment
+    #[command(display_order = 13)]
     Rm {
         /// Remove environments whose checkout is gone
         #[arg(long, conflicts_with = "workspace")]
         prune: bool,
     },
     /// Check the setup
+    #[command(display_order = 17)]
     Doctor {
         /// Caddy binary to probe instead of caddy on PATH.
         #[arg(long, hide = true)]
         caddy: Option<String>,
     },
     /// Manage the HTTPS proxy
+    #[command(display_order = 19)]
     Proxy {
         #[command(subcommand)]
         command: ProxyCommand,
     },
     /// Start environments left running again at login
+    #[command(display_order = 22)]
     Autostart {
         #[command(subcommand)]
         command: Option<AutostartCommand>,
     },
-    /// Serve URLs without a port, relaying 443 and 80 to the proxy
+    /// Serve URLs without a port (443 and 80)
+    #[command(display_order = 20)]
     Relay {
         #[command(subcommand)]
         command: Option<RelayCommand>,
     },
     /// Trust the local certificate authority
+    #[command(display_order = 21)]
     Trust {
         /// Print the CA certificate path
         #[arg(long, conflicts_with_all = ["export", "remove"])]
@@ -271,6 +291,7 @@ pub enum Command {
         caddy: Option<String>,
     },
     /// Run a command as the web service
+    #[command(display_order = 10)]
     Run {
         /// Environment name (default: the worktree name)
         #[arg(long, conflicts_with_all = ["primary", "workspace"])]
@@ -289,6 +310,7 @@ pub enum Command {
         argv: Vec<String>,
     },
     /// Run a task
+    #[command(display_order = 11)]
     Task {
         /// Task name
         name: String,
@@ -297,6 +319,7 @@ pub enum Command {
         args: Vec<String>,
     },
     /// Upgrade Parcela
+    #[command(display_order = 24)]
     Upgrade {
         /// Install the newest build of main
         #[arg(long)]
@@ -314,8 +337,10 @@ pub enum Command {
     Context,
     /// Print the agent skill
     #[command(long_flag = "skill")]
+    #[command(display_order = 25)]
     Skill,
     /// Print shell completions
+    #[command(display_order = 26)]
     Completion {
         /// Shell
         shell: clap_complete::Shell,
@@ -324,11 +349,13 @@ pub enum Command {
     #[command(hide = true)]
     ComposeForward { service: String, port: u16 },
     /// Manage host settings
+    #[command(display_order = 18)]
     Config {
         #[command(subcommand)]
         command: Option<ConfigCommand>,
     },
     /// Manage anonymous usage data
+    #[command(display_order = 23)]
     Telemetry {
         #[command(subcommand)]
         command: Option<TelemetryCommand>,
