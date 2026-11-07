@@ -1,4 +1,4 @@
-// Serves the built site, target/docs from `npm run check`, from Cloudflare at parcela.run;
+// Serves the built site, target/docs from `bin/rails kiln:build` and `npm run cards`, at parcela.run;
 // worker.mjs only handles /api/*. POSTHOG_KEY is a secret (`wrangler secret put POSTHOG_KEY`).
 {
   "name": "parcela-site",

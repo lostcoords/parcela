@@ -1,0 +1,17 @@
+<section class="home-section capabilities" aria-labelledby="features">
+  <div class="section-head">
+    <%= section_heading("features") { "What Parcela sets up for each environment" } %>
+    <div class="section-actions"><%= home_button "Read the configuration reference", "/docs/configuration/" %></div>
+  </div>
+  <ul class="capability-grid">
+    <% HomeHelper::FEATURES.each do |item| %>
+      <li class="capability">
+        <a href="<%= item[:href] %>">
+          <%= lucide(item[:icon], stroke_width: 1.8) %>
+          <h3><%= item[:title] %></h3>
+          <p><%= code_text(item[:text]) %></p>
+        </a>
+      </li>
+    <% end %>
+  </ul>
+</section>

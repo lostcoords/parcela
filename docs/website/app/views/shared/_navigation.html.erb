@@ -1,0 +1,9 @@
+<%= lc_nav_list label: "Documentation" do |nav| %>
+  <% Docs::GROUPS.each do |group| %>
+    <%= nav.group group.label do %>
+      <% group.pages.each do |page| %>
+        <%= nav.link page.title, page.path, current: @page == page %>
+      <% end %>
+    <% end %>
+  <% end %>
+<% end %>

@@ -1,0 +1,17 @@
+<section class="home-section cta" aria-labelledby="install">
+  <div class="pitch">
+    <div class="mascot-reveal"><%= image_tag "logo.png", alt: "", width: 120, height: 120, class: "mascot" %></div>
+    <%= section_heading("install") { "Install Parcela" } %>
+    <p class="cta-lead">Install the CLI, then run <code class="inline-code">parcela init</code> in your project.</p>
+    <%= install_command class: "cta-install" %>
+    <div class="cta-actions">
+      <%= home_button "Get started", "/docs/getting-started/", start: true %>
+      <%= home_button "Read the docs", "/docs/", variant: :secondary, arrow: false %>
+    </div>
+    <p class="project-note">Experimental · macOS &amp; Linux · AGPL-3.0-only</p>
+    <p class="telemetry-note">
+      Anonymous command telemetry is on by default.
+      <a href="/docs/telemetry/">See what is collected and how to turn it off.</a>
+    </p>
+  </div>
+</section>

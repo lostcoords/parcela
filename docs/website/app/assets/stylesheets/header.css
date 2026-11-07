@@ -1,0 +1,14 @@
+.header-example__glass {
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.header-example[data-scrolled] .header-example__glass {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-example__glass {
+    transition: none;
+  }
+}

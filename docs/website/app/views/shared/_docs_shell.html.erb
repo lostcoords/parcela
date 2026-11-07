@@ -1,0 +1,17 @@
+<%# locals: (navigation:, contents: nil, menu_label: "Menu", width: nil) %>
+<%# navigation: the sidebar, usually lc_nav_list. contents: an optional "On this page" list for wide screens. %>
+<div class="docs-shell mx-auto flex max-w-360 gap-10 px-5 sm:px-8 lg:px-10">
+  <aside tabindex="0" aria-label="Documentation sidebar" data-controller="lc-scroll-keeper" data-lc-scroll-keeper-key-value="docs-sidebar" class="docs-shell__sidebar sticky top-20 hidden h-[calc(100dvh-5rem)] w-52 shrink-0 overflow-y-auto py-8 pe-4 lg:block">
+    <%= navigation %>
+  </aside>
+  <main id="main" class="isolate min-w-0 flex-1 py-5 lg:py-10 <%= width %>">
+    <details class="group/nav relative z-raised rounded-2xl lc-squircle bg-muted lg:hidden">
+      <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-content px-4 text-label [&::-webkit-details-marker]:hidden"><%= menu_label %><%= lc_icon "chevron-down", options: { class: "size-4 transition-transform group-open/nav:rotate-180", "aria-hidden": true } %></summary>
+      <div class="max-h-[60dvh] overflow-y-auto p-3 pt-0"><%= navigation %></div>
+    </details>
+    <div class="pt-6 lg:pt-0"><%= yield %></div>
+  </main>
+  <% if contents %>
+    <aside class="sticky top-20 hidden h-[calc(100dvh-5rem)] w-40 shrink-0 overflow-y-auto py-12 ps-4 xl:block"><%= contents %></aside>
+  <% end %>
+</div>

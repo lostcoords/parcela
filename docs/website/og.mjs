@@ -82,11 +82,3 @@ export function renderCard({ title, description }) {
   return new Resvg(svg, { font, fitTo: { mode: 'width', value: width } }).render().asPng();
 }
 
-// The home-screen icon for iOS: the mascot on the site's dark surface.
-export function renderIcon(size) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect width="${size}" height="${size}" fill="#171717"/>
-  ${mascot(size * 0.1, size * 0.1, size * 0.8)}
-</svg>`;
-  return new Resvg(svg, { font }).render().asPng();
-}

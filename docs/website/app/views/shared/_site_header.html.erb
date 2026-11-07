@@ -1,0 +1,15 @@
+<% brand = capture do %>
+  <%= image_tag "logo.png", alt: "", class: "size-7", width: 28, height: 28 %>
+  <span class="text-base font-extrabold">Parcela</span>
+<% end %>
+<% section = Docs::GROUPS.find { |group| group.pages.include?(@page) }&.label %>
+<% links = [
+  ["Docs", "/docs/", @page&.slug == "docs"],
+  ["Get started", "/docs/getting-started/", @page&.slug == "getting-started"],
+  ["Guides", Docs::GROUPS[1].pages.first.path, section == "Guides"],
+  ["Reference", Docs::GROUPS[2].pages.first.path, section == "Reference"]
+] %>
+<%= render layout: "shared/header", locals: { brand:, home_label: "Parcela home", links:, width: "max-w-360", navigation_class: "md:flex" } do %>
+  <%= render "shared/search" %>
+  <%= lc_button_link_to ApplicationHelper::REPOSITORY, variant: :ghost, size: :sm, aria: { label: "Parcela on GitHub" } do %><%= render "shared/github_icon" %><% end %>
+<% end %>

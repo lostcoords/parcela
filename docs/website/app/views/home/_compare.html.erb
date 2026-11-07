@@ -1,0 +1,38 @@
+<% sides = [
+  { key: "without", title: "Without Parcela", text: "The first `bin/dev` takes port 3000. The others fail until it stops.", command: "bin/dev",
+    results: HomeHelper::WORKTREES.each_index.map { |i| i.zero? ? [true, "Listening on localhost:3000"] : [false, "Port 3000 is already in use"] } },
+  { key: "with", title: "With Parcela", text: "`parcela up` picks free ports for each worktree and gives it an HTTPS name.", command: "parcela up",
+    results: HomeHelper::WORKTREES.map { |name, _| [true, "https://#{name}-myapp.localhost"] } }
+] %>
+<section class="home-section compare" aria-labelledby="worktrees" data-controller="home-entrance">
+  <div class="section-head center">
+    <%= section_heading "worktrees" do %>Each worktree runs <%= pen_mark "its own copy" %> of the app<% end %>
+    <p class="section-lead">
+      Checkouts of the same app usually compete for one port, so only one agent at a time
+      can run its changes. Parcela gives each checkout its own ports and URL, so every agent
+      can open its own app and check its work.
+    </p>
+    <div class="section-actions"><%= home_button "Run parallel worktrees", "/docs/worktrees/" %></div>
+  </div>
+  <div class="sides">
+    <% sides.each_with_index do |side, s| %>
+      <div class="side <%= side[:key] %>">
+        <div class="window">
+          <div class="window-bar">~/myapp · 3 worktrees</div>
+          <ol class="terminal">
+            <% HomeHelper::WORKTREES.each_with_index do |(name, agent), i| %>
+              <% ok, result = side[:results][i] %>
+              <% color = HomeHelper::AGENT_COLORS[agent] %>
+              <li>
+                <span class="line command" style="--delay: <%= (s * 3 + i) * 700 %>ms"><%= brand_mark(brand(agent)[:path], style: ("color: #{color}" if color)) %><span class="prompt"><%= name %> <span class="dollar">$</span></span> <%= side[:command] %></span>
+                <span class="line result<%= " fail" unless ok %>" style="--delay: <%= (s * 3 + i) * 700 + 520 %>ms"><%= lucide(ok ? "check" : "x", stroke_width: 2.6) %><%= result %></span>
+              </li>
+            <% end %>
+          </ol>
+        </div>
+        <h3><%= side[:title] %></h3>
+        <p><%= code_text(side[:text]) %></p>
+      </div>
+    <% end %>
+  </div>
+</section>

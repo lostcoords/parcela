@@ -1,0 +1,46 @@
+@layer theme, base, layout, components, modules, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+
+@plugin "@tailwindcss/typography";
+
+@source "../../views/**/*.erb";
+@source "../../helpers/**/*.rb";
+@source "../../models/**/*.rb";
+@source "../../javascript/**/*.js";
+
+@import "../builds/tailwind/lostcoords_ui.css";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Parcela Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* The site is dark only: Parcela's neutral greys with a sky-blue accent. */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: oklch(20.5% 0 0);
+  --foreground: oklch(91.5% 0 0);
+  --card: oklch(24.2% 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(24.2% 0 0);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(91.5% 0 0);
+  --primary-foreground: oklch(20.5% 0 0);
+  --secondary: oklch(24.2% 0 0);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(26% 0 0);
+  --muted-foreground: color-mix(in oklab, var(--foreground) 76%, var(--background));
+  --accent: oklch(28.4% 0 0);
+  --accent-foreground: var(--foreground);
+  --destructive: #ff8a8d;
+  --border: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --input: var(--border);
+  --ring: oklch(78% 0.12 225);
+  --radius: 1rem;
+  --parcela-sky: #65c6e3;
+  --parcela-sky-strong: #34bfed;
+}

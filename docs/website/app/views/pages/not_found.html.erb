@@ -1,0 +1,9 @@
+<main id="main" class="mx-auto flex min-h-[60dvh] max-w-xl flex-col items-center justify-center gap-6 px-5 py-20 text-center">
+  <%= image_tag "logo.png", alt: "", class: "size-20", width: 80, height: 80 %>
+  <h1 class="text-4xl font-extrabold">Page not found</h1>
+  <p class="text-muted-foreground">This page does not exist, or it moved.</p>
+  <div class="flex gap-3">
+    <%= lc_button_link_to "Home", "/" %>
+    <%= lc_button_link_to "Documentation", "/docs/", variant: :secondary %>
+  </div>
+</main>

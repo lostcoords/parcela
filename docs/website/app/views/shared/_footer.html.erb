@@ -1,0 +1,27 @@
+<% repository = ApplicationHelper::REPOSITORY %>
+<% columns = [
+  ["Docs", [["Get started", "/docs/getting-started/"], ["Parallel worktrees", "/docs/worktrees/"], ["Configuration", "/docs/configuration/"], ["CLI guide", "/docs/cli/"]]],
+  ["Help", [["FAQ", "/docs/faq/"], ["Troubleshooting", "/docs/troubleshooting/"], ["Frameworks and data", "/docs/frameworks/"], ["Telemetry", "/docs/telemetry/"]]],
+  ["Project", [["GitHub", repository, :github], ["Releases", "#{repository}/releases", :release], ["Changelog", "#{repository}/blob/main/CHANGELOG.md", :changelog]]]
+] %>
+<% icons = {
+  release: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z M7.5 7.5h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  changelog: '<path d="M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  github: %(<path d="#{HomeHelper::GITHUB}" fill="currentColor"/>)
+} %>
+<footer class="site-footer mx-auto mt-24 max-w-320 px-6 text-sm text-muted-foreground sm:px-12 lg:px-16">
+  <div class="grid grid-cols-2 gap-8 pt-14 pb-10 sm:grid-cols-3">
+    <% columns.each do |title, links| %>
+      <nav class="flex flex-col gap-2.5" aria-label="<%= title %>">
+        <h3 class="mb-1 text-[13px] font-extrabold text-foreground"><%= title %></h3>
+        <% links.each do |text, url, icon| %>
+          <a href="<%= url %>" class="inline-flex items-center gap-2 text-muted-foreground no-underline transition-colors hover:text-foreground">
+            <% if icon %><svg viewBox="0 0 24 24" class="size-4 flex-none" aria-hidden="true" focusable="false"><%= icons.fetch(icon).html_safe %></svg><% end %>
+            <%= text %>
+          </a>
+        <% end %>
+      </nav>
+    <% end %>
+  </div>
+  <p class="border-t border-border pt-5 pb-8 text-[13px] text-muted-foreground/80">© <%= Date.current.year %> LOST COORDS</p>
+</footer>

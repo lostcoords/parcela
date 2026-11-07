@@ -1,0 +1,74 @@
+<section class="home-section steps" aria-labelledby="setup">
+  <div class="section-head center">
+    <%= section_heading("setup") { "Set up your project once" } %>
+    <p class="section-lead">
+      Parcela starts the commands you list in <code>parcela.yaml</code>. Your setup command
+      installs dependencies and prepares data, as it does today.
+    </p>
+    <div class="section-actions">
+      <%= home_button "Set up your app", "/docs/getting-started/" %>
+      <%= home_button "Try the example app", "/docs/tutorial/", variant: :secondary, arrow: false %>
+    </div>
+  </div>
+
+  <%# Describe and start side by side; the running app spans the row below. %>
+  <ol class="bento">
+    <li class="step tile describe">
+      <div class="copy">
+        <span class="step-number">01</span>
+        <h3>Describe your app</h3>
+        <p>Run <code class="inline-code">parcela init</code>, then review the generated <code class="inline-code">parcela.yaml</code>.</p>
+      </div>
+      <div class="visual editor">
+        <span class="file">parcela.yaml</span>
+        <pre class="code"><span class="k">project</span>: myapp
+<span class="k">services</span>:
+  <span class="k">web</span>:
+    <span class="k">command</span>: bin/rails server -p <span class="v">$PORT</span>
+    <span class="k">http</span>:
+      <span class="k">healthcheck</span>: /up
+  <span class="k">css</span>:
+    <span class="k">command</span>: bin/rails tailwindcss:watch[always]
+<span class="k">hooks</span>:
+  <span class="k">setup</span>:
+    <span class="k">command</span>: bin/setup --skip-server</pre>
+      </div>
+    </li>
+
+    <li class="step tile start">
+      <div class="copy">
+        <span class="step-number">02</span>
+        <h3>Start the app</h3>
+        <p><code class="inline-code">parcela up</code> runs setup on the first start, then starts each service and waits for its healthcheck.</p>
+      </div>
+      <div class="visual terminal-surface">
+        <span class="file">~/myapp</span>
+        <pre class="code wrap"><span class="p">$</span> parcela up --detach
+<span class="ok">✓</span> myapp is running at <span class="v">https://myapp.localhost</span>
+
+<span class="o">  parcela logs    show service output
+  parcela status  check health
+  parcela down    stop it</span></pre>
+      </div>
+    </li>
+
+    <li class="step tile open">
+      <div class="open-text">
+        <div class="copy">
+          <span class="step-number">03</span>
+          <h3>Open its URL</h3>
+          <p>
+            The project name becomes the URL. Other worktrees get their own, like
+            <code class="inline-code">receipts-myapp.localhost</code>. With
+            <code class="inline-code">--lan</code>, your phone opens it at
+            <code class="inline-code">myapp.local</code>.
+          </p>
+        </div>
+      </div>
+      <div class="pair">
+        <%= device_frame image: "app-desktop.jpg", url: "https://myapp.localhost", alt: "The app's homepage at its local HTTPS address, on a laptop", class: "pair-laptop" %>
+        <%= device_frame image: "app-phone.jpg", url: "https://myapp.local", kind: :phone, alt: "The same page on a phone", class: "pair-phone" %>
+      </div>
+    </li>
+  </ol>
+</section>

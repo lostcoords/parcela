@@ -1,0 +1,22 @@
+<%# Agents scroll right to left, frameworks left to right. Two identical halves move by half the
+    track, so the loop has no seam; each half repeats the set to stay wider than large screens.
+    Only the first set of each row is read aloud. %>
+<section class="stack" aria-labelledby="stack-heading">
+  <p id="stack-heading" class="stack-label">Works with any coding agent that runs shell commands, and any app that starts with a command</p>
+  <% [["agents", "Coding agents", HomeHelper::AGENT_NAMES], ["frameworks", "Frameworks", HomeHelper::FRAMEWORK_NAMES]].each do |key, label, names| %>
+    <div class="marquee <%= key %>">
+      <div class="track">
+        <% 2.times do |half| %>
+          <ul class="stack-row<%= " copy" if half > 0 %>" <%= half.zero? ? "aria-label=\"#{label}\"".html_safe : 'aria-hidden="true"'.html_safe %>>
+            <% 2.times do |round| %>
+              <% names.each do |name| %>
+                <% mark = brand(name) %>
+                <li class="<%= "repeat" if round > 0 %>" <%= 'aria-hidden="true"'.html_safe if round > 0 %> style="--brand: <%= mark[:color] %>; --brand-dark: <%= mark[:dark] %>"><%= brand_mark(mark[:path]) %><%= name %></li>
+              <% end %>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+</section>

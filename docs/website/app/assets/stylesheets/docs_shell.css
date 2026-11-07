@@ -1,0 +1,8 @@
+/* The sidebar scrolls on its own without a visible scrollbar. */
+.docs-shell__sidebar {
+  scrollbar-width: none;
+}
+
+.docs-shell__sidebar::-webkit-scrollbar {
+  display: none;
+}

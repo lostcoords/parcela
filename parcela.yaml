@@ -5,10 +5,17 @@ project: parcela
 
 services:
   docs:
-    command: npm run dev --prefix docs/website -- --port $PORT
+    working_dir: docs/website
+    command: bin/rails server -p $PORT -b 127.0.0.1
     http:
       healthcheck: /
+  # Kiln has no watcher of its own; tailwindcss-rails rebuilds the CSS.
+  css:
+    working_dir: docs/website
+    command: bin/rails tailwindcss:watch[always]
 
 hooks:
   setup:
-    command: npm ci --prefix docs/website
+    command: cd docs/website && (bundle check || bundle install) && npm ci
+  prestart:
+    command: cd docs/website && bin/rails tailwindcss:build

@@ -1,0 +1,16 @@
+<%# locals: (brand:, home: "/", home_label:, links: [], label: "Main", width: "max-w-5xl", navigation_class: "sm:flex") %>
+<%# links: [[label, url, current], …]. The block's content renders the actions at the end of the bar. %>
+<header class="header-example sticky top-0 z-sticky px-3 pt-3 pb-4 sm:px-6" data-controller="header" data-action="scroll@window->header#scroll">
+  <div class="relative isolate mx-auto flex min-h-16 <%= width %> items-center gap-related px-3 py-2 sm:gap-content sm:px-5">
+    <span class="header-example__glass <%= lc_glass_class(thick: true, extra: "pointer-events-none absolute inset-0 -z-10") %>" aria-hidden="true"></span>
+    <a href="<%= home %>" class="flex min-h-11 shrink-0 items-center gap-related pe-2 font-semibold tracking-tight no-underline text-inherit" aria-label="<%= home_label %>"><%= brand %></a>
+    <% if links.any? %>
+      <nav class="hidden items-center gap-tight <%= navigation_class %>" aria-label="<%= label %>">
+        <% links.each do |text, url, current| %>
+          <%= lc_button_link_to text, url, variant: :ghost, size: :sm, class: "aria-[current=page]:bg-accent", aria: { current: ("page" if current) } %>
+        <% end %>
+      </nav>
+    <% end %>
+    <div class="ms-auto flex items-center gap-related"><%= yield %></div>
+  </div>
+</header>

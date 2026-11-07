@@ -1,0 +1,14 @@
+<section class="home-section questions" aria-labelledby="faq">
+  <div class="questions-intro">
+    <%= section_heading("faq") { "Common questions" } %>
+    <div class="section-actions"><%= home_button "Read the FAQ", "/docs/faq/", variant: :secondary %></div>
+  </div>
+  <div class="question-list">
+    <% HomeHelper::QUESTIONS.each do |question, answer| %>
+      <%= lc_collapsible card: false, indicator: :none, class: "question" do |item| %>
+        <% item.summary(class: "question-summary") do %><%= question %><%= lucide("plus") %><% end %>
+        <p><%= answer %></p>
+      <% end %>
+    <% end %>
+  </div>
+</section>

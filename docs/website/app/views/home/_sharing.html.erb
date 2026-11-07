@@ -1,0 +1,38 @@
+<% devices = [
+  { key: "local", title: "Your machine", url: "https://myapp.localhost", image: "app-desktop.jpg", text: "`parcela up` runs the environment here." },
+  { key: "phone", title: "Your phone", url: "https://myapp.local", image: "app-phone.jpg", flag: "parcela up --lan", text: "A `.local` name on the same network." },
+  { key: "tailnet", title: "Another computer", url: "https://mb.tail1234.ts.net", image: "app-desktop.jpg", flag: "parcela up --tailscale", text: "Served with `tailscale serve` to your tailnet." }
+] %>
+<section class="home-section share" aria-labelledby="sharing" data-controller="home-entrance">
+  <div class="section-head center">
+    <%= section_heading("sharing") { "Share with other devices" } %>
+    <p class="section-lead">
+      Each run stays on this machine unless you pass <code>--lan</code> or <code>--tailscale</code>,
+      or set the matching environment variable.
+    </p>
+    <div class="section-actions"><%= home_button "Share an environment", "/docs/worktrees/#share-with-another-device" %></div>
+  </div>
+  <%# Arrows run from this machine's screen to each other screen. They are measured, so they follow the layout at every width. %>
+  <div class="net" data-controller="home-arrows">
+    <svg class="arrows" aria-hidden="true" data-home-arrows-target="svg">
+      <% devices.select { it[:flag] }.each_with_index do |device, i| %>
+        <g style="--delay: <%= i * 300 %>ms"><path class="stroke" pathLength="1" data-home-arrows-target="stroke"/><path class="head" pathLength="1" data-home-arrows-target="head"/></g>
+      <% end %>
+    </svg>
+    <% devices.each_with_index do |device, i| %>
+      <figure class="device <%= device[:key] %>" style="--delay: <%= i * 300 %>ms" data-home-arrows-target="figure">
+        <div class="screen" data-home-arrows-target="screen">
+          <%= device_frame image: device[:image], url: device[:url], kind: device[:key] == "phone" ? :phone : :laptop %>
+        </div>
+        <figcaption>
+          <h3><%= device[:title] %></h3>
+          <p><%= code_text(device[:text]) %></p>
+          <% if device[:flag] %><code class="sr-only"><%= device[:flag] %></code><% end %>
+        </figcaption>
+      </figure>
+    <% end %>
+    <% devices.select { it[:flag] }.each_with_index do |device, i| %>
+      <code class="flag" style="--delay: <%= i * 300 + 500 %>ms" aria-hidden="true" data-home-arrows-target="flag" data-full="<%= device[:flag] %>" data-short="<%= device[:flag].delete_prefix("parcela up ") %>"><%= device[:flag] %></code>
+    <% end %>
+  </div>
+</section>

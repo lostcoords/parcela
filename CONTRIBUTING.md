@@ -42,13 +42,15 @@ The [documentation index](docs/site/docs.md) is the user entry point. Keep each 
 
 Use direct instructions and the names in the CLI and configuration. Put a fact in one canonical page and link to it elsewhere. Retain historical release notes rather than rewriting them as current instructions.
 
-To add or move a page, update `docs/website/content.mjs`. Keep existing public routes when possible. Relative Markdown links must work in the repository and the built site. The [site guide](docs/website/README.md) covers the build and checks.
+To add or move a page, update `docs/website/app/models/docs.rb`. Keep existing public routes when possible. Relative Markdown links must work in the repository and the built site. The [site guide](docs/website/README.md) covers the build and checks.
 
 ## Verify documentation changes
 
 ```sh
-npm ci --prefix docs/website
-npm run check --prefix docs/website
+cd docs/website
+bundle install && npm ci
+bin/rails test && npm test
+RAILS_ENV=production bin/rails kiln:build
 ```
 
 If you change runnable examples, also run their live suite. `scripts/check-live docs-example` verifies `examples/docs-demo`. The Claude Code installation block is checked by `tests/test_skill_install.py` through `scripts/check`.

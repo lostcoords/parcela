@@ -1,0 +1,8 @@
+<%# lc_search with results from MiniSearch: docs-search answers lc-search:query and renders rows from the templates. %>
+<div class="contents" data-controller="docs-search" data-docs-search-url-value="/search.json" data-action="lc-search:query->docs-search#query">
+  <%= lc_search label: "Search documentation", placeholder: "Search the docs…", trigger: "Search" %>
+  <template data-docs-search-target="group"><%= lc_search_group "Group" %></template>
+  <% Docs::Search::GROUPS.each do |group, icon| %>
+    <template data-docs-search-target="result" data-group="<%= group %>"><%= lc_search_result "Title", "#", detail: "", icon: icon %></template>
+  <% end %>
+</div>

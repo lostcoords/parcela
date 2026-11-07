@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <title><%= @page ? page_title(@page) : "Not found | Parcela" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="darkreader-lock">
+    <meta name="theme-color" content="#171717">
+    <% if @page %><%= page_meta(@page) %><% else %><meta name="robots" content="noindex"><% end %>
+    <link rel="icon" type="image/png" href="<%= asset_path("logo.png") %>">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <%= stylesheet_link_tag "tailwind", "site", "highlight", "header", "docs_shell", *yield(:stylesheets).split, data: { turbo_track: "reload" } %>
+    <%= javascript_importmap_tags %>
+  </head>
+  <body class="bg-background font-sans text-foreground antialiased">
+    <%= lc_skip_link %>
+    <%= render "shared/site_header" %>
+    <%= yield %>
+    <%= render "shared/footer" %>
+  </body>
+</html>

@@ -5,6 +5,3 @@
 __pycache__/
 *.py[cod]
 
-/docs/website/node_modules/
-/docs/website/.astro/
-/docs/website/.generated/
