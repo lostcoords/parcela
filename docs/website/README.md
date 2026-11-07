@@ -71,7 +71,7 @@ to `src` in both Vite and TypeScript.
 | --- | --- |
 | `src/theme.css` | The dark palette, semantic colors, radii, shadows, glass, motion, and Tailwind utilities. |
 | `src/parcela.css` | Maps VitePress colors to the semantic theme and styles documentation, fonts, and navigation. |
-| `src/media/` | The dashboard recording and its poster, and desktop and phone captures of a real Parcela project's homepage, imported as Vite assets. |
+| `src/media/` | Desktop and phone captures of a real Parcela project's homepage, imported as Vite assets. |
 | `src/home.css` | Homepage section width, gutters and rhythm, headings, flat windows, and solid actions with an outer glow. |
 | `src/components/ui/button/index.ts` | Button variants and sizes, including Parcela's `glass` variant, pill shape, and larger default controls. |
 | `.vitepress/theme/*.vue` | Product components composed from shadcn UI and Parcela's illustrations, browser demo, and installation behavior. |
@@ -95,7 +95,7 @@ hero and video, every section is a `.home-section` with the same width, gutters,
 and vertical rhythm. Section headings are one plain sentence-case line, with no eyebrow labels. `SectionHeading.vue` makes each one a link to its own anchor, such as `/#sharing`. Each section
 head ends with `section-actions`: `Button` links into the matching documentation. Example
 URLs omit the default `:1443` port. The comparison terminals are flat `window` surfaces, and
-the setup steps' file and terminal sit on flat surfaces inside their tiles, with no border or shadow. Screens and the dashboard recording sit directly on the page.
+the setup steps' file and terminal sit on flat surfaces inside their tiles, with no border or shadow. Screens sit directly on the page.
 
 The sections, in order:
 
@@ -104,7 +104,6 @@ The sections, in order:
 | `HomeStack.vue` | Two full-width marquee rows on a secondary band: coding agents scroll right to left, frameworks left to right. Marks come from `brands.mjs`. Hover pauses a row. Duplicates are hidden from assistive technology; reduced motion shows one static, centered set per row. |
 | `HomeCompare.vue` | Three agents in three worktrees: `bin/dev` collides on port 3000, `parcela up` gives each its own URL. Each side is a terminal window whose lines type in once the section scrolls into view; reduced motion and no-JavaScript renders show every line. |
 | `HomeSteps.vue` | A bento of three steps: describing and starting the app side by side, and the running app on a laptop and phone in a wide tile below. `DeviceFrame.vue` draws both devices, here and in the sharing section. The Markdown body of `docs/site/index.md` is empty. |
-| `HomeDashboard.vue` | A recording of the real `parcela ui` dashboard, `src/media/dashboard.mp4`. It autoplays muted and looped only without reduced motion; otherwise it shows its poster and native controls. |
 | `HomeSharing.vue` | This machine, with measured pen arrows to a phone on the LAN and a tailnet device. Each screen shows a capture of a real Parcela project, labelled with the generic name `myapp`. |
 | `HomeFeatures.vue` | Six capabilities, each linking to its documentation. |
 | `HomeCta.vue` | Common questions, then a closing install section with the mascot, install command, and actions. |
@@ -123,7 +122,7 @@ the default navbar menu is hidden. The DOM order matches keyboard navigation. Re
 The floating navbar requires VitePress's initialized `home` class, so the initial
 HTML renders a full-width header before scroll state is available.
 The homepage has rotating agent names, a scrolling logo band, typed comparison
-terminals, drawn sharing arrows, an autoplaying dashboard recording, and a swaying mascot.
+terminals, drawn sharing arrows, and a swaying mascot.
 `reveal.js` fades each block in as it scrolls into view, with an IntersectionObserver so
 it works without CSS scroll timelines. The typed terminals, sharing arrows, and pen underline
 use `useEntrance` from `useHomeMotion.js`, which arms them only while motion is allowed. Reduced motion stops headline rotation, shows every

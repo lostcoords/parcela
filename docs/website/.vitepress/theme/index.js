@@ -5,7 +5,6 @@ import HeroBackground from './HeroBackground.vue';
 import HeroDemo from './HeroDemo.vue';
 import HeroTitle from './HeroTitle.vue';
 import HomeCta from './HomeCta.vue';
-import HomeDashboard from './HomeDashboard.vue';
 import HomeSharing from './HomeSharing.vue';
 import HomeStack from './HomeStack.vue';
 import HomeCompare from './HomeCompare.vue';
@@ -46,7 +45,7 @@ export default {
     'nav-bar-content-before': () => h(NavSections),
     'home-hero-info': () => h(HeroTitle),
     'home-hero-after': () => h(HeroDemo),
-    'home-features-after': () => [h(HomeStack), h(HomeCompare), h(HomeSteps), h(HomeDashboard), h(HomeSharing), h(HomeFeatures), h(HomeCta)],
+    'home-features-after': () => [h(HomeStack), h(HomeCompare), h(HomeSteps), h(HomeSharing), h(HomeFeatures), h(HomeCta)],
     'layout-bottom': () => h(SiteFooter),
   }),
 };

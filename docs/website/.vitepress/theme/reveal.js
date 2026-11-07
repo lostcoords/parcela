@@ -6,7 +6,6 @@ const blocks = [
   '.VPHome .marquee',
   '.VPHome .compare .side',
   '.VPHome .bento > .tile',
-  '.VPHome .dashboard-stage',
   '.VPHome .share .device.local',
   '.VPHome .capability',
   '.VPHome .questions-intro',

@@ -103,8 +103,13 @@ pub fn ensure_running(state: &Path, host: &str) -> Result<Router> {
 /// The start lock covers the whole replacement, including concurrent refreshes and explicit stops.
 /// Stopped proxies stay stopped; environment owners rebind their existing processes afterward.
 pub fn refresh(state: &Path) -> Result<Option<Router>> {
-    if matches!(status(state)?, Status::Stopped) {
-        return Ok(None);
+    // Every foreground command gets here; a current proxy costs one admin round trip, no lock.
+    match status(state)? {
+        Status::Stopped => return Ok(None),
+        Status::Running(router) if router.version == VERSION && router.protocol == PROTOCOL => {
+            return Ok(None);
+        }
+        _ => (),
     }
     let directory = router::proxy_dir(state);
     let _start = Lock::wait_for(&directory.join("start.lock"), STARTUP * 2)?;

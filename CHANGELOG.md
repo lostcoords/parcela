@@ -18,6 +18,7 @@
 
 ### Changed
 
+- Commands check whether a running proxy needs updating without taking its lock, which cut their cost from about 5 ms to 1 ms.
 - The debug menu on an app page starts, stops and shows logs for that page's own environment only, so a script in one app cannot stop another or read its logs. **Manage all** opens the menu on `parcela-ui.localhost`, which manages every environment.
 - `parcela proxy install` and `uninstall` are now `parcela relay install` and `uninstall`, with `parcela relay status`; the old names still work. The relay is a system service in front of the proxy, not the proxy itself.
 - Ready environments check their process tree and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease, reusing a listener check for up to 5 seconds. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.

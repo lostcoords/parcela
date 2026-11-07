@@ -51,15 +51,13 @@ async (page) => {
     check(action.image === 'none' && !action.shadow.includes('inset') && action.shadow !== 'none', 'Primary action has a solid surface and an outer glow');
     check(await page.getByRole('heading', { level: 1 }).count() === 1, 'Homepage has one clear heading');
     const anchors = await page.locator('.VPHome h2.section-heading').evaluateAll((headings) => headings.map((heading) => heading.querySelector('a.heading-link')?.getAttribute('href') === `#${heading.id}`));
-    check(anchors.length === 7 && anchors.every(Boolean), 'Every section title links to its own anchor');
+    check(anchors.length === 6 && anchors.every(Boolean), 'Every section title links to its own anchor');
     const glint = await primary.evaluate((element) => getComputedStyle(element, '::before').animationName);
     check(glint === 'none', 'Primary action has no automatic animation');
     check(await page.locator('.heading .sr').textContent() === 'coding agents' && await page.locator('.rotator .agent.on').count() === 1, 'Rotating headline keeps a stable accessible label');
     check(await page.locator('.reveal').count() === 0, 'Reduced motion leaves homepage blocks unhidden');
     check(await page.locator('.share .device').evaluateAll((devices) => devices.every((device) => getComputedStyle(device).opacity === '1')), 'Reduced motion shows every sharing device');
     check(await page.locator('.share .arrows .stroke').evaluateAll((arrows) => arrows.length === 2 && arrows.every((arrow) => getComputedStyle(arrow).strokeDashoffset === '0px')), 'Reduced motion draws both sharing arrows');
-    const resting = await page.locator('.dashboard video').evaluate((video) => ({ paused: video.paused, controls: video.controls, poster: !!video.poster }));
-    check(resting.paused && resting.controls && resting.poster, 'Reduced motion leaves the dashboard recording on its poster, with controls');
     await page.waitForFunction(() => document.querySelector('.VPHome').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'), null, { polling: 100, timeout: 5000 });
     check(await page.locator('.hero-intro .availability, .hero-intro .agent-row').count() === 0, 'Hero omits the extra status and compatibility rows');
     const release = page.locator('.release-pill');
@@ -291,8 +289,6 @@ async (page) => {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => document.querySelector('.share')?.classList.contains('armed'), null, { polling: 100, timeout: 5000 });
     const firstAgent = await page.locator('.rotator .agent.on').innerText();
-    await page.locator('.dashboard video').evaluate((video) => video.scrollIntoView({ block: 'center' }));
-    await page.waitForFunction(() => { const video = document.querySelector('.dashboard video'); return !video.paused && video.currentTime > 0.5 && !video.controls; }, null, { polling: 100, timeout: 8000 });
     await page.waitForFunction((name) => document.querySelector('.rotator .agent.on')?.textContent !== name, firstAgent, { polling: 100, timeout: 8000 });
     stage = 'sharing motion';
     await page.locator('.share').evaluate(element => element.scrollIntoView({ block: 'center' }));
