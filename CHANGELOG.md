@@ -4,72 +4,72 @@
 
 ### Added
 
-- `parcela config` keeps this machine's settings in `~/.config/parcela/config.yaml` (`$XDG_CONFIG_HOME`, or `PARCELA_CONFIG`). `sharing.domains` and `sharing.domain_port` there share every environment on the machine under its own domains, so a repository no longer needs to name one host's domain. Flags and `PARCELA_DOMAIN` override them. They apply only to projects with an HTTP service.
-- Host settings `sharing.lan`, `sharing.lan_ip` and `sharing.tailscale` share every run on the machine, for a remote dev box reached over the LAN or tailnet. `--no-share` still turns sharing off for a run.
-- Host settings `telemetry`, `updates` (like `PARCELA_NO_UPDATE=1`), `worktrees.directory` (where `create` puts checkouts) and `ports.backend` (the backend port range).
-
-- `--domain` is repeatable, and `PARCELA_DOMAIN` takes a comma-separated list, so one run can be shared under several domains on the same loopback port. Runs saved with one domain keep working after an upgrade.
-
-- `parcela relay install` also works on Linux, with systemd socket units running `systemd-socket-proxyd` as the user.
-
-- `parcela autostart enable` starts again, at login, the environments that were running when the machine went down. It installs a per-user LaunchAgent or systemd user unit and needs no password.
-- `parcela trust --remove` untrusts the CA, and `parcela trust --export` prints the certificate to install on other devices.
-- Host settings `proxy.port` (moves a running proxy, and puts the old port back if the new one is taken), `proxy.caddy` (the Caddy binary) and `trust` (`false` stops `up` from offering to trust the CA).
+- `parcela config` keeps this machine's settings in `~/.config/parcela/config.yaml` (`$XDG_CONFIG_HOME`, or `PARCELA_CONFIG`), with `list`, `get`, `set`, `add`, `remove`, `unset` and `path`.
+  - `sharing.domains` and `sharing.domain_port` share every environment on the machine under its own domains, so a repository no longer names one host's domain. They apply only to projects with an HTTP service; `--domain` and `PARCELA_DOMAIN` override them.
+  - `sharing.lan`, `sharing.lan_ip` and `sharing.tailscale` share every run on the machine, for a remote dev box reached over the LAN or tailnet. `--no-share` still turns sharing off for a run.
+  - `proxy.port` moves a running proxy and puts the old port back if the new one is taken. `proxy.caddy` names the Caddy binary. `trust: false` stops `up` from offering to trust the CA.
+  - `telemetry`, `updates` (like `PARCELA_NO_UPDATE=1`), `worktrees.directory` (where `create` puts checkouts) and `ports.backend` (the backend port range).
+- `--domain` is repeatable and `PARCELA_DOMAIN` takes a comma-separated list, so one run can be shared under several domains on the same loopback port. Runs saved with one domain keep working after an upgrade.
+- `parcela autostart enable` starts again, at login, the environments that were running when the machine went down, shared as their last run was. It installs a per-user LaunchAgent or systemd user unit and needs no password. Environments stopped with `down` stay stopped.
+- `parcela relay install` works on Linux, with systemd socket units running `systemd-socket-proxyd` as the user.
+- `parcela trust --remove` untrusts the CA, and `parcela trust --export` prints the certificate to install on phones and other computers.
+- `parcela up --detach` shows a progress line with the elapsed time and the processes it is waiting on, in a terminal.
+- `CLICOLOR_FORCE` and `FORCE_COLOR` keep colors when output is piped. `NO_COLOR` still wins.
+- A "How it works" page in the documentation draws the pieces, names, requests, sharing and lifecycle.
 
 ### Changed
 
-- Commands check whether a running proxy needs updating without taking its lock, which cut their cost from about 5 ms to 1 ms.
-- The debug menu on an app page starts, stops and shows logs for that page's own environment only, so a script in one app cannot stop another or read its logs. **Manage all** opens the menu on `parcela-ui.localhost`, which manages every environment.
 - `parcela proxy install` and `uninstall` are now `parcela relay install` and `uninstall`, with `parcela relay status`; the old names still work. The relay is a system service in front of the proxy, not the proxy itself.
-- Ready environments check their process tree and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease, reusing a listener check for up to 5 seconds. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.
+- The debug menu on an app page lists, starts, stops and shows logs for that page's own environment only, so a script in one app cannot see or stop another. **Manage all** opens the menu on `parcela-ui.localhost`, which manages every environment.
 - `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
+- Errors and notices show the command to run in cyan.
+- Ready environments check their processes and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.
+- Commands check whether a running proxy needs updating without taking its lock: about 1 ms instead of 5 ms per command.
 
 ### Removed
 
-- `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting; a file that still has `sharing` fails with the `parcela config set` command to run instead.
+- `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting; a file that still has `sharing` fails and names the `parcela config add sharing.domains` command to run instead.
 
 ## 0.7.6 - 2026-10-31
 
 ### Added
 
-- Processes get `BROWSER` pointing at `parcela browse`, so tools that open a browser (letter_opener, Python's `webbrowser`, `xdg-open` where it honors `BROWSER`) hand the URL or file to Parcela instead of a browser on the machine running the server. Pages on `.localhost` names that include the debug menu offer it in a toast; LAN and domain names never serve what the environment opened. URLs on the environment's own host open as paths on that host; opened files and the page assets beside them, never dotfiles, are served without scripts.
+- `parcela browse TARGET...` offers http(s) URLs, `file://` URLs or absolute file paths to the browsers showing the environment. Processes get it as `BROWSER`, so tools that open a browser (letter_opener, Python's `webbrowser`, `xdg-open` where it honors `BROWSER`) hand the URL or file to Parcela instead of a browser on the machine running the server. Set `BROWSER` in `env:` to keep another browser. Pages on `.localhost` names that include the debug menu offer it in a toast; LAN and domain names never serve what the environment opened. URLs on the environment's own host open as paths on that host; opened files and the page assets beside them, never dotfiles, are served without scripts.
 - A debug menu for development pages. Include `<script defer src="/_parcela/widget.js"></script>` and a `parcela` badge appears in the top-right corner on `.localhost` names. **Opened** lists what the app opened, with per-item removal and Clear all, kept per browser. **Environments** lists every project and worktree, stopped ones included, with Open, Start, Stop, Restart and Logs for registered ones. Actions never apply share settings from the proxy's environment. **Logs** tails each process with highlighting, a line filter and wrapping. The panel expands to the window or opens as a full page at `/_parcela/`.
 
 ### Changed
 
+- The debug menu replaces 0.7.4's collapsed side tab, and loads from the app's own host instead of `parcela-ui.localhost`.
 - Proxy protocol 5 routes `/_parcela/` on `.localhost` app hosts to Parcela; LAN and domain names leave it to the app. The proxy refreshes on the next regular command.
 
 ### Fixed
 
 - The widget survives libraries such as Turbo that replace `<body>` without rerunning head scripts.
 - `parcela logs` and the menu's Logs read only the end of a large log instead of the whole file.
-- The proxy starts without the `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN` settings of the shell that started it.
+- The proxy starts without the `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` settings of the shell that started it.
 
 ## 0.7.5 - 2026-10-28
 
-### Fixed
-
-- CLI upgrades refresh an older running proxy automatically, preserving application PIDs, generations, setup/prestart hooks, the CA, and the existing front door. Concurrent CLI invocations perform one replacement. A stopped or newer proxy stays unchanged.
-- The installer passes maintenance to the newly installed CLI. `parcela upgrade --state-dir DIR` forwards the selected state directory.
-
 ### Added
 
-- Interactive installed CLIs check for a stable release at most once a day. Shell-installer updates ask before installing, then resume the original command with the new CLI. Piped commands, JSON, internal owners, and shutdown commands never check or prompt. `PARCELA_NO_UPDATE=1` disables release checks.
+- Interactive installed CLIs check for a stable release at most once a day. Shell-installer updates ask before installing, then resume the original command with the new CLI; Homebrew and Cargo installs show a notice. Piped commands, JSON, internal owners, and shutdown commands never check or prompt. `PARCELA_NO_UPDATE=1` disables release checks.
+
+### Changed
+
+- CLI upgrades refresh an older running proxy automatically, preserving application PIDs, generations, setup/prestart hooks, the CA, and the existing front door. Concurrent CLI invocations perform one replacement. A stopped or newer proxy stays unchanged. `parcela proxy restart` is no longer an upgrade step.
+- The installer passes maintenance to the newly installed CLI. `parcela upgrade --state-dir DIR` forwards the selected state directory.
 
 ## 0.7.4 - 2026-10-28
-
-### Fixed
-
-- `parcela status` now shows an overview across registered projects and worktrees, with URLs and a marker for the current checkout. Inside a project it also includes unregistered worktrees, so finding another environment no longer requires changing directories.
-- A deleted registered checkout no longer hides other worktrees from the browser inventory.
 
 ### Added
 
 - `parcela ui` prints the local dashboard URL. The dashboard shows searchable environments, service links, and process states, with an iframe workspace and direct navigation for apps that block framing.
 - An optional dashboard script adds a collapsed side tab to local apps. The panel supports keyboard closing, focus return, and a current-environment marker. It does not transform app responses or relax their CSP.
+- `status --current` shows the current checkout's detailed status, as plain `status` did before.
 
 ### Changed
 
+- `parcela status` shows an overview across registered projects and worktrees, with URLs and a marker for the current checkout. Inside a project it also includes unregistered worktrees, so finding another environment no longer requires changing directories.
 - `status --current` and `--workspace ENV status` keep the detailed environment response. Plain `status --json` now returns the overview envelope with `workspaces` and `unregistered`; scripts reading `.state` must select an environment. Bare `parcela` keeps its detailed checkout view.
 - Proxy protocol 4 adds the read-only loopback dashboard at the reserved hostname `parcela-ui.localhost`. Run `parcela proxy restart` after upgrading. The dashboard is excluded from shared LAN, Tailscale, and domain routes.
 
@@ -77,8 +77,9 @@
 
 ### Added
 
-- Project-level `sharing.domain` and optional `sharing.domain_port` defaults for `up` and `restart`. CLI and environment settings override the project; `--no-share` disables all sharing for a local-only run.
-- `up --domain DOMAIN` also serves each service at `<name>.DOMAIN`, in plain HTTP on `127.0.0.1:1480` (`--domain-port`), for an HTTPS proxy you run in front with a wildcard certificate. Forwarded headers from loopback reach the app. Proxy protocol 3: run `parcela proxy restart` after upgrading.
+- `up --domain DOMAIN` also serves each service at `<name>.DOMAIN`, in plain HTTP on `127.0.0.1:1480` (`--domain-port`), for an HTTPS proxy you run in front with a wildcard certificate. `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` work like the flags, and `PARCELA_SHARE_HOSTS` includes the domain names. Forwarded headers from loopback reach the app. Proxy protocol 3: run `parcela proxy restart` after upgrading.
+- Project-level `sharing.domain` and optional `sharing.domain_port` defaults for `up` and `restart`. CLI and environment settings override the project.
+- `up --no-share` and `restart --no-share` disable all sharing for a local-only run.
 
 ### Fixed
 
@@ -103,14 +104,20 @@ Create a named test checkout through Parcela, then seed, snapshot and reproduce 
 
 ### Added
 
-- `parcela create NAME` creates and registers a Git worktree or jj workspace without starting services. `--revision` pins source and `--from` restores a named data snapshot.
-- `data.files` and `data.sqlite` explicitly select environment-owned snapshot content. `snapshot` uses consistent SQLite backups and checksums. `restore` fills only a fresh data directory and never overwrites existing data. Seed and external data export/import commands remain project-defined tasks.
+- `parcela create NAME` creates and registers a Git worktree or jj workspace without starting services. `--directory` chooses where, `--revision` pins source and `--from` restores a named data snapshot.
+- `parcela snapshot NAME` saves a stopped environment's declared data under an immutable name, with consistent SQLite backups and checksums. `parcela restore NAME` fills only a fresh data directory and never overwrites existing data.
+- `data.files` and `data.sqlite` explicitly select environment-owned snapshot content. Seed and external data export/import commands remain project-defined tasks.
+
+### Changed
+
+- `parcela task` runs in any registered environment, including one from `create` that never started.
+- `doctor` honors `--workspace`, and reports an HTTP proxy's protocol difference as a warning instead of a failure, as startup does.
 
 ### Fixed
 
 - Parcela closes inherited non-stdio descriptors on startup. Previously, parallel launchers could inherit a temporary listener and keep an unrelated proxy port occupied inside Parcela or Caddy.
 - Proxy startup waits for transient ownership-lock probes instead of failing when a simultaneous status check briefly holds the lock.
-- Watcher-only `doctor` checks a live shared proxy's compatibility, matching startup refusal. HTTP protocol differences remain warnings, as for HTTP startup. `doctor` now honors `--workspace`.
+- Watcher-only `doctor` checks a live shared proxy's compatibility, matching startup refusal.
 - `restart` validates changed service sets and HTTP-only flags before stopping the predecessor or forgetting setup completion.
 - An abandoned jj workspace no longer hides live checkout inventory or blocks creating another workspace. Its missing root is reported and omitted.
 
@@ -124,18 +131,18 @@ Before starting a watcher-only environment in an existing installation, restart 
 
 - Watcher-only environments. `parcela up` supervises services without `http`, with hooks, command health checks, logs, restart, and shutdown, without starting the proxy or changing trust. URL commands report that no HTTP URL exists. A running older proxy must be restarted with the new binary before sharing its registry with these sessions.
 
-### Fixed
+### Changed
 
-- `parcela trust` refuses to change system trust without a terminal, before creating state or starting the proxy. `trust --print` still works in scripts.
+- `install.sh` skips Caddy with `PARCELA_SKIP_CADDY=1`, which replaces `PARCELA_SKIP_BACKENDS`.
 
 ### Removed
 
 - The warning that a relay installed by 0.4 does not redirect port 80, in `parcela proxy status` and `parcela doctor`. Run `parcela proxy install` again to add the redirect.
 - Redirects from the docs pages that the site redesign merged, like `/docs/installation/`.
 
-### Changed
+### Fixed
 
-- `install.sh` skips Caddy with `PARCELA_SKIP_CADDY=1`, which replaces `PARCELA_SKIP_BACKENDS`.
+- `parcela trust` refuses to change system trust without a terminal, before creating state or starting the proxy. `trust --print` still works in scripts.
 
 ## 0.5.2 - 2026-10-20
 
@@ -144,12 +151,6 @@ Before starting a watcher-only environment in an existing installation, restart 
 - A running environment no longer stops when one check of its processes or listeners is slow, as on a loaded machine. Before, one `ps` or `lsof` call over its time limit stopped every service, with `backend control command timed out`. It stops only when checks keep failing for 30 seconds.
 
 ## 0.5.1 - 2026-10-20
-
-### Fixed
-
-- A `compose` service's volumes and networks with a fixed `name` are now each environment's own. Before, two environments shared them, so two databases could run on one data directory. `external` volumes and networks stay shared.
-- Parcela reads the Compose file with the `env` from `parcela.yaml` that needs no port, like `COMPOSE_ENV_FILES`, as `docker compose up` does. A Compose file that requires such a variable failed before anything started.
-- `parcela proxy restart` replaces a running proxy that this Parcela cannot read, such as one from 0.4. It failed because that proxy still held the port.
 
 ### Changed
 
@@ -160,6 +161,12 @@ Before starting a watcher-only environment in an existing installation, restart 
 
 - `parcela url --service NAME`. Use `parcela url NAME`.
 - Migrations for registries from before 0.1.0.
+
+### Fixed
+
+- A `compose` service's volumes and networks with a fixed `name` are now each environment's own. Before, two environments shared them, so two databases could run on one data directory. `external` volumes and networks stay shared.
+- Parcela reads the Compose file with the `env` from `parcela.yaml` that needs no port, like `COMPOSE_ENV_FILES`, as `docker compose up` does. A Compose file that requires such a variable failed before anything started.
+- `parcela proxy restart` replaces a running proxy that this Parcela cannot read, such as one from 0.4. It failed because that proxy still held the port.
 
 ## 0.5.0 - 2026-10-20
 
@@ -173,23 +180,23 @@ Databases and other containers can come from the project's own `docker-compose.y
 - `-w`/`--workspace` takes an environment's name, URL, hostname or ID. `-C` is short for `--path`.
 - `readiness_timeout_seconds` in `parcela.yaml` sets how long `up` and `restart` wait for the services, instead of 60 seconds.
 - `parcela upgrade` reruns `install.sh` for an install.sh install, staying on nightly or stable unless `--nightly` or `--stable` says otherwise. For Homebrew and `cargo` installs it prints the command to run instead.
-
-### Fixed
-
-- `up --detach` no longer gives up after the readiness timeout while a long `setup` or `prestart` hook is still running; it waits for the owner, which does not count hook time.
+- Parcela sends anonymous usage data: the command, flag names, exit code, a duration range, version, OS, install method and a random install ID, never paths, names, URLs or values. Nothing is sent before a one-time notice. `parcela telemetry disable`, `DO_NOT_TRACK=1` or `PARCELA_TELEMETRY_DISABLED=1` turns it off, and `PARCELA_TELEMETRY_DEBUG=1` prints the event instead. See https://parcela.run/docs/telemetry/.
 
 ### Changed
 
 - `status` and `ls` answer in about 80 ms instead of 400–800 ms: the supervisor answers requests while it waits, and `status` gets the process list in one reply.
 - Errors name the next step for a missing `parcela.yaml`, an unstarted checkout, an unknown environment and a renamed project. `proxy status` and `doctor` flag a 443 relay installed without port 80.
 - The proxy records a protocol number, so releases that share it take over its proxy quietly.
-- Documentation centers on getting started, app configuration, parallel worktrees, and troubleshooting. Older guide URLs redirect to retained sections. Tool names have icons and accent colors, and code examples wrap within the page.
-- Parcela sends anonymous usage data: the command, flag names, exit code, a duration range, version, OS, install method and a random install ID, never paths, names, URLs or values. Nothing is sent before a one-time notice. `parcela telemetry disable`, `DO_NOT_TRACK=1` or `PARCELA_TELEMETRY_DISABLED=1` turns it off, and `PARCELA_TELEMETRY_DEBUG=1` prints the event instead. See https://parcela.run/docs/telemetry/.
-- The repository moved to `github.com/lostcoords/parcela` and the Homebrew tap to `lostcoords/tap`: `brew install lostcoords/tap/parcela`. The old addresses redirect.
-- The website moved to `https://parcela.run`: the landing page at the root, the docs under `/docs/`, and `install.sh` and the schema at `https://parcela.run/install.sh` and `https://parcela.run/schema/v1.json`. `parcela init`, `parcela upgrade` and the schema's `$id` use the new addresses. `parcela.davafons.com` no longer serves the site.
 - The proxy redirects plain HTTP on its port to HTTPS. `parcela proxy install` also relays port 80 when it is free, so `http://name.localhost` opens the environment. Run `parcela proxy install` again to add it to an existing install, then `parcela proxy restart`.
 - `up` and `proxy status` suggest `parcela trust` only while the certificate authority is not trusted. `proxy status --json` reports it as `trusted` instead of the always-false `browser_trust_verified`.
 - Rerunning `install.sh` over an earlier version says so and how to finish the upgrade. The FAQ shows how to upgrade each kind of install.
+- Documentation centers on getting started, app configuration, parallel worktrees, and troubleshooting. Older guide URLs redirect to retained sections.
+- The repository moved to `github.com/lostcoords/parcela` and the Homebrew tap to `lostcoords/tap`: `brew install lostcoords/tap/parcela`. The old addresses redirect.
+- The website moved to `https://parcela.run`: the landing page at the root, the docs under `/docs/`, and `install.sh` and the schema at `https://parcela.run/install.sh` and `https://parcela.run/schema/v1.json`. `parcela init`, `parcela upgrade` and the schema's `$id` use the new addresses. `parcela.davafons.com` no longer serves the site.
+
+### Fixed
+
+- `up --detach` no longer gives up after the readiness timeout while a long `setup` or `prestart` hook is still running; it waits for the owner, which does not count hook time.
 
 ## 0.4.0 - 2026-10-19
 
@@ -198,32 +205,37 @@ Parcela runs each environment's processes itself, so Process Compose is no longe
 ### Added
 
 - `up --lan` and `up --tailscale` (and `restart`) also serve one environment to other devices: at `.local` names on the LAN through mDNS, or on the tailnet through `tailscale serve`. `PARCELA_SHARE_HOSTS` lists the shared hostnames for a dev server's host check.
-- Colors on a terminal: help, errors, and a color per process in `parcela logs`. `NO_COLOR` turns them off.
-- `hooks.teardown` runs on `parcela rm`, for example to drop the environment's database. A failed teardown keeps the environment registered.
-- `install.sh` also installs Caddy into `~/.local/bin` when no supported version is on `PATH`, checking the download against its release checksums. It checks Parcela's own download the same way, on macOS too, prints how to add `~/.local/bin` to `PATH` instead of editing shell profiles, and lists the files it wrote. `--help` lists its options.
-- `parcela logs --follow` streams new lines from every process, or one.
-- `-d` is short for `--detach`.
-- `parcela logs` works after `down` too, until the next run: each process writes to `log/processes/<name>.log` in the runtime directory, cut to `<name>.log.1` past 16 MB.
-- Nightly builds of `main`: `install.sh --nightly` installs the newest one. Builds other than a release tag report the commit in `--version`, like `0.3.0+20261019.4fed620`.
-- The first `up` in a terminal trusts Parcela's certificate authority when it is not trusted yet, behind the system password prompt, once per authority. Never without a terminal; `PARCELA_NO_TRUST=1` turns it off.
-- `parcela proxy install` on macOS makes URLs portless (`https://hello.localhost`): launchd owns 127.0.0.1:443 and relays each connection to the proxy as you. `uninstall` removes it, and refuses a user name that could change the service it installs.
-- `http.wildcard: true` sends every subdomain of a service's host to it, for subdomain-per-tenant apps.
 - `--lan-ip` picks the LAN address for `--lan`. Both refuse a public address. `PARCELA_LAN=1` and `PARCELA_TAILSCALE=1` work like the flags.
+- `parcela proxy install` on macOS makes URLs portless (`https://hello.localhost`): launchd owns 127.0.0.1:443 and relays each connection to the proxy as you. `uninstall` removes it, and refuses a user name that could change the service it installs.
+- The first `up` in a terminal trusts Parcela's certificate authority when it is not trusted yet, behind the system password prompt, once per authority. Never without a terminal; `PARCELA_NO_TRUST=1` turns it off.
+- `http.wildcard: true` sends every subdomain of a service's host to it, for subdomain-per-tenant apps.
+- `hooks.teardown` runs on `parcela rm`, for example to drop the environment's database. A failed teardown keeps the environment registered.
+- `parcela logs --follow` streams new lines from every process, or one.
+- `parcela logs` works after `down` too, until the next run: each process writes to `log/processes/<name>.log` in the runtime directory, cut to `<name>.log.1` past 16 MB.
+- Colors on a terminal: help, errors, and a color per process in `parcela logs`. `NO_COLOR` turns them off.
+- `-d` is short for `--detach`.
+- `install.sh` also installs Caddy into `~/.local/bin` when no supported version is on `PATH`, checking the download against its release checksums; `PARCELA_SKIP_BACKENDS=1` installs only Parcela. It checks Parcela's own download the same way, on macOS too, prints how to add `~/.local/bin` to `PATH` instead of editing shell profiles, and lists the files it wrote. `--help` lists its options.
+- Nightly builds of `main`: `install.sh --nightly` installs the newest one. Builds other than a release tag report the commit in `--version`, like `0.3.0+20261019.4fed620`.
 - A JSON Schema for `parcela.yaml` at `https://parcela.davafons.com/schema/v1.json`, generated from the parser. `parcela init` adds the line editors use to find it.
 
 ### Changed
 
 - Parcela supervises the processes: each runs with `bash -c` (or `sh -c`) in its own process group, starts once its dependencies are ready, and stops in reverse dependency order, SIGTERM then SIGKILL after 10 seconds. Until the environment is first ready, a failed hook, an exited HTTP service or a process that exits nonzero stops `up` at once and names it, instead of waiting for the readiness timeout. Foreground `up` prefixes each line with its process's name.
 - If an owner dies, the next `up`, `down` or `recover` adopts its processes by their recorded birth identity, and `down` stops ones that outlived it instead of refusing.
-- On macOS, sockets live in the per-user temporary directory instead of `/tmp/parcela-<uid>`, so another user cannot block Parcela by creating that directory first.
-- Removed: the hidden `--process-compose` option, `parcela doctor`'s Process Compose check, `child_pid` in `status --json`, and `log/process-compose.log`. A detached owner's `owner.log` holds process output only until the run is first ready.
 - `status --json` process states are exactly `pending`, `running`, `stopping`, `restarting`, `completed`, `exited` and `skipped`, instead of Process Compose's names.
-- The proxy listens on one HTTPS port, and URLs leave it out when it is 443. The forwarded "standard ports" mode and its port-80 listener are gone. `--port` accepts any port the system lets a normal user listen on.
+- The proxy listens on one HTTPS port, and URLs leave it out when it is 443. `--port` accepts any port the system lets a normal user listen on.
 - If the proxy dies while environments run, they start it again within a few seconds. `parcela proxy stop` still stops it for good.
 - `restart` picks up added, removed and renamed services; `down` and `up` are no longer needed for that.
 - `up` on a ready environment prints its URLs and exits 0, like `docker compose up -d`.
 - Clearer errors: a readiness timeout says what each service answered, a busy `--backend-port` names its holder, and an unknown service or task lists the valid names.
-- `--help` lists the global options in their own section. `status --all` is gone; use `ls`.
+- Shorter, Docker-style help and messages. `--help` lists the global options in their own section.
+- On macOS, sockets live in the per-user temporary directory instead of `/tmp/parcela-<uid>`, so another user cannot block Parcela by creating that directory first.
+
+### Removed
+
+- Process Compose: the hidden `--process-compose` option, `parcela doctor`'s Process Compose check, `child_pid` in `status --json`, and `log/process-compose.log`. A detached owner's `owner.log` holds process output only until the run is first ready.
+- The forwarded "standard ports" proxy mode and its port-80 listener.
+- `status --all`; use `ls`.
 
 ### Fixed
 
@@ -242,13 +254,14 @@ Parcela runs each environment's processes itself, so Process Compose is no longe
 - Services take `depends_on`, `working_dir`, `env` and, without `http`, a `healthcheck` command. Dependencies wait for readiness.
 - `PARCELA_DATA_DIR`, `PARCELA_ENVIRONMENT_NAME` and `PARCELA_PRIMARY_DIR`.
 - Top-level `x-` keys are ignored, for YAML anchors.
+- `curl -fsSL https://parcela.davafons.com/install.sh | sh` installs the latest release and names Caddy or Process Compose if either is missing.
 - `examples/rails-postgres`, and a tutorial app with a SQLite database per environment.
 
 ### Changed
 
-- One format: `version` and `project` are required, and every service is a mapping under `services` with a `command`. HTTP services declare `http: {healthcheck, subdomain}`; the one without `subdomain` gets the environment's URL.
+- One format: `version` and `project` are required, and every service is a mapping under `services` with a `command`. HTTP services declare `http: {healthcheck, subdomain}`; the one without `subdomain` gets the environment's URL. `parcela init` writes this format.
 - Tasks take a shell `command` instead of `argv`. Arguments after `--` are appended.
-- `parcela logs` without a service prints every service, worker and hook, each line prefixed with its name.
+- `parcela logs` without a service prints every service and hook, each line prefixed with its name.
 
 ### Removed
 
@@ -278,20 +291,27 @@ A smaller CLI and a faster proxy.
 
 ## 0.1.0 - 2026-10-17
 
-First release. Run every checkout of a project as its own local environment, at its own HTTPS URL, in parallel.
+First release. Run every checkout of a project as its own local environment, at its own HTTPS URL, in parallel. Needs Caddy 2 and Process Compose 1 on `PATH`.
 
 ### Added
 
 - `parcela init` writes a one-line `parcela.yaml`, guessing the dev server command from `package.json`, Rails or Django.
 - Short-form manifests: `web: <command>`, a `services:` map of commands, `workers:` for unrouted processes and `ports:` for named non-HTTP ports. The full schema still works.
+- Several HTTP services per environment, each at its own hostname, with `PARCELA_SERVICE_<NAME>_URL`, `_HOSTNAME` and `_PORT`.
 - `parcela up` registers the checkout itself. The main checkout gets the project URL; linked jj workspaces and Git worktrees get their workspace or directory name, or `--name`.
 - A background HTTPS proxy on the no-sudo port 1443, started by the first `up`. `parcela proxy start|stop|restart|status` manage it, and `--port` saves another port.
 - `parcela trust` installs Parcela's local CA after saying what it changes; `--print` only prints the certificate path.
 - Named ports (`ports: [db, redis]`) export `PARCELA_PORT_<NAME>`, distinct per environment and kept across restarts.
 - `parcela ls`, `down --all`, `down --all-projects`, `rm` and `rm --prune`.
+- `parcela restart`, `status`, `services`, `logs`, `url`, `task` for tasks in `parcela.yaml`, `run` for one literal command as the web service, `recover`, `context`, `workspace` and `config check`. `parcela skill` prints the bundled agent skill.
 - `parcela doctor` checks backends, configuration, state and the proxy, and names the next step.
 - Aligned text on a terminal and JSON when piped or with `--json`.
 - Prebuilt binaries for macOS and Linux with a shell installer.
+
+### Removed
+
+- Workspace transfer, checkpoints and SQLite streaming. Manifests with a `transfer:` key are rejected.
+- `--test-profile` and the raw proxy listener flags; a saved port profile replaces them.
 
 ### Fixed
 
@@ -299,8 +319,3 @@ First release. Run every checkout of a project as its own local environment, at 
 - Services listening on `localhost`, `[::1]` or a wildcard address are accepted when they belong to the environment.
 - Unix sockets live in `/tmp/parcela-<uid>`, so long home or state paths work.
 - Backend ports come from 20000–29999 instead of the OS ephemeral range, so other programs cannot take them before a service binds.
-
-### Removed
-
-- Workspace transfer, checkpoints and SQLite streaming. Manifests with a `transfer:` key are rejected.
-- `--test-profile` and the raw proxy listener flags; a saved port profile replaces them.
