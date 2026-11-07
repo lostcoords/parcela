@@ -164,12 +164,12 @@ To add Parcela's debug menu to your own app in development, include its script f
 Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
 
 - **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
-- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. The page's own environment gets Restart, Stop and Logs; others get Open, and **Manage all** opens the same menu on `parcela-ui.localhost`, where every registered environment gets Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
 
 The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
 
-Escape, the close button or a click outside closes the panel. Actions accept only same-origin requests that carry `X-Parcela-Action`. Any script on a `.localhost` page can use the menu's requests for every registered environment, as the menu does, so leave the script out of pages that load code you do not trust.
+Escape, the close button or a click outside closes the panel. Actions accept only same-origin requests that carry `X-Parcela-Action`. A script on an app page can start, stop and read the logs of that page's own environment only; other environments need the dashboard's own name. It can still list the other environments' names, states and URLs, so leave the script out of pages that load code you do not trust.
 
 ## browse
 

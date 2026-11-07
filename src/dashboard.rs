@@ -288,6 +288,32 @@ fn serve(
             policy = response_policy;
         }
         (response.status, response.mime, response.body)
+    } else if let (true, Some(path)) = (
+        host == Some(authority.as_str()),
+        target.strip_prefix("/_parcela/"),
+    ) {
+        // The dashboard's own name: Caddy deletes the environment headers, so this is the full
+        // panel that manages every environment.
+        let response = environment::respond(
+            &environment::Request {
+                method,
+                target: path,
+                host,
+                origin,
+                acting,
+                local: true,
+                environment: "",
+                hostname: HOST,
+            },
+            state,
+            &front_door.url(HOST),
+            snapshot,
+            actions,
+        );
+        if let Some(response_policy) = response.policy {
+            policy = response_policy;
+        }
+        (response.status, response.mime, response.body)
     } else if host != Some(authority.as_str()) {
         (403, "text/plain", b"Unknown dashboard host\n".to_vec())
     } else if method != "GET" && method != "HEAD" {

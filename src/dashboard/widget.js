@@ -267,7 +267,7 @@
     const view = {
       element: element('div', { className: 'view', hidden: true },
         location.hostname.endsWith('.localhost') && dashboard.startsWith('https://')
-          ? element('div', { className: 'toolbar' }, element('span', { className: 'grow' }), link(dashboard, 'Dashboard ↗'))
+          ? element('div', { className: 'toolbar' }, element('span', { className: 'grow' }), link(`${dashboard}/_parcela/`, 'Manage all ↗'))
           : null,
         list),
       onLogs: null,
@@ -295,8 +295,9 @@
       const button = (text, onclick) => element('button', { className: 'action', textContent: text, disabled: running, onclick });
       const buttons = [];
       if (ready && environment.url && !environment.current) buttons.push(link(environment.url, 'Open'));
-      // Pages act only on registered environments; `parcela up` in a checkout registers it.
-      if (environment.key) {
+      // Pages act only on registered environments they may manage: an app page its own, the
+      // dashboard's page every one. `parcela up` in a checkout registers it.
+      if (environment.key && environment.manageable) {
         if (stopped) buttons.push(button('Start', () => act(environment, 'start')));
         else buttons.push(button('Restart', () => act(environment, 'restart')), button('Stop', () => act(environment, 'stop')));
         if (environment.processes.length) buttons.push(button('Logs', () => view.onLogs?.(environment.key)));

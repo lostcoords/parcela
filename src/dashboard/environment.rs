@@ -31,8 +31,20 @@ pub(super) struct Request<'a> {
     pub origin: Option<&'a str>,
     pub acting: bool,
     pub local: bool,
+    /// Empty on the dashboard's own name, which may manage every environment. An app page
+    /// manages only its own, so a script on one app cannot stop another or read its logs.
     pub environment: &'a str,
     pub hostname: &'a str,
+}
+
+impl Request<'_> {
+    fn dashboard(&self) -> bool {
+        self.environment.is_empty()
+    }
+
+    fn manages(&self, key: &str) -> bool {
+        self.dashboard() || key == self.environment
+    }
 }
 
 pub(super) struct Response {
@@ -68,11 +80,10 @@ pub(super) fn respond(
     if !request.local {
         return Response::text(403, "Only a .localhost name reaches Parcela");
     }
-    if request.environment.is_empty()
-        || !request
-            .environment
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    if !request
+        .environment
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
     {
         return Response::text(400, "Invalid environment");
     }
@@ -101,6 +112,7 @@ pub(super) fn respond(
             ..Response::new(200, "text/html; charset=utf-8", PAGE.as_bytes().to_vec())
         },
         "widget.js" => Response::new(200, "text/javascript; charset=utf-8", widget(dashboard)),
+        "opens" if request.dashboard() => Response::text(404, "Not found"),
         "opens" => {
             let offers: Vec<_> = crate::opens::list(&runtime)
                 .unwrap_or_default()
@@ -119,11 +131,12 @@ pub(super) fn respond(
                 .unwrap_or_default();
             let environments: Vec<_> = rows()
                 .iter()
-                .map(|row| Listed::new(row, request.environment, &actions))
+                .map(|row| Listed::new(row, request, &actions))
                 .collect();
             Response::json(200, &json!({"environments": environments}))
         }
-        "logs" => logs(state, query, &rows()),
+        "logs" => logs(request, state, query, &rows()),
+        _ if request.dashboard() => Response::text(404, "Not found"),
         _ => file(&runtime, path),
     }
 }
@@ -154,12 +167,14 @@ struct Listed {
     role: String,
     state: String,
     current: bool,
+    /// Whether this page may start, stop and read the logs of the environment.
+    manageable: bool,
     url: Option<String>,
     processes: Vec<Value>,
     action: Option<Action>,
 }
 impl Listed {
-    fn new(row: &Value, current: &str, actions: &BTreeMap<String, Action>) -> Self {
+    fn new(row: &Value, request: &Request, actions: &BTreeMap<String, Action>) -> Self {
         let string = |field: &Value| field.as_str().unwrap_or_default().to_owned();
         let key = key(row).map(str::to_owned);
         Self {
@@ -167,7 +182,8 @@ impl Listed {
             name: string(&row["workspace"]["label"]),
             role: string(&row["workspace"]["role"]),
             state: string(&row["state"]),
-            current: key.as_deref() == Some(current),
+            current: !request.dashboard() && key.as_deref() == Some(request.environment),
+            manageable: key.as_deref().is_some_and(|key| request.manages(key)),
             url: row["url"].as_str().map(str::to_owned),
             processes: row["processes"]
                 .as_array()
@@ -181,11 +197,14 @@ impl Listed {
     }
 }
 
-fn logs(state: &Path, query: &str, rows: &[Value]) -> Response {
+fn logs(request: &Request, state: &Path, query: &str, rows: &[Value]) -> Response {
     let Some(id) = parameter(query, "environment").filter(|wanted| find(rows, wanted).is_some())
     else {
         return Response::text(404, "No such environment");
     };
+    if !request.manages(&id) {
+        return Response::text(403, "Open the dashboard for another environment's logs");
+    }
     let directory = crate::logs::directory(&state.join("environments").join(id));
     let names = crate::logs::names(&directory).unwrap_or_default();
     let process = parameter(query, "process")
@@ -207,8 +226,9 @@ fn logs(state: &Path, query: &str, rows: &[Value]) -> Response {
 }
 
 /// Start, stop or restart an environment through the CLI, in the background. Only environments
-/// from the inventory can be named, only on a loopback name, and only by a same-origin script: the
-/// custom header makes a cross-site request preflight, which this server never approves.
+/// from the inventory can be named, only on a loopback name, only by a same-origin script (the
+/// custom header makes a cross-site request preflight, which this server never approves), and
+/// from an app page only its own environment.
 fn act(request: &Request, path: &str, state: &Path, rows: &[Value], actions: &Actions) -> Response {
     let same_origin = match (request.origin, request.host) {
         (Some(origin), Some(host)) => origin.split_once("://").map(|(_, rest)| rest) == Some(host),
@@ -235,6 +255,9 @@ fn act(request: &Request, path: &str, state: &Path, rows: &[Value], actions: &Ac
     else {
         return Response::text(404, "No such environment");
     };
+    if !request.manages(&key) {
+        return Response::text(403, "Manage other environments from the dashboard");
+    }
     let Some(parcela) = executable() else {
         return Response::text(500, "Parcela executable unavailable");
     };
@@ -246,8 +269,8 @@ fn act(request: &Request, path: &str, state: &Path, rows: &[Value], actions: &Ac
         .arg(&key)
         .args(arguments)
         .stdin(Stdio::null());
-    // The proxy keeps the environment of the run that started it; sharing is per run, so a page
-    // never shares what it starts.
+    // The proxy keeps the environment of the run that started it. Its sharing variables never
+    // apply to what a page starts; the host's `sharing` settings do, as for any `up`.
     for name in crate::share::VARIABLES {
         command.env_remove(name);
     }
@@ -430,25 +453,54 @@ mod tests {
         Offer::new(open, "shop.localhost")
     }
 
-    fn post(path: &str, local: bool, actions: &Actions) -> u16 {
-        let snapshot = Mutex::new(Snapshot {
+    fn snapshot() -> Mutex<Snapshot> {
+        Mutex::new(Snapshot {
             rows: vec![
                 json!({"workspace": {"id": "abc", "source": "/src/shop"}}),
+                json!({"workspace": {"id": "xyz", "source": "/src/blog"}}),
                 json!({"workspace": {"source": "/src/new"}}),
             ],
             ..Snapshot::default()
-        });
-        let request = Request {
-            method: "POST",
+        })
+    }
+
+    fn request<'a>(
+        method: &'a str,
+        path: &'a str,
+        local: bool,
+        environment: &'a str,
+    ) -> Request<'a> {
+        let host = if environment.is_empty() {
+            "parcela-ui.localhost:1443"
+        } else {
+            "shop.localhost:1443"
+        };
+        Request {
+            method,
             target: path,
-            host: Some("shop.localhost:1443"),
-            origin: Some("https://shop.localhost:1443"),
+            host: Some(host),
+            origin: Some(if environment.is_empty() {
+                "https://parcela-ui.localhost:1443"
+            } else {
+                "https://shop.localhost:1443"
+            }),
             acting: true,
             local,
-            environment: "abc",
+            environment,
             hostname: "shop.localhost",
-        };
-        respond(&request, Path::new("/nonexistent"), "", &snapshot, actions).status
+        }
+    }
+
+    fn post(path: &str, local: bool, actions: &Actions) -> u16 {
+        let request = request("POST", path, local, "abc");
+        respond(
+            &request,
+            Path::new("/nonexistent"),
+            "",
+            &snapshot(),
+            actions,
+        )
+        .status
     }
 
     #[test]
@@ -465,6 +517,46 @@ mod tests {
         };
         actions.lock().unwrap().insert("abc".into(), running);
         assert_eq!(post("environments/abc/stop", true, &actions), 409);
+    }
+
+    #[test]
+    fn an_app_page_manages_only_its_own_environment_and_the_dashboard_every_one() {
+        let actions = Actions::default();
+        let status = |method, path: &str, environment| {
+            let request = request(method, path, true, environment);
+            respond(
+                &request,
+                Path::new("/nonexistent"),
+                "",
+                &snapshot(),
+                &actions,
+            )
+            .status
+        };
+        assert_eq!(status("POST", "environments/xyz/stop", "abc"), 403);
+        assert_eq!(status("GET", "logs?environment=xyz", "abc"), 403);
+        assert_eq!(status("GET", "logs?environment=abc", "abc"), 200);
+        assert_eq!(status("GET", "logs?environment=xyz", ""), 200);
+        assert_eq!(
+            status("GET", "opens", ""),
+            404,
+            "the dashboard has no opened files"
+        );
+        let listed = respond(
+            &request("GET", "environments", true, "abc"),
+            Path::new("/nonexistent"),
+            "",
+            &snapshot(),
+            &actions,
+        );
+        let listed: Value = serde_json::from_slice(&listed.body).unwrap();
+        let manageable: Vec<_> = listed["environments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["manageable"].as_bool().unwrap())
+            .collect();
+        assert_eq!(manageable, [true, false, false]);
     }
 
     #[test]
