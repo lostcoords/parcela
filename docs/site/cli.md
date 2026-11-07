@@ -68,7 +68,7 @@ Restore does not start services or mark setup complete. The next `up` runs the n
 ## up
 
 ```text
-parcela up [--detach] [--setup] [--name NAME | --primary] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN [--domain-port N]]
+parcela up [--detach] [--setup] [--name NAME | --primary] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]]
 ```
 
 Registers the checkout on first use and starts the configured services. If HTTP services are configured, it starts the proxy as needed and opens routes after readiness. Without HTTP services, it supervises processes without a proxy or URL. A ready environment is reused. If the owner process died but services survived, `up` adopts the recorded processes instead of starting duplicates.
@@ -83,7 +83,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--lan` | Shares this run at `.local` names on the LAN. Also set by `PARCELA_LAN=1`. |
 | `--lan-ip IP` | Chooses the LAN IPv4 address. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
-| `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Also set by `PARCELA_DOMAIN`. |
+| `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Repeat it for more domains; they share `--domain-port`. Also set by `PARCELA_DOMAIN`, comma-separated. |
 | `--no-share` | Disables all sharing for this run, including host defaults and environment variables. Use `restart --no-share` for an already shared run. |
 | `--domain-port N` | The loopback port for `--domain`, 1480 by default. Also set by `PARCELA_DOMAIN_PORT`. |
 
@@ -107,7 +107,7 @@ Stops the selected environment in reverse dependency order. Once nothing that de
 ## restart
 
 ```text
-parcela restart [--detach] [--setup] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN [--domain-port N]]
+parcela restart [--detach] [--setup] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]]
 ```
 
 Checks the replacement configuration, then stops and starts the whole environment. New URL reservations happen after the old run stops. Options have the same meanings as for `up`. Sharing flags must be supplied for the new run.
@@ -302,15 +302,15 @@ For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade
 ## config
 
 ```text
-parcela config [list | get KEY | set KEY VALUE | unset KEY | path]
+parcela config [list | get KEY | set KEY VALUE | add KEY VALUE | remove KEY VALUE | unset KEY | path]
 ```
 
-Shows or changes this machine's settings. Without a subcommand, lists them. `get` exits 1 when the key is unset.
+Shows or changes this machine's settings. Without a subcommand, lists them. `get` exits 1 when the key is unset. `add` and `remove` change one item of a list; `set` replaces a list with comma-separated values.
 
 | Key | Value |
 | --- | --- |
-| `sharing.domain` | Shares every run under this domain, like `--domain`. Unsetting it also unsets `sharing.domain_port`. |
-| `sharing.domain_port` | The loopback port for `sharing.domain`, 1480 by default. |
+| `sharing.domains` | Shares every run under each domain in the list, like `--domain`. `--domain` replaces the list for a run. Removing the last one also unsets `sharing.domain_port`. |
+| `sharing.domain_port` | The loopback port for `sharing.domains`, 1480 by default. |
 | `sharing.lan` | `true` shares every run at `.local` names, like `--lan`. |
 | `sharing.lan_ip` | The LAN address when LAN sharing is on, like `--lan-ip`. It does not turn LAN sharing on. |
 | `sharing.tailscale` | `true` shares every run through `tailscale serve`, like `--tailscale`. Never uses Funnel. |
@@ -326,7 +326,7 @@ The file is `$XDG_CONFIG_HOME/parcela/config.yaml`, or `~/.config/parcela/config
 
 ```yaml
 sharing:
-  domain: "tower.example.com"
+  domains: ["tower.example.com", "tower.example.org"]
   tailscale: true
 telemetry: false
 worktrees:

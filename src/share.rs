@@ -20,14 +20,14 @@ pub struct Request {
     /// The address for `--lan` instead of the detected one.
     pub lan_ip: Option<Ipv4Addr>,
     pub tailscale: bool,
-    pub domain: Option<String>,
+    pub domains: Vec<String>,
     /// The loopback port for `--domain` instead of [`DOMAIN_PORT`].
     pub domain_port: Option<u16>,
 }
 
 impl Request {
     pub fn any(&self) -> bool {
-        self.lan || self.lan_ip.is_some() || self.tailscale || self.domain.is_some()
+        self.lan || self.lan_ip.is_some() || self.tailscale || !self.domains.is_empty()
     }
 }
 
@@ -47,8 +47,29 @@ pub struct Share {
     /// The tailscale binary and this machine's tailnet name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tailscale: Option<Tailnet>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain: Option<Domain>,
+    /// Runs saved by 0.7 record one `domain`.
+    #[serde(
+        default,
+        alias = "domain",
+        deserialize_with = "one_or_many",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub domains: Vec<Domain>,
+}
+
+fn one_or_many<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Vec<Domain>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(Domain),
+        Many(Vec<Domain>),
+    }
+    Ok(match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(domain) => vec![domain],
+        OneOrMany::Many(domains) => domains,
+    })
 }
 
 /// Names under the person's own domain, `notes.dev.example.com`. Caddy answers them in plain HTTP
@@ -125,21 +146,29 @@ impl Share {
         if request.tailscale {
             share.tailscale = Some(Tailnet::plan(endpoints)?);
         }
-        if let Some(name) = &request.domain {
-            let name = domain_name(name)?;
+        if !request.domains.is_empty() {
             let port = request.domain_port.unwrap_or(DOMAIN_PORT);
             ensure!(
                 port != https_port,
                 "--domain-port {port} is the proxy's HTTPS port; pick another"
             );
             probe_domain(state, port)?;
-            share.domain = Some(Domain { name, port });
+            // Caddy routes every domain by hostname, so they share one loopback port.
+            let names: BTreeSet<String> = request
+                .domains
+                .iter()
+                .map(|name| domain_name(name))
+                .collect::<Result<_>>()?;
+            share.domains = names
+                .into_iter()
+                .map(|name| Domain { name, port })
+                .collect();
         }
         Ok(share)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.lan.is_none() && self.tailscale.is_none() && self.domain.is_none()
+        self.lan.is_none() && self.tailscale.is_none() && self.domains.is_empty()
     }
 
     /// The URLs other devices use for `endpoint`.
@@ -161,7 +190,7 @@ impl Share {
                 port => format!("https://{}:{port}", tailnet.host),
             });
         }
-        if let Some(domain) = &self.domain {
+        for domain in &self.domains {
             urls.push(format!("https://{}", domain.host(&endpoint.hostname)));
         }
         urls
@@ -180,7 +209,7 @@ impl Share {
         if let Some(tailnet) = &self.tailscale {
             hosts.push(tailnet.host.clone());
         }
-        if let Some(domain) = &self.domain {
+        for domain in &self.domains {
             hosts.extend(
                 endpoints
                     .iter()
@@ -490,10 +519,16 @@ mod tests {
                 host: "mb.tail1.ts.net".into(),
                 ports: BTreeMap::from([("web".into(), 443), ("api".into(), 8443)]),
             }),
-            domain: Some(Domain {
-                name: "dev.example.com".into(),
-                port: DOMAIN_PORT,
-            }),
+            domains: vec![
+                Domain {
+                    name: "dev.example.com".into(),
+                    port: DOMAIN_PORT,
+                },
+                Domain {
+                    name: "tower.example.org".into(),
+                    port: DOMAIN_PORT,
+                },
+            ],
         }
     }
 
@@ -534,7 +569,8 @@ mod tests {
             [
                 "https://notes.local:1443",
                 "https://mb.tail1.ts.net",
-                "https://notes.dev.example.com"
+                "https://notes.dev.example.com",
+                "https://notes.tower.example.org"
             ]
         );
         assert_eq!(
@@ -542,14 +578,31 @@ mod tests {
             [
                 "https://api-notes.local:1443",
                 "https://mb.tail1.ts.net:8443",
-                "https://api-notes.dev.example.com"
+                "https://api-notes.dev.example.com",
+                "https://api-notes.tower.example.org"
             ]
         );
         assert_eq!(
             share.hosts(&[web, api]),
-            "notes.local,api-notes.local,mb.tail1.ts.net,notes.dev.example.com,api-notes.dev.example.com"
+            "notes.local,api-notes.local,mb.tail1.ts.net,notes.dev.example.com,api-notes.dev.example.com,notes.tower.example.org,api-notes.tower.example.org"
         );
         assert_eq!(Share::default().hosts(&[]), "");
+    }
+
+    #[test]
+    fn runs_saved_with_one_domain_still_load() {
+        let old: Share =
+            serde_json::from_str(r#"{"domain":{"name":"dev.example.com","port":1480}}"#).unwrap();
+        assert_eq!(old.domains.len(), 1);
+        let saved = serde_json::to_value(shared()).unwrap();
+        assert_eq!(saved["domains"].as_array().unwrap().len(), 2);
+        assert_eq!(serde_json::from_value::<Share>(saved).unwrap(), shared());
+        assert!(
+            serde_json::to_value(Share::default())
+                .unwrap()
+                .get("domains")
+                .is_none()
+        );
     }
 
     #[test]

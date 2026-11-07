@@ -268,7 +268,7 @@ pub fn detached(
     if share.tailscale {
         command.arg("--tailscale");
     }
-    if let Some(domain) = &share.domain {
+    for domain in &share.domains {
         command.arg("--domain").arg(domain);
     }
     if let Some(port) = share.domain_port {

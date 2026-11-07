@@ -507,6 +507,7 @@ fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
         .arg(&proxy.state)
         .env("PARCELA_HTTPS_PORT", https.to_string())
         .args(["--json", "up", "--detach", "--domain", "Dev.Example.com"])
+        .args(["--domain", "mb.example.org"])
         .args(["--domain-port", &domain_port.to_string()])
         .output()
         .unwrap();
@@ -517,7 +518,10 @@ fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
     ));
     assert_eq!(
         status["live"]["endpoints"]["web"]["shared"],
-        json!(["https://notes.dev.example.com"])
+        json!([
+            "https://notes.dev.example.com",
+            "https://notes.mb.example.org"
+        ])
     );
     let get = |host: &str| {
         let curl = Command::new("curl")
@@ -535,9 +539,14 @@ fn domain_names_answer_on_loopback_http_for_a_front_proxy_until_down() {
             .unwrap();
         String::from_utf8_lossy(&curl.stdout).into_owned()
     };
+    let hosts = "notes.dev.example.com,notes.mb.example.org";
     assert_eq!(
         get("notes.dev.example.com"),
-        "https|notes.dev.example.com|notes.dev.example.com|200"
+        format!("https|notes.dev.example.com|{hosts}|200")
+    );
+    assert_eq!(
+        get("notes.mb.example.org"),
+        format!("https|notes.mb.example.org|{hosts}|200")
     );
     assert!(get("other.dev.example.com").ends_with("|404"));
     drop(environments);

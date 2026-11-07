@@ -174,7 +174,7 @@ Every environment's name becomes one label under your domain, so one wildcard ce
 }
 ```
 
-Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`. To share every environment on this machine under the domain, run [`parcela config set sharing.domain dev.example.com`](cli.md#config). The domain belongs to the machine, not the project, so `parcela.yaml` never names one. Use `--no-share` for a local-only run.
+Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`. Repeat `--domain`, or separate names with commas, for a machine behind more than one front proxy; every domain uses the same loopback port. To share every environment on this machine under a domain, run [`parcela config add sharing.domains dev.example.com`](cli.md#config). The domain belongs to the machine, not the project, so `parcela.yaml` never names one. Use `--no-share` for a local-only run.
 
 ### Let the dev server accept the names
 

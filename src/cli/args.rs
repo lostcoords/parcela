@@ -121,9 +121,14 @@ pub enum Command {
         /// Also serve on your tailnet with tailscale serve
         #[arg(long, env = "PARCELA_TAILSCALE", value_parser = clap::builder::FalseyValueParser::new())]
         tailscale: bool,
-        /// Also serve at <name>.<DOMAIN> through your own HTTPS proxy, which forwards to --domain-port
-        #[arg(long, env = "PARCELA_DOMAIN", value_name = "DOMAIN")]
-        domain: Option<String>,
+        /// Also serve at <name>.<DOMAIN> through your own HTTPS proxy, which forwards to --domain-port; repeatable
+        #[arg(
+            long = "domain",
+            env = "PARCELA_DOMAIN",
+            value_name = "DOMAIN",
+            value_delimiter = ','
+        )]
+        domains: Vec<String>,
         /// Loopback HTTP port for --domain [default: 1480]
         #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
@@ -166,9 +171,14 @@ pub enum Command {
         /// Also serve on your tailnet with tailscale serve
         #[arg(long, env = "PARCELA_TAILSCALE", value_parser = clap::builder::FalseyValueParser::new())]
         tailscale: bool,
-        /// Also serve at <name>.<DOMAIN> through your own HTTPS proxy, which forwards to --domain-port
-        #[arg(long, env = "PARCELA_DOMAIN", value_name = "DOMAIN")]
-        domain: Option<String>,
+        /// Also serve at <name>.<DOMAIN> through your own HTTPS proxy, which forwards to --domain-port; repeatable
+        #[arg(
+            long = "domain",
+            env = "PARCELA_DOMAIN",
+            value_name = "DOMAIN",
+            value_delimiter = ','
+        )]
+        domains: Vec<String>,
         /// Loopback HTTP port for --domain [default: 1480]
         #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
@@ -324,6 +334,20 @@ pub enum ConfigCommand {
         /// Setting key
         key: String,
         /// New value
+        value: String,
+    },
+    /// Add a value to a list setting
+    Add {
+        /// Setting key
+        key: String,
+        /// Value to add
+        value: String,
+    },
+    /// Remove a value from a list setting
+    Remove {
+        /// Setting key
+        key: String,
+        /// Value to remove
         value: String,
     },
     /// Remove a setting

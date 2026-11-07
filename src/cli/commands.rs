@@ -331,7 +331,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             lan,
             lan_ip,
             tailscale,
-            domain,
+            domains,
             domain_port,
             no_share,
             launch_file,
@@ -349,7 +349,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     lan,
                     lan_ip,
                     tailscale,
-                    domain,
+                    domains,
                     domain_port,
                 },
                 no_share,
@@ -365,7 +365,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             lan,
             lan_ip,
             tailscale,
-            domain,
+            domains,
             domain_port,
             no_share,
             launch_file,
@@ -383,7 +383,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     lan,
                     lan_ip,
                     tailscale,
-                    domain,
+                    domains,
                     domain_port,
                 },
                 no_share,
@@ -593,8 +593,8 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         parcela::host::Host::current()?.share(&mut start.share, &manifest);
     }
     ensure!(
-        start.share.domain_port.is_none() || start.share.domain.is_some(),
-        "--domain-port requires --domain or `parcela config set sharing.domain`"
+        start.share.domain_port.is_none() || !start.share.domains.is_empty(),
+        "--domain-port requires --domain or `parcela config add sharing.domains`"
     );
     let readiness_timeout = start
         .readiness_timeout
@@ -795,21 +795,31 @@ fn already_running(
         let authority = url.split('/').nth(2).unwrap_or_default();
         authority.split(':').next().unwrap_or_default().to_owned()
     };
-    let domain = share
-        .domain
-        .as_deref()
-        .map(|domain| format!(".{}", domain.trim_end_matches('.').to_ascii_lowercase()));
-    for (asked, flag, suffix) in [
-        (share.lan || share.lan_ip.is_some(), "--lan", ".local"),
-        (share.tailscale, "--tailscale", ".ts.net"),
+    let domains: Vec<(String, String)> = share
+        .domains
+        .iter()
+        .map(|domain| {
+            let domain = domain.trim_end_matches('.').to_ascii_lowercase();
+            (format!("--domain {domain}"), format!(".{domain}"))
+        })
+        .collect();
+    let asked = [
         (
-            domain.is_some(),
-            "--domain",
-            domain.as_deref().unwrap_or_default(),
+            share.lan || share.lan_ip.is_some(),
+            "--lan".into(),
+            ".local".into(),
         ),
-    ] {
+        (share.tailscale, "--tailscale".into(), ".ts.net".into()),
+    ]
+    .into_iter()
+    .chain(
+        domains
+            .into_iter()
+            .map(|(flag, suffix)| (true, flag, suffix)),
+    );
+    for (asked, flag, suffix) in asked {
         ensure!(
-            !asked || shared.iter().any(|url| host(url).ends_with(suffix)),
+            !asked || shared.iter().any(|url| host(url).ends_with(&suffix)),
             "{name} is already running without {flag}; run `parcela restart {flag}`"
         );
     }

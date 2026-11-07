@@ -491,7 +491,7 @@ impl Manifest {
             && let Some(Value::String(domain)) = sharing.get("domain")
         {
             bail!(
-                "sharing moved out of parcela.yaml; set it for this machine with `parcela config set sharing.domain {domain}`"
+                "sharing moved out of parcela.yaml; set it for this machine with `parcela config add sharing.domains {domain}`"
             );
         }
         ensure!(
@@ -986,7 +986,7 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(
-            error.contains("parcela config set sharing.domain tower.example.com"),
+            error.contains("parcela config add sharing.domains tower.example.com"),
             "{error}"
         );
     }

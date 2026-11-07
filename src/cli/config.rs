@@ -27,9 +27,11 @@ pub(super) fn run(state: &Path, command: ConfigCommand, out: Output) -> Result<i
             out.emit(&value, |style| {
                 entries
                     .iter()
-                    .map(|(key, value)| match value {
-                        Value::Null => format!("{}\n", style.dim(&format!("{key}="))),
-                        value => format!("{key}={}\n", text(value)),
+                    .map(|(key, value)| match text(value) {
+                        text if text.is_empty() => {
+                            format!("{}\n", style.dim(&format!("{key}=")))
+                        }
+                        text => format!("{key}={text}\n"),
                     })
                     .collect()
             })?;
@@ -41,16 +43,38 @@ pub(super) fn run(state: &Path, command: ConfigCommand, out: Output) -> Result<i
         ConfigCommand::Set { key, .. } | ConfigCommand::Unset { key } if key == PROXY_PORT => {
             anyhow::bail!("{PROXY_PORT} is read-only; use `parcela proxy restart --port N`")
         }
-        ConfigCommand::Get { key } => match host.get(&key)? {
-            Value::Null => return Ok(1),
-            value => out.emit(&value, |_| text(&value))?,
-        },
+        ConfigCommand::Get { key } => {
+            let value = host.get(&key)?;
+            if text(&value).is_empty() {
+                return Ok(1);
+            }
+            out.emit(&value, |_| text(&value))?;
+        }
         ConfigCommand::Set { key, value } => {
             host.set(&key, &value)?;
             host.save(&path)?;
             let value = host.get(&key)?;
             out.emit(&json!({ "key": key, "value": value }), |style| {
                 format!("{} Set {key}", style.ok())
+            })?;
+        }
+        ConfigCommand::Add { key, .. } | ConfigCommand::Remove { key, .. } if key == PROXY_PORT => {
+            anyhow::bail!("{PROXY_PORT} is not a list; use `parcela proxy restart --port N`")
+        }
+        ConfigCommand::Add { key, value } => {
+            host.add(&key, &value)?;
+            host.save(&path)?;
+            let value = host.get(&key)?;
+            out.emit(&json!({ "key": key, "value": value }), |style| {
+                format!("{} Added to {key}", style.ok())
+            })?;
+        }
+        ConfigCommand::Remove { key, value } => {
+            host.remove(&key, &value)?;
+            host.save(&path)?;
+            let value = host.get(&key)?;
+            out.emit(&json!({ "key": key, "value": value }), |style| {
+                format!("{} Removed from {key}", style.ok())
             })?;
         }
         ConfigCommand::Unset { key } => {
@@ -69,7 +93,10 @@ pub(super) fn run(state: &Path, command: ConfigCommand, out: Output) -> Result<i
 }
 
 fn text(value: &Value) -> String {
-    value
-        .as_str()
-        .map_or_else(|| value.to_string(), str::to_string)
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Array(items) => items.iter().map(text).collect::<Vec<_>>().join(","),
+        Value::Null => String::new(),
+        value => value.to_string(),
+    }
 }

@@ -77,7 +77,7 @@ LAN sharing records the selected interface address with the run. Caddy adds a se
 
 mDNS publishers use `dns-sd` on macOS or `avahi-publish` on Linux. Tailscale sharing chooses free HTTPS ports from `tailscale serve status` and starts one foreground serve process per service. Tailnet requests reach backend ports directly.
 
-Domain sharing records the domain and a loopback port with the run. Caddy adds a plain-HTTP server on `127.0.0.1` at that port for `<name>.<domain>`, trusting forwarded headers from loopback. The person's own proxy terminates TLS in front of it, so Parcela never holds a public certificate or DNS credentials. Like the LAN server, a domain listener that cannot load is dropped so loopback routes remain available.
+Domain sharing records the domains and one loopback port with the run. Caddy adds a plain-HTTP server on `127.0.0.1` at that port for `<name>.<domain>` under each domain, trusting forwarded headers from loopback. The person's own proxy terminates TLS in front of it, so Parcela never holds a public certificate or DNS credentials. Like the LAN server, a domain listener that cannot load is dropped so loopback routes remain available.
 
 Publishers belong to the process graph and stop with the run. Foreground Tailscale serve entries disappear when their owning process exits, including after SIGKILL. Parcela never uses Funnel.
 

@@ -180,8 +180,8 @@ struct Route {
     dials: Vec<(Endpoint, std::net::SocketAddr)>,
     /// The LAN address of a run started with `--lan`.
     lan: Option<Ipv4Addr>,
-    /// The front proxy's domain of a run started with `--domain`.
-    domain: Option<crate::share::Domain>,
+    /// The front proxy's domains of a run started with `--domain`.
+    domains: Vec<crate::share::Domain>,
     /// Services that also take every subdomain of their host.
     wildcard: std::collections::BTreeSet<String>,
 }
@@ -214,7 +214,7 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
                 record.roots(),
                 endpoints,
                 record.share.lan,
-                record.share.domain.clone(),
+                record.share.domains.clone(),
                 wildcard,
             ));
         }
@@ -223,7 +223,7 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
         |(_, _, endpoints, _, _, _)| endpoints.iter().map(|endpoint| endpoint.backend_port),
     ))?;
     let mut routes = Vec::new();
-    for (session, roots, endpoints, lan, domain, wildcard) in candidates {
+    for (session, roots, endpoints, lan, domains, wildcard) in candidates {
         let owned = endpoints.iter().all(|endpoint| {
             listeners
                 .owned(endpoint.backend_port, &roots)
@@ -241,7 +241,7 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
                 session,
                 dials,
                 lan,
-                domain,
+                domains,
                 wildcard,
             });
         }
@@ -336,7 +336,7 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
         session,
         dials,
         lan: lan_address,
-        domain,
+        domains,
         wildcard,
     } in ready
     {
@@ -383,7 +383,7 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                 lan_routes.push(json!({"match":[{"host":[host], "file":leased}], "handle":handle, "terminal": true}));
                 lan_hosts.push(host);
             }
-            if let Some(domain) = domain.as_ref().filter(|_| shared) {
+            for domain in domains.iter().filter(|_| shared) {
                 let host = domain.host(&endpoint.hostname);
                 let mut matched = vec![host.clone()];
                 if wildcard.contains(&endpoint.service) {

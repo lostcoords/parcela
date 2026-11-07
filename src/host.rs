@@ -13,7 +13,7 @@ use std::{
 
 /// Every key `parcela config set` accepts.
 pub const KEYS: [&str; 9] = [
-    "sharing.domain",
+    "sharing.domains",
     "sharing.domain_port",
     "sharing.lan",
     "sharing.lan_ip",
@@ -46,8 +46,8 @@ pub struct Host {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Sharing {
-    /// Serve `<name>.<domain>` for a front proxy on this machine.
-    pub domain: Option<String>,
+    /// Serve `<name>.<domain>` under each, for front proxies on this machine.
+    pub domains: Vec<String>,
     pub domain_port: Option<u16>,
     /// Also serve `.local` names on the LAN.
     pub lan: Option<bool>,
@@ -73,12 +73,12 @@ pub struct Ports {
 
 impl Sharing {
     pub fn validate(&self) -> Result<()> {
-        if let Some(domain) = &self.domain {
+        for domain in &self.domains {
             crate::share::domain_name(domain)?;
         }
         ensure!(
-            self.domain_port.is_none() || self.domain.is_some(),
-            "sharing.domain_port requires sharing.domain"
+            self.domain_port.is_none() || !self.domains.is_empty(),
+            "sharing.domain_port requires sharing.domains"
         );
         ensure!(
             self.domain_port.is_none_or(|port| port >= 1024),
@@ -168,7 +168,7 @@ impl Host {
         let mut section = "";
         for key in KEYS {
             let value = self.get(key).expect("known key");
-            if value.is_null() {
+            if value.is_null() || value.as_array().is_some_and(Vec::is_empty) {
                 continue;
             }
             match key.split_once('.') {
@@ -192,7 +192,7 @@ impl Host {
     pub fn get(&self, key: &str) -> Result<Value> {
         let sharing = &self.sharing;
         Ok(match key {
-            "sharing.domain" => json!(sharing.domain),
+            "sharing.domains" => json!(sharing.domains),
             "sharing.domain_port" => json!(sharing.domain_port),
             "sharing.lan" => json!(sharing.lan),
             "sharing.lan_ip" => json!(sharing.lan_ip),
@@ -208,7 +208,17 @@ impl Host {
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
         let sharing = &mut self.sharing;
         match key {
-            "sharing.domain" => sharing.domain = Some(crate::share::domain_name(value)?),
+            "sharing.domains" => {
+                let mut domains = Vec::new();
+                for domain in value.split(',').filter(|domain| !domain.trim().is_empty()) {
+                    let domain = crate::share::domain_name(domain.trim())?;
+                    if !domains.contains(&domain) {
+                        domains.push(domain);
+                    }
+                }
+                ensure!(!domains.is_empty(), "{key}: name at least one domain");
+                sharing.domains = domains;
+            }
             "sharing.domain_port" => {
                 let port = value
                     .parse::<u16>()
@@ -241,11 +251,43 @@ impl Host {
         Ok(())
     }
 
-    /// Clear `key`. Clearing the domain also clears its port, which needs it.
+    /// Add `value` to the list at `key`, once.
+    pub fn add(&mut self, key: &str, value: &str) -> Result<()> {
+        ensure!(
+            key == "sharing.domains",
+            "{key} is not a list; use `parcela config set`"
+        );
+        let domain = crate::share::domain_name(value.trim())?;
+        if !self.sharing.domains.contains(&domain) {
+            self.sharing.domains.push(domain);
+        }
+        Ok(())
+    }
+
+    /// Remove `value` from the list at `key`. The last domain takes its port with it.
+    pub fn remove(&mut self, key: &str, value: &str) -> Result<()> {
+        ensure!(
+            key == "sharing.domains",
+            "{key} is not a list; use `parcela config unset`"
+        );
+        let domain = crate::share::domain_name(value.trim())?;
+        let before = self.sharing.domains.len();
+        self.sharing.domains.retain(|existing| existing != &domain);
+        ensure!(
+            self.sharing.domains.len() < before,
+            "{domain} is not in {key}"
+        );
+        if self.sharing.domains.is_empty() {
+            self.sharing.domain_port = None;
+        }
+        Ok(())
+    }
+
+    /// Clear `key`. Clearing the domains also clears their port, which needs them.
     pub fn unset(&mut self, key: &str) -> Result<()> {
         let sharing = &mut self.sharing;
         match key {
-            "sharing.domain" => (sharing.domain, sharing.domain_port) = (None, None),
+            "sharing.domains" => (sharing.domains, sharing.domain_port) = (Vec::new(), None),
             "sharing.domain_port" => sharing.domain_port = None,
             "sharing.lan" => sharing.lan = None,
             "sharing.lan_ip" => sharing.lan_ip = None,
@@ -273,8 +315,8 @@ impl Host {
             return;
         }
         let sharing = &self.sharing;
-        if request.domain.is_none() {
-            request.domain = sharing.domain.clone();
+        if request.domains.is_empty() {
+            request.domains = sharing.domains.clone();
         }
         request.domain_port = request.domain_port.or(sharing.domain_port);
         request.lan |= sharing.lan == Some(true);
@@ -351,7 +393,7 @@ mod tests {
     fn round_trips_through_yaml() {
         let mut host = Host::default();
         for (key, value) in [
-            ("sharing.domain", "Tower.Example.com."),
+            ("sharing.domains", "Tower.Example.com.,mb.example.org"),
             ("sharing.domain_port", "1481"),
             ("sharing.lan", "yes"),
             ("sharing.lan_ip", "192.168.1.20"),
@@ -365,14 +407,14 @@ mod tests {
         }
         let text = host.to_yaml();
         assert!(
-            text.contains("sharing:\n  domain: \"tower.example.com\"\n"),
+            text.contains("sharing:\n  domains: [\"tower.example.com\",\"mb.example.org\"]\n"),
             "{text}"
         );
         let parsed = Host::parse(&text).unwrap();
         assert_eq!(
             serde_json::to_value(parsed.entries()).unwrap(),
             json!([
-                ["sharing.domain", "tower.example.com"],
+                ["sharing.domains", ["tower.example.com", "mb.example.org"]],
                 ["sharing.domain_port", 1481],
                 ["sharing.lan", true],
                 ["sharing.lan_ip", "192.168.1.20"],
@@ -385,14 +427,19 @@ mod tests {
         );
         assert_eq!(parsed.backend_ports(), 30000..=30999);
         let empty = Host::parse(&Host::default().to_yaml()).unwrap();
-        assert!(empty.entries().iter().all(|(_, value)| value.is_null()));
+        assert!(!empty.to_yaml().contains("domains"));
     }
 
     #[test]
     fn rejects_bad_keys_and_values() {
         let mut host = Host::default();
         assert!(host.set("sharing.funnel", "true").is_err());
-        assert!(host.set("sharing.domain", "localhost").is_err());
+        assert!(
+            host.set("sharing.domains", "a.example.com,localhost")
+                .is_err()
+        );
+        assert!(host.add("telemetry", "false").is_err());
+        assert!(host.remove("sharing.domains", "a.example.com").is_err());
         assert!(host.set("sharing.domain_port", "80").is_err());
         assert!(host.set("sharing.lan", "maybe").is_err());
         assert!(host.set("sharing.lan_ip", "::1").is_err());
@@ -417,16 +464,23 @@ mod tests {
     #[test]
     fn sharing_defaults_add_to_the_request() {
         let host = Host::parse(
-            "sharing:\n  domain: tower.example.com\n  lan: true\n  lan_ip: 10.0.0.2\n  tailscale: true\n",
+            "sharing:\n  domains: [tower.example.com, mb.example.org]\n  lan: true\n  lan_ip: 10.0.0.2\n  tailscale: true\n",
         )
         .unwrap();
         let web = manifest("{web: {command: serve, http: {healthcheck: /}}}");
+        let mut request = Request::default();
+        host.share(&mut request, &web);
+        assert_eq!(request.domains, ["tower.example.com", "mb.example.org"]);
         let mut request = Request {
-            domain: Some("other.example.com".into()),
+            domains: vec!["other.example.com".into()],
             ..Request::default()
         };
         host.share(&mut request, &web);
-        assert_eq!(request.domain.as_deref(), Some("other.example.com"));
+        assert_eq!(
+            request.domains,
+            ["other.example.com"],
+            "flags replace the list"
+        );
         assert!(request.lan && request.tailscale);
         assert_eq!(request.lan_ip, Some(Ipv4Addr::new(10, 0, 0, 2)));
 
@@ -444,10 +498,20 @@ mod tests {
     }
 
     #[test]
-    fn unsetting_the_domain_clears_its_port() {
-        let mut host =
-            Host::parse("sharing:\n  domain: a.example.com\n  domain_port: 1481\n").unwrap();
-        host.unset("sharing.domain").unwrap();
-        assert!(host.sharing.domain.is_none() && host.sharing.domain_port.is_none());
+    fn domains_add_once_and_the_last_removal_clears_the_port() {
+        let mut host = Host::default();
+        host.add("sharing.domains", "a.example.com").unwrap();
+        host.add("sharing.domains", "A.example.com.").unwrap();
+        host.add("sharing.domains", "b.example.com").unwrap();
+        host.set("sharing.domain_port", "1481").unwrap();
+        assert_eq!(host.sharing.domains, ["a.example.com", "b.example.com"]);
+        host.remove("sharing.domains", "a.example.com").unwrap();
+        assert_eq!(host.sharing.domain_port, Some(1481));
+        host.remove("sharing.domains", "b.example.com").unwrap();
+        assert!(host.sharing.domains.is_empty() && host.sharing.domain_port.is_none());
+        host.set("sharing.domains", "a.example.com").unwrap();
+        host.set("sharing.domain_port", "1481").unwrap();
+        host.unset("sharing.domains").unwrap();
+        assert!(host.sharing.domain_port.is_none());
     }
 }

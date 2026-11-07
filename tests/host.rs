@@ -44,41 +44,56 @@ fn config_sets_reads_and_clears_host_settings() {
         stdout(&run(&["config", "path"])).trim(),
         format!("{:?}", config.display().to_string())
     );
-    assert!(!run(&["config", "get", "sharing.domain"]).status.success());
+    assert!(!run(&["config", "get", "sharing.domains"]).status.success());
     stdout(&run(&[
         "config",
-        "set",
-        "sharing.domain",
+        "add",
+        "sharing.domains",
         "Tower.Example.com",
+    ]));
+    stdout(&run(&[
+        "config",
+        "add",
+        "sharing.domains",
+        "mb.example.org",
     ]));
     stdout(&run(&["config", "set", "sharing.domain_port", "1481"]));
     assert_eq!(
-        stdout(&run(&["config", "get", "sharing.domain"])).trim(),
-        "\"tower.example.com\""
+        stdout(&run(&["config", "get", "sharing.domains"])).trim(),
+        "[\n  \"tower.example.com\",\n  \"mb.example.org\"\n]"
     );
     let list: serde_json::Value = serde_json::from_str(&stdout(&run(&["config"]))).unwrap();
-    assert_eq!(list["sharing.domain"], "tower.example.com");
+    assert_eq!(
+        list["sharing.domains"],
+        serde_json::json!(["tower.example.com", "mb.example.org"])
+    );
     assert_eq!(list["sharing.domain_port"], 1481);
     assert_eq!(list["sharing.lan"], serde_json::Value::Null);
     assert_eq!(list["proxy.port"], 1443);
-    assert!(
-        fs::read_to_string(&config)
-            .unwrap()
-            .contains("sharing:\n  domain: \"tower.example.com\"\n  domain_port: 1481\n")
-    );
+    assert!(fs::read_to_string(&config).unwrap().contains(
+        "sharing:\n  domains: [\"tower.example.com\",\"mb.example.org\"]\n  domain_port: 1481\n"
+    ));
 
     assert!(stderr(&run(&["config", "set", "sharing.funnel", "true"])).contains("unknown key"));
     assert!(stderr(&run(&["config", "set", "proxy.port", "8443"])).contains("read-only"));
     assert!(
-        stderr(&run(&["config", "set", "sharing.domain", "a.localhost"])).contains(".localhost")
+        stderr(&run(&["config", "add", "sharing.domains", "a.localhost"])).contains(".localhost")
     );
-    stdout(&run(&["config", "unset", "sharing.domain"]));
+    stdout(&run(&[
+        "config",
+        "remove",
+        "sharing.domains",
+        "tower.example.com",
+    ]));
+    stdout(&run(&["config", "unset", "sharing.domains"]));
     let list: serde_json::Value = serde_json::from_str(&stdout(&run(&["config"]))).unwrap();
     let set: Vec<_> = list
         .as_object()
         .unwrap()
         .iter()
-        .filter(|(_, value)| !value.is_null())
+        .filter(|(_, value)| {
+            !value.is_null() && value.as_array().is_none_or(|items| !items.is_empty())
+        })
         .map(|(key, _)| key.as_str())
         .collect();
     assert_eq!(set, ["proxy.port"]);
@@ -110,7 +125,7 @@ fn up_takes_the_host_domain_unless_sharing_is_off() {
     };
 
     assert!(up(&["--domain-port", "1481"]).contains("--domain-port requires --domain"));
-    fs::write(&config, "sharing:\n  domain: tower.example.com\n").unwrap();
+    fs::write(&config, "sharing:\n  domains: [tower.example.com]\n").unwrap();
     let error = up(&["--domain-port", "1481"]);
     assert!(!error.contains("--domain-port requires"), "{error}");
 
