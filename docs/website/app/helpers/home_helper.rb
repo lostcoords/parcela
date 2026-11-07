@@ -91,8 +91,13 @@ module HomeHelper
   def home_button(text, url, variant: :primary, start: false, arrow: true)
     classes = [ "home-button", ("home-start" if start), ("home-secondary" if variant == :secondary) ].compact.join(" ")
     lc_button_link_to(url, variant: start ? :primary : variant, size: start ? :lg : :md, class: classes) do
-      safe_join([ text, (lucide("arrow-right", class: "home-arrow") if arrow) ].compact)
+      safe_join([ (start_glint if start), text, (lucide("arrow-right", class: "home-arrow") if arrow) ].compact)
     end
+  end
+
+  # Two lights that sweep the start button's border, as superx.so's button glow.
+  def start_glint
+    tag.span(class: "start-glint", aria: { hidden: true }) { safe_join([ tag.i(class: "across"), tag.i(class: "down") ]) }
   end
 
   # The install command with a copy button, as a pill.

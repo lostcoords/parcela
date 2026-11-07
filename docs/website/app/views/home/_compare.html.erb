@@ -24,8 +24,8 @@
               <% ok, result = side[:results][i] %>
               <% color = HomeHelper::AGENT_COLORS[agent] %>
               <li>
-                <span class="line command" style="--delay: <%= (s * 3 + i) * 700 %>ms"><%= brand_mark(brand(agent)[:path], style: ("color: #{color}" if color)) %><span class="prompt"><%= name %> <span class="dollar">$</span></span> <%= side[:command] %></span>
-                <span class="line result<%= " fail" unless ok %>" style="--delay: <%= (s * 3 + i) * 700 + 520 %>ms"><%= lucide(ok ? "check" : "x", stroke_width: 2.6) %><%= result %></span>
+                <span class="line command" style="--delay: <%= s * 1300 + i * 350 %>ms"><%= brand_mark(brand(agent)[:path], style: ("color: #{color}" if color)) %><span class="prompt"><%= name %> <span class="dollar">$</span></span> <%= side[:command] %></span>
+                <span class="line result<%= " fail" unless ok %>" style="--delay: <%= s * 1300 + i * 350 + 380 %>ms"><%= lucide(ok ? "check" : "x", stroke_width: 2.6) %><%= result %></span>
               </li>
             <% end %>
           </ol>

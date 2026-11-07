@@ -1,6 +1,6 @@
 import { Controller } from "@hotwired/stimulus"
 
-// The hero's agent name: every 2.4 s the next one rolls up into place, and the box eases to
+// The hero's agent name: every 3 s the next one rolls up into place, and the box eases to
 // its width. Without motion the first name stays.
 export default class extends Controller {
   static targets = ["item"]
@@ -24,7 +24,7 @@ export default class extends Controller {
 
   schedule() {
     clearInterval(this.timer)
-    if (!this.preference.matches) this.timer = setInterval(() => this.advance(), 2400)
+    if (!this.preference.matches) this.timer = setInterval(() => this.advance(), 3000)
   }
 
   advance() {

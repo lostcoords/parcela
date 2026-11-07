@@ -9,7 +9,9 @@
   changelog: '<path d="M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
   github: %(<path d="#{HomeHelper::GITHUB}" fill="currentColor"/>)
 } %>
-<footer class="site-footer mx-auto mt-24 max-w-320 px-6 text-sm text-muted-foreground sm:px-12 lg:px-16">
+<%# The homepage's centered content column (--home-width and --home-gutter in home.css). %>
+<footer class="site-footer mx-auto mt-24 max-w-[1120px] px-6 text-sm text-muted-foreground sm:px-8">
+  <div class="border-t border-border">
   <div class="grid grid-cols-2 gap-8 pt-14 pb-10 sm:grid-cols-3">
     <% columns.each do |title, links| %>
       <nav class="flex flex-col gap-2.5" aria-label="<%= title %>">
@@ -23,5 +25,6 @@
       </nav>
     <% end %>
   </div>
-  <p class="border-t border-border pt-5 pb-8 text-[13px] text-muted-foreground/80">© <%= Date.current.year %> LOST COORDS</p>
+  <p class="pb-10 text-[13px] text-muted-foreground/80">© <%= Date.current.year %> LOST COORDS</p>
+  </div>
 </footer>

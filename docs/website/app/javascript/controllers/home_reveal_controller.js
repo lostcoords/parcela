@@ -4,16 +4,7 @@ import { Controller } from "@hotwired/stimulus"
 // here and only when motion is allowed, so without either they are simply shown.
 const BLOCKS = [
   ".section-head > *",
-  ".stack-label",
-  ".marquee",
-  ".compare .side",
   ".bento > .tile",
-  ".share .device.local",
-  ".capability",
-  ".questions-intro",
-  ".question-list > *",
-  ".cta .mascot-reveal",
-  ".cta .pitch > *",
 ].join(", ")
 
 export default class extends Controller {
@@ -29,7 +20,7 @@ export default class extends Controller {
     for (const element of this.element.querySelectorAll(BLOCKS)) {
       // Siblings that enter together arrive one after another.
       const index = [...element.parentElement.children].filter((child) => child.matches(BLOCKS)).indexOf(element)
-      element.style.setProperty("--reveal-delay", `${Math.min(index, 5) * 80}ms`)
+      element.style.setProperty("--reveal-delay", `${Math.min(index, 3) * 60}ms`)
       element.classList.add("reveal")
       this.observer.observe(element)
     }
