@@ -85,6 +85,14 @@ export default defineConfig({
     config(markdown) {
       markdown.block.ruler.disable('snippet');
       brandNames(markdown);
+      // ```diagram fences are plain text that keeps its columns; see `.diagram` in parcela.css.
+      const fence = markdown.renderer.rules.fence;
+      markdown.renderer.rules.fence = (tokens, index, ...rest) => {
+        const token = tokens[index];
+        if (token.info.trim() !== 'diagram') return fence(tokens, index, ...rest);
+        token.info = 'text';
+        return `<div class="diagram">${fence(tokens, index, ...rest)}</div>`;
+      };
       const render = markdown.renderer.render.bind(markdown.renderer);
       markdown.renderer.render = (...args) => `<div v-pre>\n${render(...args)}\n</div>`;
     },

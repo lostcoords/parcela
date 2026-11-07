@@ -15,4 +15,4 @@ Run each checkout at its own HTTPS URL. Start with the task you need.
 
 ## Example and internals
 
-The [tutorial](tutorial.md) builds a page, API, worker, and second environment. [Architecture](../architecture.md) explains process ownership and recovery. [Contributing](../../CONTRIBUTING.md) covers development and verification.
+The [tutorial](tutorial.md) builds a page, API, worker, and second environment. [How it works](how-it-works.md) draws the pieces and how a request reaches your app; [architecture](../architecture.md) explains process ownership and recovery. [Contributing](../../CONTRIBUTING.md) covers development and verification.

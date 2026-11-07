@@ -20,6 +20,7 @@ export const groups = [
   { label: 'Reference', pages: [
     ['cli', 'CLI reference', 'docs/site/cli.md'],
     ['configuration', 'Configuration', 'docs/site/configuration.md'],
+    ['how-it-works', 'How it works', 'docs/site/how-it-works.md'],
     ['faq', 'FAQ', 'docs/site/faq.md'],
     ['telemetry', 'Telemetry', 'docs/site/telemetry.md'],
   ] },

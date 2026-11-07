@@ -457,3 +457,30 @@ body {
   white-space: inherit;
 }
 
+/* ASCII diagrams keep their columns and scroll sideways instead of wrapping. */
+.vp-doc .diagram [class*='language-'] pre,
+.vp-doc .diagram [class*='language-'] code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.vp-doc .diagram {
+  max-width: 100%;
+}
+
+.vp-doc .diagram [class*='language-'] {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.vp-doc .diagram [class*='language-'] pre {
+  overflow-x: visible;
+  width: max-content;
+  min-width: 100%;
+}
+
+.vp-doc .diagram [class*='language-'] code {
+  width: max-content;
+  font-size: 0.8125rem;
+}
+
