@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "cards": "node cards.mjs",
-    "test": "node --test test/"
+    "test": "node --test test/worker.test.mjs"
   },
   "engines": {
     "node": ">=22.19.0"
