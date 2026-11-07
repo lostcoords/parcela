@@ -19,17 +19,16 @@
 }
 
 /* The site is dark only, in Sanzo Wada's combination No. 279: Dark Tyrian Blue tints the
-   surfaces, Raw Sienna fills actions, Vinaceous Cinnamon marks accents. */
+   surfaces and Raw Sienna is the one accent, for actions, links and marks. */
 :root,
 html[data-theme="dark"] {
   color-scheme: dark;
   --parcela-ink: #12354e;
   --parcela-brand: #bb7125;
-  --parcela-pen: #eea78c;
-  /* Raw Sienna darkened until white text on it passes 4.5:1. */
+  /* Raw Sienna darkened until it passes 4.5:1 as text on white. */
   --parcela-brand-strong: color-mix(in oklab, var(--parcela-brand) 90%, black);
   --background: color-mix(in oklab, var(--parcela-ink) 20%, oklch(17% 0 0));
-  --foreground: color-mix(in oklab, var(--parcela-pen) 10%, oklch(92% 0 0));
+  --foreground: color-mix(in oklab, var(--parcela-brand) 10%, oklch(92% 0 0));
   --card: color-mix(in oklab, var(--parcela-ink) 24%, oklch(21% 0 0));
   --card-foreground: var(--foreground);
   --popover: var(--card);
@@ -45,6 +44,6 @@ html[data-theme="dark"] {
   --destructive: #ff8a8d;
   --border: color-mix(in oklab, var(--foreground) 14%, transparent);
   --input: var(--border);
-  --ring: var(--parcela-pen);
+  --ring: var(--parcela-brand);
   --radius: 1rem;
 }

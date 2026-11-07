@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   --home-brand: var(--parcela-brand-strong);
-  --home-pen: var(--parcela-pen);
+  --home-pen: var(--parcela-brand);
   --home-width: 1120px;
   --home-gutter: 32px;
   --home-gap: 136px;
@@ -133,8 +133,8 @@
   padding: 0 25px;
   border: 0;
   border-radius: 999px;
-  background: var(--home-brand);
-  color: #fff;
+  background: var(--home-pen);
+  color: var(--background);
   box-shadow: none;
   font-size: 15px;
   font-weight: 700;
@@ -200,7 +200,7 @@
 }
 
 .home .home-start:hover {
-  background: var(--home-brand);
+  background: var(--home-pen);
   transform: translateY(-1px);
   filter: brightness(1.05);
 }

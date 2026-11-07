@@ -98,3 +98,53 @@ html {
 .page-outline a[aria-current="true"] {
   color: var(--foreground);
 }
+
+/* Docs color: links, list markers and the current page take Wada No. 279's Raw Sienna
+   (tokens in application.css), so long pages are not all grey. */
+.lc-prose {
+  /* Body copy a step brighter and heavier than the library's muted text: Manrope at 400 on the
+     dark page read thin. */
+  --tw-prose-body: color-mix(in oklab, var(--foreground) 88%, var(--background));
+  --tw-prose-lead: var(--tw-prose-body);
+  font-weight: 450;
+  --tw-prose-links: var(--parcela-brand);
+  --tw-prose-bullets: color-mix(in oklab, var(--parcela-brand) 75%, var(--background));
+  --tw-prose-counters: var(--parcela-brand);
+  --tw-prose-th-borders: color-mix(in oklab, var(--parcela-brand) 45%, var(--background));
+}
+
+.lc-prose :where(a):not(:where([class*="no-underline"])) {
+  text-decoration-color: color-mix(in oklab, var(--parcela-brand) 45%, transparent);
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.lc-prose :where(a):not(:where([class*="no-underline"])):hover {
+  text-decoration-color: var(--parcela-brand);
+}
+
+.lc-prose :where(code):not(:where(pre code)) {
+  color: color-mix(in oklab, var(--parcela-brand) 60%, var(--foreground));
+}
+
+.lc-prose :where(h1) {
+  text-decoration: underline;
+  text-decoration-color: var(--parcela-brand);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.28em;
+}
+
+/* The current page, in the sidebar and the header. */
+[data-slot="nav-link"][aria-current="page"],
+header [data-slot="button"][aria-current="page"] {
+  background: color-mix(in oklab, var(--parcela-brand) 14%, var(--background)) !important;
+  color: color-mix(in oklab, var(--parcela-brand), white 18%) !important;
+}
+
+[data-slot="nav-group-title"] {
+  color: color-mix(in oklab, var(--parcela-brand) 70%, var(--foreground));
+}
+
+.page-outline a:hover {
+  color: var(--parcela-brand);
+}

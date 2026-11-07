@@ -77,7 +77,7 @@ export function renderCard({ title, description }) {
   <text x="168" y="102" font-size="28" ${family(800)} fill="#e6dedc">Parcela</text>
   ${text(titleLines, 80, titleTop, titleStep, titleSize, 800, '#e6dedc')}
   ${text(descriptionLines, 80, descriptionTop, 40, 28, 500, '#ada9a8')}
-  <text x="80" y="550" font-size="26" ${family(800)} fill="#eea78c">parcela.run</text>
+  <text x="80" y="550" font-size="26" ${family(800)} fill="#bb7125">parcela.run</text>
 </svg>`;
   return new Resvg(svg, { font, fitTo: { mode: 'width', value: width } }).render().asPng();
 }
