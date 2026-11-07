@@ -10,8 +10,11 @@
 
 - `--domain` is repeatable, and `PARCELA_DOMAIN` takes a comma-separated list, so one run can be shared under several domains on the same loopback port. Runs saved with one domain keep working after an upgrade.
 
+- `parcela relay install` also works on Linux, with systemd socket units running `systemd-socket-proxyd` as the user.
+
 ### Changed
 
+- `parcela proxy install` and `uninstall` are now `parcela relay install` and `uninstall`, with `parcela relay status`; the old names still work. The relay is a system service in front of the proxy, not the proxy itself.
 - Ready environments check their process tree and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease, reusing a listener check for up to 5 seconds. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.
 - `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
 

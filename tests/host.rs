@@ -141,3 +141,18 @@ fn up_takes_the_host_domain_unless_sharing_is_off() {
         "--no-share never reads it: {error}"
     );
 }
+
+#[test]
+fn relay_status_reports_without_changing_anything() {
+    let temp = TempDir::new().unwrap();
+    let state = temp.path().join("state");
+    let output = cli(
+        &temp.path().join("config.yaml"),
+        &state,
+        &["relay", "--json"],
+    );
+    let report: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(report["target"], 1443);
+    assert!(report["installed"].is_boolean() && report["location"].is_string());
+    assert!(!state.exists(), "status writes no state");
+}

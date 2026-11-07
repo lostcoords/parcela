@@ -19,27 +19,36 @@ async (page) => {
   const onError = (error) => errors.push(error.message);
   page.on('pageerror', onError);
   const originalViewport = page.viewportSize();
+  let savedAppearance;
   let stage = 'homepage';
   try {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${origin}/`);
+    savedAppearance = await page.evaluate(() => {
+      const saved = localStorage.getItem('vitepress-theme-appearance');
+      localStorage.setItem('vitepress-theme-appearance', 'light');
+      return saved;
+    });
+    await page.reload();
     await page.evaluate(() => { scrollTo({ top: 0, behavior: 'instant' }); window.dispatchEvent(new Event('scroll')); });
     await page.locator('.video-placeholder').waitFor();
-    if (await page.getByRole('switch', { name: 'Switch to light theme' }).isVisible()) {
-      await click(page.getByRole('switch', { name: 'Switch to light theme' }));
-    }
-    await page.waitForFunction(() => !document.documentElement.classList.contains('dark'), null, { polling: 100, timeout: 5000 });
+    await page.waitForFunction(() => document.documentElement.classList.contains('dark'), null, { polling: 100, timeout: 5000 });
+    check(await page.getByRole('switch', { name: /theme/ }).count() === 0, 'There is no theme switch');
+    check(await page.locator('html').evaluate(element => getComputedStyle(element).colorScheme) === 'dark', 'Light system and saved preferences still use the dark color scheme');
+    const logos = page.locator('img[src$="/assets/logo.png"]');
+    check(await logos.count() === 2, 'Header and closing section use Fence Buddy');
+    check(await logos.evaluateAll(images => Promise.all(images.map(image => image.decode().then(() => image.naturalWidth === 512)))).then(results => results.every(Boolean)), 'Both logo instances load the generated PNG');
     await themeReady();
     const hero = page.getByRole('navigation', { name: 'Get Parcela' });
     check(await hero.locator('[data-slot="button"]').count() === 2, 'Hero actions use shadcn buttons');
     const primary = hero.getByRole('link', { name: 'Get started' });
-    const light = await primary.evaluate((el) => {
+    const action = await primary.evaluate((el) => {
       const style = getComputedStyle(el);
       return { background: style.backgroundColor, image: style.backgroundImage, shadow: style.boxShadow, height: el.offsetHeight, radius: style.borderRadius };
     });
-    check(light.height >= 44 && parseFloat(light.radius) >= light.height / 2, 'Primary action has a pill shape and a touch target');
-    check(light.image === 'none' && !light.shadow.includes('inset') && light.shadow !== 'none', 'Primary action has a solid surface and an outer glow');
+    check(action.height >= 44 && parseFloat(action.radius) >= action.height / 2, 'Primary action has a pill shape and a touch target');
+    check(action.image === 'none' && !action.shadow.includes('inset') && action.shadow !== 'none', 'Primary action has a solid surface and an outer glow');
     check(await page.getByRole('heading', { level: 1 }).count() === 1, 'Homepage has one clear heading');
     const anchors = await page.locator('.VPHome h2.section-heading').evaluateAll((headings) => headings.map((heading) => heading.querySelector('a.heading-link')?.getAttribute('href') === `#${heading.id}`));
     check(anchors.length === 7 && anchors.every(Boolean), 'Every section title links to its own anchor');
@@ -139,12 +148,12 @@ async (page) => {
     });
     check(alignment, 'Video space and every section share the page width and gutters');
 
-    stage = 'dark theme';
-    await click(page.getByRole('switch', { name: 'Switch to dark theme' }));
+    stage = 'dark system preference';
+    await page.emulateMedia({ colorScheme: 'dark' });
     await page.waitForFunction(() => document.documentElement.classList.contains('dark'), null, { polling: 100, timeout: 5000 });
     await themeReady();
     const dark = await primary.evaluate((el) => getComputedStyle(el).backgroundColor);
-    check(dark === light.background, 'Accent keeps its color in both themes');
+    check(dark === action.background, 'System color preference does not change the accent');
     const shared = await page.evaluate(() => {
       const probe = document.createElement('div');
       probe.style.backgroundColor = 'var(--vp-c-bg)';
@@ -172,10 +181,13 @@ async (page) => {
     check(neutrals, 'Dark surfaces, text and primary buttons match Lostcoords UI neutrals');
 
     stage = 'documentation and search';
+    await page.emulateMedia({ colorScheme: 'light' });
     await click(primary);
     await page.waitForURL('**/docs/getting-started/');
     await page.locator('.vp-doc h1').filter({ hasText: 'Get started' }).waitFor();
     check(await page.locator('h1').count() === 1, 'Get started opens a documentation page');
+    check(await page.locator('html').getAttribute('class').then(classes => classes.split(' ').includes('dark')), 'Documentation stays dark with a light system preference');
+    check(await page.getByRole('switch', { name: /theme/ }).count() === 0, 'Documentation has no theme switch');
     check(await page.locator('.vp-doc button.copy').count() > 0, 'Documentation keeps copy controls');
     await page.waitForFunction(() => {
       const block = document.querySelector('.vp-doc div[class*="language-"]');
@@ -229,6 +241,7 @@ async (page) => {
       });
       check(menuIconCentered, 'Mobile menu icon stays centered inside the taller navbar');
       await click(page.getByRole('button', { name: 'mobile navigation' }));
+      check(await page.getByRole('switch', { name: /theme/ }).count() === 0, 'Mobile navigation has no theme switch');
       await click(page.locator('#VPNavScreen').getByRole('link', { name: 'Get started', exact: true }));
       await page.waitForURL('**/docs/getting-started/');
       check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Documentation fits ${width}px`);
@@ -308,12 +321,16 @@ async (page) => {
     check(await page.locator('.rotator .agent.on').innerText() === restingAgent, 'Reduced motion stops headline rotation');
     check(await placeholder.isVisible(), 'Video placeholder remains visible with reduced motion');
     check(errors.length === 0, `Browser errors: ${errors.join(', ')}`);
-    return { passed: ['static 16:9 video placeholder', 'standard page width and responsive gutters', 'same app on three devices', 'plain background and scroll header', 'FAQ answers and reduced motion', 'rotating headline', 'sharing arrows', 'scroll reveals on every block', 'live reduced-motion preference', 'borderless documentation code and tables', 'light and dark theme', 'local search', 'mobile navigation', '320px, 390px, 768px and 1024px layouts'], clipboard: 'untouched' };
+    return { passed: ['static 16:9 video placeholder', 'standard page width and responsive gutters', 'same app on three devices', 'plain background and scroll header', 'FAQ answers and reduced motion', 'rotating headline', 'sharing arrows', 'scroll reveals on every block', 'live reduced-motion preference', 'borderless documentation code and tables', 'dark-only theme despite system and saved light preferences', 'Fence Buddy images', 'local search', 'mobile navigation', '320px, 390px, 768px and 1024px layouts'], clipboard: 'untouched' };
   } catch (error) {
     const demoState = await page.locator('.demo').evaluate(element => ({ classes: element.className, text: element.innerText.slice(-400) })).catch(() => null);
     throw new Error(`${stage}: ${error.message}; demo=${JSON.stringify(demoState)}`);
   } finally {
     page.off('pageerror', onError);
+    if (savedAppearance !== undefined) await page.evaluate(saved => {
+      if (saved === null) localStorage.removeItem('vitepress-theme-appearance');
+      else localStorage.setItem('vitepress-theme-appearance', saved);
+    }, savedAppearance);
     await page.emulateMedia({ reducedMotion: null, colorScheme: null });
     if (originalViewport) await page.setViewportSize(originalViewport);
     await page.goto(`${origin}/`);

@@ -13,7 +13,7 @@ pub const PORT_ENV: &str = "PARCELA_HTTPS_PORT";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontDoor {
     pub https: u16,
-    /// Set by `parcela proxy install` on macOS: launchd relays 443 to `https`, so URLs have no port.
+    /// Set by `parcela relay install`: the system relays 443 to `https`, so URLs have no port.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub relay: bool,
 }

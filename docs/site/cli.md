@@ -258,8 +258,6 @@ parcela proxy start [--port N]
 parcela proxy stop
 parcela proxy restart [--port N]
 parcela proxy status
-parcela proxy install
-parcela proxy uninstall
 ```
 
 One background Caddy serves all environments. Owners recover an unexpected proxy exit. An explicit `proxy stop` keeps it stopped until `proxy start` or the next `up`.
@@ -270,10 +268,23 @@ One background Caddy serves all environments. Owners recover an unexpected proxy
 | `stop` | Stops routing for every environment. App processes keep running. |
 | `restart` | Replaces the proxy, including after an upgrade. Briefly interrupts URLs. |
 | `status` | Shows the port, PIDs, version, and log path. Exits 1 if stopped. |
-| `install` | On macOS, installs a launchd relay on loopback port 443 after a password prompt. Uses port 80 for redirects when free. Refuses an occupied 443. |
-| `uninstall` | Removes the macOS relay. |
+The default port is 1443. `PARCELA_HTTPS_PORT` applies when no port is saved. Port 443 omits the port from URLs and requires permission to bind it; [`relay`](#relay) is the usual way to get URLs without a port. The proxy redirects plain HTTP on its listener to HTTPS.
 
-The default port is 1443. `PARCELA_HTTPS_PORT` applies when no port is saved. Port 443 omits the port from URLs and requires permission to bind it. The proxy redirects plain HTTP on its listener to HTTPS.
+## relay
+
+```text
+parcela relay [status | install | uninstall]
+```
+
+Serves URLs without a port. The relay is not the proxy: it is a system service that forwards loopback port 443, and port 80 when free, to the proxy's port, as your user. Without a subcommand, shows whether it is installed.
+
+| Subcommand | Effect |
+| --- | --- |
+| `status` | Shows whether the relay is installed, whether it takes port 80, and the port it forwards to. |
+| `install` | Installs the relay after a password prompt. Refuses an occupied 443. On macOS it is a launchd daemon running `nc`; on Linux, systemd socket units running `systemd-socket-proxyd`. |
+| `uninstall` | Removes the relay. |
+
+Restart running environments after either change so their URLs update. `proxy install` and `proxy uninstall` still work as aliases.
 
 ## trust
 

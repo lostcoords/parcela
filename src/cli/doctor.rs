@@ -165,9 +165,9 @@ fn proxy(state: &Path) -> Check {
             "proxy",
             format!(
                 "URLs use port 443, but {} is missing",
-                parcela::relay::PLIST
+                parcela::relay::location()
             ),
-            "parcela proxy install",
+            "parcela relay install",
         );
     }
     match parcela::proxy::status(state) {

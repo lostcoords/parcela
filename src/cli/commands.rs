@@ -219,7 +219,10 @@ pub fn run(mut cli: Cli) -> Result<i32> {
     if let Some(selector) = &cli.workspace
         && !matches!(
             cli.command,
-            Command::Init { .. } | Command::Telemetry { .. } | Command::Config { .. }
+            Command::Init { .. }
+                | Command::Telemetry { .. }
+                | Command::Config { .. }
+                | Command::Relay { .. }
         )
     {
         let registry =
@@ -297,6 +300,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         Command::Config { command } => super::config::run(
             &state,
             command.unwrap_or(super::args::ConfigCommand::List),
+            out,
+        ),
+        Command::Relay { command } => super::proxy::relay(
+            &state,
+            command.unwrap_or(super::args::RelayCommand::Status),
             out,
         ),
         Command::Trust { print, caddy } => super::proxy::trust(&state, print, &caddy),

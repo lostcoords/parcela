@@ -357,7 +357,7 @@ Use the public URL for anything a browser follows. The request arrives with `Hos
 Every worktree has its own origin, so its OAuth callback is its own URL, such as `https://signup-shop.localhost:1443/auth/callback`. Build it from the request or from `PARCELA_URL`, never from a fixed host.
 
 - Most providers match redirect URIs exactly, port included, and few accept wildcards. Register the callback for each name you use. Names stay after the first `up`, and `parcela up --name NAME` picks one, so a few registered names can be reused.
-- `parcela proxy install` on macOS drops the `:1443` from URLs. Register the URLs you will actually see.
+- `parcela relay install` drops the `:1443` from URLs. Register the URLs you will actually see.
 - With `wildcard: true`, register one callback on the environment's host and send the tenant along in the OAuth `state`. A provider cannot be given every tenant host.
 - Some providers refuse `*.localhost`. [Google](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation) requires a top-level domain on the Public Suffix List, which `localhost` is not.
 

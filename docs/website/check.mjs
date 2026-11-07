@@ -46,6 +46,8 @@ const html = (slug) => readFileSync(join(output, route(slug), 'index.html'), 'ut
 const ids = new Map(pages.map(([slug]) => [`${base}${route(slug).slice(1)}`, new Set([...html(slug).matchAll(/ id="([^"]+)"/g)].map((match) => match[1]))]));
 for (const [slug, , source] of pages) {
   assert.equal(html(slug).match(/<h1[\s>]/g)?.length, 1, `${source} renders one page heading`);
+  assert.ok(!html(slug).includes('VPSwitchAppearance'), `${source} has no theme switch`);
+  assert.ok(html(slug).includes('src="/assets/logo.png"'), `${source} uses Fence Buddy`);
   assert.ok(!html(slug).includes(homedir()), `${source} leaks no local path`);
   for (const [, path] of html(slug).matchAll(/href="([^"#?]+)"/g)) {
     if (path === '/' || path.startsWith('/docs/')) assert.ok(ids.has(path), `${source} links to a published page ${path}`);
@@ -77,6 +79,7 @@ for (const [slug, , source] of pages) {
   assert.ok(head(slug).includes(`<link rel="canonical" href="${url}">`), `${source} is canonical at ${url}`);
   assert.deepEqual(property(slug, 'og:url'), [url], `${source} has og:url`);
   for (const name of ['og:title', 'og:description', 'twitter:card', 'twitter:image']) assert.equal(property(slug, name).length, 1, `${source} has ${name}`);
+  assert.deepEqual(property(slug, 'theme-color'), ['#171717'], `${source} declares the dark browser theme color`);
   const [image] = property(slug, 'og:image');
   assert.ok(image?.startsWith(`${site}${base}`), `${source} has an absolute og:image`);
   const png = readFileSync(join(output, image.slice(`${site}${base}`.length)));

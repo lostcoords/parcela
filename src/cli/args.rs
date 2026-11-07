@@ -245,6 +245,11 @@ pub enum Command {
         #[command(subcommand)]
         command: ProxyCommand,
     },
+    /// Serve URLs without a port, relaying 443 and 80 to the proxy
+    Relay {
+        #[command(subcommand)]
+        command: Option<RelayCommand>,
+    },
     /// Trust the local certificate authority
     Trust {
         /// Print the CA certificate path
@@ -388,9 +393,11 @@ pub enum ProxyCommand {
     Refresh,
     /// Show the proxy's status
     Status,
-    /// Serve URLs without a port, on 443 (macOS)
+    /// Same as `parcela relay install`
+    #[command(hide = true)]
     Install,
-    /// Remove the 443 relay
+    /// Same as `parcela relay uninstall`
+    #[command(hide = true)]
     Uninstall,
     /// Run the proxy in the foreground
     #[command(hide = true)]
@@ -398,6 +405,16 @@ pub enum ProxyCommand {
         #[command(flatten)]
         listen: Listen,
     },
+}
+
+#[derive(Subcommand, Clone, Copy)]
+pub enum RelayCommand {
+    /// Show whether the relay is installed
+    Status,
+    /// Install the relay
+    Install,
+    /// Remove the relay
+    Uninstall,
 }
 
 #[derive(clap::Args)]

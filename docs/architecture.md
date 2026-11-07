@@ -114,7 +114,7 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `startup`, `runtime` | Registers a checkout and coordinates startup and readiness. |
 | `supervisor`, `logs` | Runs the process graph and retains process output. |
 | `owner`, `control`, `lifecycle` | Owns environments and handles stop, restart, and recovery. |
-| `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration and runs the proxy and optional macOS relay. |
+| `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration, runs the proxy, and installs the optional 443/80 relay. |
 | `share` | Plans LAN, Tailscale and domain sharing and allowed host variables. |
 | `host` | Reads and writes the machine's own settings, `parcela config`. |
 | `process`, `http` | Checks process identity, listener ownership, and readiness. `http` is a client. |
@@ -130,6 +130,6 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 
 CA trust changes occur only through `parcela trust` or a first terminal `up`, behind the system password prompt. Nonterminal runs never change trust.
 
-`parcela proxy install` is the only system-service installation path. On macOS, launchd owns loopback port 443 and relays connections through `nc` as the user. Parcela code does not run as root. Packet-filter redirection is not used.
+`parcela relay install` is the only system-service installation path. The service manager owns loopback port 443 (and 80 when free) and relays connections as the user: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. Parcela code does not run as root. Packet-filter redirection is not used.
 
 For contributor commands and live verification, see [Contribute to Parcela](../CONTRIBUTING.md). For site checks, see [Build the documentation site](website/README.md).

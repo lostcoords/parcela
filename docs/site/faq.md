@@ -6,7 +6,7 @@ Parcela stores its registry, logs, certificates, and environment data in a priva
 
 `parcela init` writes `parcela.yaml` in your checkout. Your configured commands and hooks can write other files or change external services.
 
-The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`. System services require `parcela proxy install`.
+The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`. System services require `parcela relay install`.
 
 Parcela sends anonymous command telemetry unless disabled. [Telemetry](telemetry.md) describes its fields and controls.
 
@@ -20,9 +20,11 @@ Use `parcela trust` to add trust. To undo it, run `caddy untrust --cert "$(parce
 
 ## Why port 1443?
 
-A normal user can bind port 1443 without `sudo`. Parcela refuses occupied ports rather than taking them over. On macOS, `parcela proxy install` installs a password-protected launchd relay on loopback port 443. It also relays port 80 when free. Restart environments to update their URLs. `parcela proxy uninstall` removes it.
+A normal user can bind port 1443 without `sudo`. Parcela refuses occupied ports rather than taking them over. Binding loopback port 443 needs root on macOS and Linux; macOS lets a normal user bind 443 only on every interface, which would expose the apps to the network.
 
-On Linux, explicitly allow unprivileged port 443 with `sudo sysctl net.ipv4.ip_unprivileged_port_start=443`, then run `parcela proxy start --port 443`. This system setting affects all local processes.
+`parcela relay install` installs a password-protected system relay on loopback port 443 that forwards, as your user, to the proxy: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. It also relays port 80 when free. Restart environments to update their URLs. `parcela relay uninstall` removes it.
+
+On Linux you can instead allow unprivileged port 443 with `sudo sysctl net.ipv4.ip_unprivileged_port_start=443`, then run `parcela proxy start --port 443`. This system setting affects all local processes.
 
 ## Why use .localhost names?
 
@@ -143,7 +145,7 @@ Save any data you need before removing state. A configured `hooks.teardown` can 
    caddy untrust --cert "$(parcela trust --print)"
    ```
 
-4. On macOS, if you installed the port 443 relay, run `parcela proxy uninstall`.
+4. If you installed the port 443 relay, run `parcela relay uninstall`.
 5. Stop the proxy.
 
    ```sh

@@ -78,7 +78,7 @@ parcela --path "$CHECKOUT" url api
 - For HTTP environments, `up` starts the shared HTTPS proxy when none runs. Watcher-only environments need no proxy or certificate trust. The shared proxy serves HTTP environments on the machine: do not stop or restart it unless asked. `parcela proxy status` reports it.
 - Use the URLs Parcela returns; they carry the proxy port (`:1443` by default). Use declared service names, never an assumed port.
 - `state: ready` means hooks completed, services started, and explicit readiness checks passed. Watcher-only environments have no URL; use process status and logs to verify them. For HTTP verification, request the application path over the returned HTTPS URL with `curl --cacert "$(parcela trust --print)"`. Never disable TLS verification.
-- `parcela trust` changes system trust; run it only when the user asks. Without a terminal, `up` never trusts anything itself. `parcela proxy install` adds a system service; same rule.
+- `parcela trust` changes system trust; run it only when the user asks. Without a terminal, `up` never trusts anything itself. `parcela relay install` adds a system service; same rule.
 - If an HTTP environment needs Caddy and it is missing, report it. Do not install software, start Docker or a GUI, change firewall rules or take over a busy port.
 - `run -- ARGV` runs one foreground command as the only web service. It is not a substitute for `up`.
 

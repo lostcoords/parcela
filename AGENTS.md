@@ -7,7 +7,7 @@ Use jj for version control; preserve unrelated work and never use mutating Git c
 - Keep Caddy as the maintained routing/TLS backend. Parcela's own supervisor runs each environment's processes.
 - Defaults: HTTPS on the no-sudo port 1443, loopback only, flat names, tenants off.
 - Never take over listeners, trust a CA, expose LAN/tailnet services, or delete source/data implicitly. Sharing is per run, from explicit flags, environment settings or host defaults the person set with `parcela config`; never from the project. Domain routes remain loopback-only; `--no-share` disables all sharing. Never Tailscale Funnel.
-- CA trust only from `parcela trust` or the first `up` on a terminal, behind the system password prompt; never without a terminal. System services only from `parcela proxy install`.
+- CA trust only from `parcela trust` or the first `up` on a terminal, behind the system password prompt; never without a terminal. System services only from `parcela relay install`.
 - Tests that give Parcela a terminal set `PARCELA_NO_TRUST=1`.
 - Share live tests only on disposable environments, and check `down` removes the mDNS names and `tailscale serve` config.
 - Keep project commands/data policy in configuration; no framework assumptions in core.

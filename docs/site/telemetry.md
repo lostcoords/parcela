@@ -58,7 +58,7 @@ $ PARCELA_TELEMETRY_DEBUG=1 parcela up --detach --name review
 | Field | What it is |
 | --- | --- |
 | `schema`, `event` | `1` and `command`, identifying the event format. |
-| `command` | The subcommand, such as `up` or `proxy install`. |
+| `command` | The subcommand, such as `up` or `relay install`. |
 | `flags` | The names of the flags given on the command line, never their values: `--name review` is reported as `--name`. |
 | `exit` | The exit code. |
 | `duration` | How long the command ran: `<1s`, `1-5s`, `5-30s`, `30s-2m` or `>2m`. |

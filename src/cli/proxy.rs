@@ -1,5 +1,9 @@
 //! `parcela proxy ...`: the background HTTPS proxy shared by every environment.
-use super::{args::ProxyCommand, output::Output, render};
+use super::{
+    args::{ProxyCommand, RelayCommand},
+    output::Output,
+    render,
+};
 use anyhow::{Context, Result};
 use parcela::{
     frontdoor::FrontDoor,
@@ -15,7 +19,7 @@ fn requested(state: &Path, port: Option<u16>) -> Result<FrontDoor> {
     let saved = FrontDoor::load(state)?;
     match port {
         Some(https) if saved.relay && https != saved.https => anyhow::bail!(
-            "the port 443 relay sends to :{}; run `parcela proxy uninstall` before moving the proxy",
+            "the port 443 relay sends to :{}; run `parcela relay uninstall` before moving the proxy",
             saved.https
         ),
         Some(https) => Ok(FrontDoor {
@@ -142,15 +146,8 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             let started = proxy::start(state, &listen.caddy, front_door, true)?;
             report_started(state, &started, out)
         }
-        ProxyCommand::Install => {
-            Registry::open(state, true)?.context("cannot create the registry")?;
-            let front_door = parcela::relay::install(state, FrontDoor::load(state)?)?;
-            switch(state, front_door, out)
-        }
-        ProxyCommand::Uninstall => {
-            let front_door = parcela::relay::uninstall(FrontDoor::load(state)?)?;
-            switch(state, front_door, out)
-        }
+        ProxyCommand::Install => relay(state, RelayCommand::Install, out),
+        ProxyCommand::Uninstall => relay(state, RelayCommand::Uninstall, out),
         ProxyCommand::Stop => {
             let stopped = proxy::stop(state)?;
             let running = match Registry::open(state, false)? {
@@ -168,6 +165,41 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             }
             let report = json!({"stopped": stopped, "running": false});
             out.emit(&report, |style| render::proxy_stopped(&report, style))?;
+            Ok(0)
+        }
+    }
+}
+
+/// `parcela relay [status|install|uninstall]`: the system relay from 443 and 80 to the proxy.
+pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
+    match command {
+        RelayCommand::Install => {
+            Registry::open(state, true)?.context("cannot create the registry")?;
+            let front_door = parcela::relay::install(state, FrontDoor::load(state)?)?;
+            switch(state, front_door, out)
+        }
+        RelayCommand::Uninstall => {
+            let front_door = parcela::relay::uninstall(FrontDoor::load(state)?)?;
+            switch(state, front_door, out)
+        }
+        RelayCommand::Status => {
+            let (installed, http) = parcela::relay::status();
+            let front_door = FrontDoor::load(state)?;
+            let report = json!({
+                "installed": installed,
+                "http": http,
+                "location": parcela::relay::location(),
+                "target": front_door.https,
+            });
+            out.emit(&report, |style| match (installed, http) {
+                (false, _) => "Relay not installed\n".into(),
+                (true, true) => format!(
+                    "{} Relaying :443 and :80 to :{}\n",
+                    style.ok(),
+                    front_door.https
+                ),
+                (true, false) => format!("{} Relaying :443 to :{}\n", style.ok(), front_door.https),
+            })?;
             Ok(0)
         }
     }
