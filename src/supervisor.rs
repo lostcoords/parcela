@@ -507,15 +507,17 @@ impl Supervisor {
             }
             slot.state = State::Exited(code);
             if !self.stopping && node.kind == Kind::Publisher && code != Some(0) {
-                eprintln!(
-                    "parcela: {} stopped after {} restarts; that share is no longer published",
+                crate::paint::Paint::note(&format!(
+                    "{} stopped after {} restarts; that share is no longer published",
                     node.name, slot.restarts
-                );
+                ));
             }
             if !self.stopping && node.kind == Kind::Service {
                 match code {
-                    Some(code) => eprintln!("parcela: {} exited with code {code}", node.name),
-                    None => eprintln!("parcela: {} exited", node.name),
+                    Some(code) => {
+                        crate::paint::Paint::note(&format!("{} exited with code {code}", node.name))
+                    }
+                    None => crate::paint::Paint::note(&format!("{} exited", node.name)),
                 }
             }
         }
@@ -760,10 +762,10 @@ impl Supervisor {
         slot.stop = match spawned {
             Ok(child) => Stop::Running(child, Instant::now()),
             Err(error) => {
-                eprintln!(
-                    "parcela: could not run services.{}.stop: {error:#}",
+                crate::paint::Paint::note(&format!(
+                    "could not run services.{}.stop: {error:#}",
                     node.name
-                );
+                ));
                 Stop::Done(None)
             }
         };

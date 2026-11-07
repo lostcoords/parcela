@@ -17,7 +17,12 @@ use clap::Parser;
 pub fn main() {
     let args = args::Args::parse();
     if let Err(error) = upgrade::prepare(&args) {
-        eprintln!("parcela: {error:#}");
+        let paint = parcela::paint::Paint::stderr();
+        eprintln!(
+            "{} {}",
+            paint.paint("1;31", "parcela:"),
+            paint.commands(&format!("{error:#}"))
+        );
         std::process::exit(1);
     }
     let session = telemetry::begin(args.global.state_dir.clone());
@@ -28,9 +33,11 @@ pub fn main() {
     let code = match result {
         Ok(code) => code,
         Err(error) => {
+            let paint = parcela::paint::Paint::stderr();
             eprintln!(
-                "{} {error:#}",
-                parcela::paint::Paint::stderr().paint("1;31", "parcela:")
+                "{} {}",
+                paint.paint("1;31", "parcela:"),
+                paint.commands(&format!("{error:#}"))
             );
             1
         }

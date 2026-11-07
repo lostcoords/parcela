@@ -168,10 +168,10 @@ pub fn url_of(row: &Value) -> String {
 pub fn status_diagnostics(rows: &[Value]) {
     for row in rows {
         if let Some(diagnostic) = row["diagnostic"].as_str() {
-            eprintln!(
-                "parcela: {}: {diagnostic}",
+            parcela::paint::Paint::note(&format!(
+                "{}: {diagnostic}",
                 cell(&row["workspace"]["label"])
-            );
+            ));
         }
     }
 }

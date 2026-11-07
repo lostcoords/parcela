@@ -15,7 +15,9 @@
 
 ## Output
 
-Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url` and `logs`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `NO_COLOR` disables terminal colors.
+Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url` and `logs`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `up --detach` shows a progress line on stderr while it waits, in a terminal outside CI.
+
+Colors appear only in a terminal. `CLICOLOR_FORCE=1` or `FORCE_COLOR=1` keeps them when output is piped, for `less -R` or CI logs; `NO_COLOR` turns them off and wins over both. Forcing colors never switches a piped command from JSON to text.
 
 For example, `parcela status --current --json | jq -r .state` reads the environment state.
 
@@ -164,12 +166,12 @@ To add Parcela's debug menu to your own app in development, include its script f
 Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
 
 - **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
-- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. The page's own environment gets Restart, Stop and Logs; others get Open, and **Manage all** opens the same menu on `parcela-ui.localhost`, where every registered environment gets Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+- **Environments**, on an app page, shows only that page's environment, with Restart, Stop and Logs. **Manage all** opens the same menu on `parcela-ui.localhost`, which lists every project and worktree Parcela knows, stopped and unregistered ones included, and gives registered ones Open, Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
 
 The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
 
-Escape, the close button or a click outside closes the panel. Actions accept only same-origin requests that carry `X-Parcela-Action`. A script on an app page can start, stop and read the logs of that page's own environment only; other environments need the dashboard's own name. It can still list the other environments' names, states and URLs, so leave the script out of pages that load code you do not trust.
+Escape, the close button or a click outside closes the panel. Actions accept only same-origin requests that carry `X-Parcela-Action`. A script on an app page can see, start, stop and read the logs of that page's own environment only; other environments need the dashboard's own name.
 
 ## browse
 
@@ -300,7 +302,7 @@ Starts again, at login, the environments that were running when the machine went
 | `enable` | Installs a per-user service that runs once at login: a LaunchAgent on macOS, a systemd user unit on Linux. No password prompt. It keeps the current `PATH` and `PARCELA_CONFIG`. |
 | `disable` | Removes the service. |
 
-Each environment starts with `parcela up --detach` in its checkout. Flags from the original run, such as `--lan`, are not kept; [host `sharing`](#config) applies. Output goes to `autostart.log` in the state directory. On a Linux machine nobody logs in to, run `loginctl enable-linger` so user services start at boot.
+Each environment starts with `parcela up --detach` in its checkout, shared as its last run was: the same domains, Tailscale, and LAN on whatever address the machine has now. A run that shared nothing starts with `--no-share`. Output goes to `autostart.log` in the state directory. On a Linux machine nobody logs in to, run `loginctl enable-linger` so user services start at boot.
 
 ## trust
 

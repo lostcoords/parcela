@@ -129,8 +129,10 @@ pub(super) fn respond(
                 .lock()
                 .map(|actions| actions.clone())
                 .unwrap_or_default();
+            // An app page sees only its own environment; the dashboard's name lists them all.
             let environments: Vec<_> = rows()
                 .iter()
+                .filter(|row| request.dashboard() || key(row) == Some(request.environment))
                 .map(|row| Listed::new(row, request, &actions))
                 .collect();
             Response::json(200, &json!({"environments": environments}))
@@ -550,13 +552,22 @@ mod tests {
             &actions,
         );
         let listed: Value = serde_json::from_slice(&listed.body).unwrap();
-        let manageable: Vec<_> = listed["environments"]
+        let keys: Vec<_> = listed["environments"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|row| row["manageable"].as_bool().unwrap())
+            .map(|row| row["key"].as_str().unwrap())
             .collect();
-        assert_eq!(manageable, [true, false, false]);
+        assert_eq!(keys, ["abc"], "an app page never lists another environment");
+        let listed = respond(
+            &request("GET", "environments", true, ""),
+            Path::new("/nonexistent"),
+            "",
+            &snapshot(),
+            &actions,
+        );
+        let listed: Value = serde_json::from_slice(&listed.body).unwrap();
+        assert_eq!(listed["environments"].as_array().unwrap().len(), 3);
     }
 
     #[test]

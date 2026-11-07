@@ -285,6 +285,13 @@ pub fn detached(
     command.arg("--launch-file").arg(path.join("launch.json"));
     let signals = Signals::new()?;
     let mut owner = OwnedChild::spawn_logged(&mut command, log)?;
+    let mut spinner = crate::paint::Spinner::new();
+    let name = match workspace.role {
+        crate::registry::Role::Primary => workspace.project_id.clone(),
+        crate::registry::Role::Preview => format!("{} ({})", workspace.label, workspace.project_id),
+    };
+    let mut doing = String::new();
+    let mut asked = std::time::Instant::now() - Duration::from_secs(1);
     // The owner enforces the readiness timeout itself, and does not count time spent in hooks.
     loop {
         ensure!(signals.received() == 0, "detached startup interrupted");
@@ -293,15 +300,29 @@ pub fn detached(
             "services stopped before they were ready; full log: {}",
             log_path.display()
         );
-        if let Some(session) = registry.session(&workspace.id)?
-            && previous
+        let session = registry.session(&workspace.id)?.filter(|session| {
+            previous
                 .as_ref()
                 .is_none_or(|old| old.token != session.token)
+        });
+        // Ask the owner what it is running at most twice a second, for the spinner only.
+        if let Some(session) = &session
+            && session.status != SessionStatus::Ready
+            && asked.elapsed() >= Duration::from_millis(500)
+        {
+            asked = std::time::Instant::now();
+            if let Ok(live) = control::request(&path, session, Action::Status) {
+                doing = progress(&live);
+            }
+        }
+        spinner.update(&format!("Starting {name}{doing}"));
+        if let Some(session) = session
             && session.status == SessionStatus::Ready
             && let Ok(live) = control::request(&path, &session, Action::Status)
             && live["state"] == "ready"
             && live["owner_pid"].as_u64() == Some(u64::from(owner.id()))
         {
+            drop(spinner);
             let mut resolved_workspace = workspace.clone();
             resolved_workspace.generation = session.generation;
             owner.detach();
@@ -310,6 +331,22 @@ pub fn detached(
             );
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// What a starting owner is busy with, for the spinner: ` · running setup, web`.
+fn progress(live: &Value) -> String {
+    let running: Vec<&str> = live["services"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|service| service["status"] == "running" || service["status"] == "restarting")
+        .filter_map(|service| service["name"].as_str())
+        .collect();
+    if running.is_empty() {
+        String::new()
+    } else {
+        format!(" · {}", running.join(", "))
     }
 }
 

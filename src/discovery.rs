@@ -68,10 +68,10 @@ fn parse_jj(bytes: &[u8]) -> Result<Vec<Checkout>> {
     for row in rows {
         let path = PathBuf::from(row[1]);
         if !path.is_absolute() {
-            eprintln!(
-                "parcela: jj workspace {:?} has no readable root; omitted from checkout inventory",
+            crate::paint::Paint::note(&format!(
+                "jj workspace {:?} has no readable root; omitted from checkout inventory",
                 row[0]
-            );
+            ));
             continue;
         }
         checkouts.push(Checkout {

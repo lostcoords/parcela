@@ -160,7 +160,9 @@ pub fn install(state: &Path, front_door: FrontDoor) -> Result<FrontDoor> {
     let http = if installed() && relays_http() {
         true
     } else if let Some(holder) = busy(80) {
-        eprintln!("parcela: port 80 is in use by {holder}; http:// URLs will not redirect");
+        crate::paint::Paint::note(&format!(
+            "port 80 is in use by {holder}; http:// URLs will not redirect"
+        ));
         false
     } else {
         true

@@ -48,7 +48,9 @@ pub fn collect(state: &Path, path: Option<&Path>) -> Result<Inventory> {
         .map(|path| unregistered(state, registry.as_ref(), path))
         .transpose()
         .unwrap_or_else(|error| {
-            eprintln!("parcela: cannot list this project's other checkouts: {error:#}");
+            crate::paint::Paint::note(&format!(
+                "cannot list this project's other checkouts: {error:#}"
+            ));
             None
         })
         .unwrap_or_default();
@@ -63,9 +65,9 @@ pub fn collect(state: &Path, path: Option<&Path>) -> Result<Inventory> {
             {
                 match self::unregistered(state, Some(registry), &workspace.source) {
                     Ok(found) => unregistered.extend(found),
-                    Err(error) => {
-                        eprintln!("parcela: dashboard checkout discovery failed: {error:#}")
-                    }
+                    Err(error) => crate::paint::Paint::note(&format!(
+                        "dashboard checkout discovery failed: {error:#}"
+                    )),
                 }
             }
         }

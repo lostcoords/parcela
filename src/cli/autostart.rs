@@ -39,8 +39,8 @@ fn report(state: &Path, out: Output) -> Result<i32> {
     Ok(0)
 }
 
-/// Start each environment whose run was interrupted, as `parcela up --detach` in its checkout.
-/// Run flags such as `--lan` are not kept; the host's `sharing` settings apply.
+/// Start each environment whose run was interrupted, as `parcela up --detach` in its checkout,
+/// with the sharing flags its last run had.
 fn start(state: &Path, out: Output) -> Result<i32> {
     let pending = match Registry::open(state, false)? {
         Some(registry) => autostart::pending(&registry)?,
@@ -49,11 +49,12 @@ fn start(state: &Path, out: Output) -> Result<i32> {
     let parcela = std::env::current_exe().context("locate parcela")?;
     let mut results = Vec::new();
     let mut failed = false;
-    for id in pending {
+    for autostart::Pending { id, flags } in pending {
         let status = std::process::Command::new(&parcela)
             .arg("--state-dir")
             .arg(state)
             .args(["--workspace", &id, "up", "--detach"])
+            .args(&flags)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .status()

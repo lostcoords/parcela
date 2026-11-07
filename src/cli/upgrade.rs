@@ -179,9 +179,9 @@ fn offer_update(state: &Path) -> Result<Option<semver::Version>> {
     check.prompted_at = now;
     private::write_json(&file, &check)?;
     if install_method() != "install.sh" {
-        eprintln!(
-            "parcela: {latest} is available (current {VERSION}); run `parcela upgrade` for your installation's update command"
-        );
+        parcela::paint::Paint::note(&format!(
+            "{latest} is available (current {VERSION}); run `parcela upgrade` for your installation's update command"
+        ));
         return Ok(None);
     }
     eprint!("parcela: {latest} is available (current {VERSION}). Update now? [Y/n] ");
@@ -261,10 +261,10 @@ pub(super) fn prepare(args: &Args) -> Result<()> {
             return Err(error.into());
         }
         Ok(None) => (),
-        Err(error) => eprintln!("parcela: update check skipped: {error:#}"),
+        Err(error) => parcela::paint::Paint::note(&format!("update check skipped: {error:#}")),
     }
     if let Err(error) = proxy::refresh(&state) {
-        eprintln!("parcela: automatic proxy refresh failed: {error:#}");
+        parcela::paint::Paint::note(&format!("automatic proxy refresh failed: {error:#}"));
     }
     Ok(())
 }

@@ -113,9 +113,9 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
             servers.get("lan").is_some() || servers.get("domain").is_some(),
             error
         );
-        eprintln!(
-            "parcela: LAN and domain sharing are off; Caddy could not listen there: {error:#}"
-        );
+        crate::paint::Paint::note(&format!(
+            "LAN and domain sharing are off; Caddy could not listen there: {error:#}"
+        ));
         if let Ok(mut failed) = FAILED_SHARE.lock() {
             *failed = Some(config);
         }
@@ -576,11 +576,11 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
     private::write_json(&directory.join("router.json"), &router)?;
     private::write_json(&directory.join("loaded.json"), &config)?;
     drop(_update);
-    eprintln!(
-        "parcela: Caddy {backend} serving {} ({}); CA trust unchanged",
+    crate::paint::Paint::note(&format!(
+        "Caddy {backend} serving {} ({}); CA trust unchanged",
         router.url("<name>.localhost"),
         front_door.describe()
-    );
+    ));
     let mut refresh = Instant::now();
     let result = loop {
         if !identity.alive() {
@@ -601,7 +601,9 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
         }
         if Instant::now() >= refresh {
             if let Err(error) = sync(registry, &router) {
-                eprintln!("parcela: route lease renewal failed; routes expire: {error:#}");
+                crate::paint::Paint::note(&format!(
+                    "route lease renewal failed; routes expire: {error:#}"
+                ));
             }
             refresh = Instant::now() + RENEW;
         }

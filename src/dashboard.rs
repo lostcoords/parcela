@@ -141,7 +141,9 @@ impl Server {
                                 .collect(),
                         },
                         Err(error) => {
-                            eprintln!("parcela: dashboard inventory unavailable: {error:#}");
+                            crate::paint::Paint::note(&format!(
+                                "dashboard inventory unavailable: {error:#}"
+                            ));
                             Snapshot {
                                 error: Some(
                                     "Inventory unavailable. Check parcela status in a terminal."
@@ -177,7 +179,9 @@ impl Server {
                             thread::sleep(Duration::from_millis(20))
                         }
                         Err(error) => {
-                            eprintln!("parcela: dashboard listener failed: {error}");
+                            crate::paint::Paint::note(&format!(
+                                "dashboard listener failed: {error}"
+                            ));
                             break;
                         }
                     }

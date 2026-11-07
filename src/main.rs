@@ -2,7 +2,7 @@ mod cli;
 
 fn main() {
     if let Err(error) = close_inherited_descriptors() {
-        eprintln!("parcela: cannot release inherited descriptors: {error}");
+        parcela::paint::Paint::note(&format!("cannot release inherited descriptors: {error}"));
         std::process::exit(1);
     }
     cli::main();

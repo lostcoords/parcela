@@ -91,10 +91,9 @@ pub fn ensure_running(state: &Path, host: &str) -> Result<Router> {
     };
     match &started {
         Started::Already(router) => warn_version(router),
-        Started::Launched(router) => eprintln!(
-            "parcela: {}",
-            started_hint(router, host, trusted(state) == Some(true))
-        ),
+        Started::Launched(router) => {
+            crate::paint::Paint::note(&started_hint(router, host, trusted(state) == Some(true)))
+        }
     }
     Ok(started.router().clone())
 }
@@ -134,10 +133,10 @@ pub fn refresh(state: &Path) -> Result<Option<Router>> {
         backend.starts_with("v2."),
         "unsupported Caddy version: {backend}"
     );
-    eprintln!(
-        "parcela: updating the proxy from {} to {VERSION}; application processes keep running",
+    crate::paint::Paint::note(&format!(
+        "updating the proxy from {} to {VERSION}; application processes keep running",
         router.version
-    );
+    ));
     stop_locked(state)?;
     let started = launch_locked(state, &crate::host::caddy(), router.front_door, true, false)?;
     ensure!(
@@ -175,7 +174,7 @@ pub fn protocol_warning(router: &Router) -> Option<String> {
 }
 fn warn_version(router: &Router) {
     if let Some(warning) = protocol_warning(router) {
-        eprintln!("parcela: {warning}");
+        crate::paint::Paint::note(&warning);
     }
 }
 
@@ -482,9 +481,9 @@ pub fn offer_trust(state: &Path) {
         return;
     }
     if let Err(error) = install_trust(state, &crate::host::caddy()) {
-        eprintln!(
-            "parcela: the certificate authority is not trusted ({error:#}); run `parcela trust` to try again"
-        );
+        crate::paint::Paint::note(&format!(
+            "the certificate authority is not trusted ({error:#}); run `parcela trust` to try again"
+        ));
     }
 }
 

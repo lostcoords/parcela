@@ -163,9 +163,39 @@ fn run(command: &mut Command) -> Result<()> {
     Ok(())
 }
 
+/// An environment to start again, with the sharing flags its last run had.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pending {
+    pub id: String,
+    pub flags: Vec<String>,
+}
+
+/// The sharing flags that bring a run back as it was. The LAN address is found again, since it
+/// may have changed across the reboot.
+fn flags(share: &crate::share::Share) -> Vec<String> {
+    let mut flags = Vec::new();
+    if share.lan.is_some() {
+        flags.push("--lan".into());
+    }
+    if share.tailscale.is_some() {
+        flags.push("--tailscale".into());
+    }
+    for domain in &share.domains {
+        flags.extend(["--domain".into(), domain.name.clone()]);
+    }
+    if let Some(domain) = share.domains.first() {
+        flags.extend(["--domain-port".into(), domain.port.to_string()]);
+    }
+    // A run that shared nothing stays unshared, even if the host has sharing defaults now.
+    if flags.is_empty() {
+        flags.push("--no-share".into());
+    }
+    flags
+}
+
 /// The environments to start again: those whose last run was neither stopped with `down` nor is
 /// still running, and whose checkout still exists.
-pub fn pending(registry: &Registry) -> Result<Vec<String>> {
+pub fn pending(registry: &Registry) -> Result<Vec<Pending>> {
     let workspaces = registry.list(None)?;
     let mut pending = Vec::new();
     for session in registry.sessions()? {
@@ -188,7 +218,13 @@ pub fn pending(registry: &Registry) -> Result<Vec<String>> {
         if matches!(status["state"].as_str(), Some("ready" | "starting")) {
             continue;
         }
-        pending.push(workspace.id.clone());
+        let share = crate::owner::Record::read(&registry.runtime_path(workspace), &session)
+            .map(|record| record.share)
+            .unwrap_or_default();
+        pending.push(Pending {
+            id: workspace.id.clone(),
+            flags: flags(&share),
+        });
     }
     Ok(pending)
 }
@@ -222,6 +258,38 @@ mod tests {
             launch(Some("/tmp/c.yaml"))
                 .plist()
                 .contains("<key>PARCELA_CONFIG</key><string>/tmp/c.yaml</string>")
+        );
+    }
+
+    #[test]
+    fn a_run_comes_back_with_the_sharing_it_had() {
+        use crate::share::{Domain, Share};
+        assert_eq!(flags(&Share::default()), ["--no-share"]);
+        let share = Share {
+            lan: Some("192.168.1.20".parse().unwrap()),
+            domains: vec![
+                Domain {
+                    name: "tower.example.com".into(),
+                    port: 1480,
+                },
+                Domain {
+                    name: "dev.example.org".into(),
+                    port: 1480,
+                },
+            ],
+            ..Share::default()
+        };
+        assert_eq!(
+            flags(&share),
+            [
+                "--lan",
+                "--domain",
+                "tower.example.com",
+                "--domain",
+                "dev.example.org",
+                "--domain-port",
+                "1480"
+            ]
         );
     }
 

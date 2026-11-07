@@ -675,10 +675,10 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     } else if !start.restart
         && let Some(session) = lifecycle::orphaned(&registry, &workspace)?
     {
-        eprintln!(
-            "parcela: the Parcela process that started {} exited; taking back control of its running services",
+        parcela::paint::Paint::note(&format!(
+            "the Parcela process that started {} exited; taking back control of its running services",
             render::name(&serde_json::to_value(&workspace)?)
-        );
+        ));
         if !manifest.services.is_empty() {
             parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
         }

@@ -902,16 +902,16 @@ impl Owner<'_> {
                     match crate::proxy::revive(self.registry.state_path()) {
                         Ok(true) => {
                             proxy_error = None;
-                            eprintln!("parcela: the proxy had stopped; started it again")
+                            crate::paint::Paint::note("the proxy had stopped; started it again")
                         }
                         Ok(false) => {}
                         // Retried every 2s until the port frees up; said once per cause.
                         Err(error) => {
                             let error = format!("{error:#}");
                             if proxy_error.as_ref() != Some(&error) {
-                                eprintln!(
-                                    "parcela: the proxy is down and did not restart: {error}"
-                                );
+                                crate::paint::Paint::note(&format!(
+                                    "the proxy is down and did not restart: {error}"
+                                ));
                                 proxy_error = Some(error);
                             }
                         }
@@ -932,8 +932,8 @@ impl Owner<'_> {
                         published = Some(router.token);
                     }
                 } else {
-                    eprintln!(
-                        "parcela: router URL changed; application stays alive but unrouted until explicit restart"
+                    crate::paint::Paint::note(
+                        "router URL changed; application stays alive but unrouted until explicit restart",
                     );
                 }
             }
@@ -960,7 +960,7 @@ impl Owner<'_> {
             };
             let response = self.answer(&pending.action, requested_stop);
             if let Err(error) = pending.reply(&self.record.session, response) {
-                eprintln!("parcela: owner reply failed: {error:#}");
+                crate::paint::Paint::note(&format!("owner reply failed: {error:#}"));
             }
         }
         Ok(())

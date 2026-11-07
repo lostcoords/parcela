@@ -48,10 +48,10 @@ pub(super) fn move_running(state: &Path, front_door: FrontDoor) -> Result<()> {
     parcela::router::probe_listener(front_door.https)?;
     proxy::stop(state)?;
     proxy::start(state, &parcela::host::caddy(), front_door, true)?;
-    eprintln!(
-        "parcela: the proxy moved to :{}; restart running environments to update their URLs",
+    parcela::paint::Paint::note(&format!(
+        "the proxy moved to :{}; restart running environments to update their URLs",
         front_door.https
-    );
+    ));
     Ok(())
 }
 
@@ -184,9 +184,9 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
                 None => 0,
             };
             if stopped && running > 0 {
-                eprintln!(
-                    "parcela: {running} running environment(s) lose their URLs until `parcela proxy start` or the next `parcela up`"
-                );
+                parcela::paint::Paint::note(&format!(
+                    "{running} running environment(s) lose their URLs until `parcela proxy start` or the next `parcela up`"
+                ));
             }
             let report = json!({"stopped": stopped, "running": false});
             out.emit(&report, |style| render::proxy_stopped(&report, style))?;
@@ -234,7 +234,7 @@ fn report_started(state: &Path, started: &Started, out: Output) -> Result<i32> {
     let mut report = running(state, started.router());
     report["already_running"] = json!(matches!(started, Started::Already(_)));
     if let Some(warning) = report["version_warning"].as_str() {
-        eprintln!("parcela: {warning}");
+        parcela::paint::Paint::note(warning);
     }
     out.emit(&report, |style| render::proxy_status(&report, style))?;
     Ok(0)

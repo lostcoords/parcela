@@ -354,16 +354,16 @@ pub(crate) fn domain_name(value: &str) -> Result<String> {
     let name = value.trim_end_matches('.').to_ascii_lowercase();
     ensure!(
         name.contains('.'),
-        "--domain {value}: use a domain you control, such as dev.example.com"
+        "domain {value}: use a domain you control, such as dev.example.com"
     );
     for label in name.split('.') {
-        crate::config::dns_label(label).with_context(|| format!("--domain {value}"))?;
+        crate::config::dns_label(label).with_context(|| format!("domain {value}"))?;
     }
     ensure!(
         !["localhost", "local"]
             .iter()
             .any(|suffix| name.ends_with(&format!(".{suffix}"))),
-        "--domain {value}: .localhost and .local names are Parcela's own"
+        "domain {value}: .localhost and .local names are Parcela's own"
     );
     Ok(name)
 }
