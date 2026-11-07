@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-11-07
 
 ### Added
 
@@ -32,7 +32,7 @@
 
 ### Removed
 
-- `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting; a file that still has `sharing` fails and names the `parcela config add sharing.domains` command to run instead.
+- `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting. A file that still has `sharing` loads, so environments it started can be stopped after upgrading, but the block is ignored with a warning that names the `parcela config add sharing.domains` command to run instead.
 
 ### Fixed
 

@@ -487,17 +487,11 @@ impl Manifest {
         }
         // `x-` keys are free for YAML anchors and other tools, as in Docker Compose.
         fields.retain(|key, _| !key.starts_with("x-"));
-        if let Some(Value::Object(sharing)) = fields.get("sharing")
-            && let Some(Value::String(domain)) = sharing.get("domain")
-        {
-            bail!(
-                "sharing moved out of parcela.yaml; set it for this machine with `parcela config add sharing.domains {domain}`"
-            );
+        // Sharing is per machine since 0.8. An old file still loads, so environments it started
+        // can be stopped and inspected after an upgrade; the project's sharing is never applied.
+        if let Some(sharing) = fields.remove("sharing") {
+            moved_sharing(&sharing);
         }
-        ensure!(
-            !fields.contains_key("sharing"),
-            "sharing moved out of parcela.yaml; set it for this machine with `parcela config`"
-        );
         let file: File = serde_json::from_value(Value::Object(fields)).map_err(|error| {
             if error.to_string().starts_with("unknown field `") {
                 anyhow::anyhow!(
@@ -971,6 +965,20 @@ mod schema {
     }
 }
 
+/// Warn once per process about a `sharing` block, with the command that replaces it.
+fn moved_sharing(sharing: &Value) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| {
+        let command = match sharing.get("domain").and_then(Value::as_str) {
+            Some(domain) => format!("`parcela config add sharing.domains {domain}`"),
+            None => "`parcela config`".into(),
+        };
+        crate::paint::Paint::note(&format!(
+            "sharing in parcela.yaml is ignored since 0.8; set it for this machine with {command}, then remove it from parcela.yaml"
+        ));
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::Manifest;
@@ -979,16 +987,12 @@ mod tests {
         "version: 1\nproject: notes\nservices: {web: {command: serve, http: {healthcheck: /}}}\n";
 
     #[test]
-    fn project_sharing_points_to_the_host_setting() {
-        let error = Manifest::parse(&format!(
-            "{MANIFEST}sharing: {{domain: tower.example.com}}\n"
+    fn project_sharing_is_ignored_so_old_files_still_load() {
+        let manifest = Manifest::parse(&format!(
+            "{MANIFEST}sharing: {{domain: tower.example.com, lan: true}}\n"
         ))
-        .unwrap_err()
-        .to_string();
-        assert!(
-            error.contains("parcela config add sharing.domains tower.example.com"),
-            "{error}"
-        );
+        .unwrap();
+        assert_eq!(manifest.project.name, "notes");
     }
 
     #[test]

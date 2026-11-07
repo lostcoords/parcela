@@ -100,8 +100,8 @@ export default defineConfig({
   themeConfig: {
     logo: '/assets/logo.png',
     release: {
-      tag: 'v0.7.6',
-      link: 'https://github.com/lostcoords/parcela/releases/tag/v0.7.6',
+      tag: 'v0.8.0',
+      link: 'https://github.com/lostcoords/parcela/releases/tag/v0.8.0',
     },
     nav: [
       { text: 'Docs', link: route('docs') },
