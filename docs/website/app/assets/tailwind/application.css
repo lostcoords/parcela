@@ -18,29 +18,33 @@
   --font-mono: "Parcela Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
-/* The site is dark only: Parcela's neutral greys with a sky-blue accent. */
+/* The site is dark only, in Sanzo Wada's combination No. 279: Dark Tyrian Blue tints the
+   surfaces, Raw Sienna fills actions, Vinaceous Cinnamon marks accents. */
 :root,
 html[data-theme="dark"] {
   color-scheme: dark;
-  --background: oklch(20.5% 0 0);
-  --foreground: oklch(91.5% 0 0);
-  --card: oklch(24.2% 0 0);
+  --parcela-ink: #12354e;
+  --parcela-brand: #bb7125;
+  --parcela-pen: #eea78c;
+  /* Raw Sienna darkened until white text on it passes 4.5:1. */
+  --parcela-brand-strong: color-mix(in oklab, var(--parcela-brand) 90%, black);
+  --background: color-mix(in oklab, var(--parcela-ink) 20%, oklch(17% 0 0));
+  --foreground: color-mix(in oklab, var(--parcela-pen) 10%, oklch(92% 0 0));
+  --card: color-mix(in oklab, var(--parcela-ink) 24%, oklch(21% 0 0));
   --card-foreground: var(--foreground);
-  --popover: oklch(24.2% 0 0);
+  --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --primary: oklch(91.5% 0 0);
-  --primary-foreground: oklch(20.5% 0 0);
-  --secondary: oklch(24.2% 0 0);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary: var(--card);
   --secondary-foreground: var(--foreground);
-  --muted: oklch(26% 0 0);
+  --muted: color-mix(in oklab, var(--parcela-ink) 26%, oklch(23% 0 0));
   --muted-foreground: color-mix(in oklab, var(--foreground) 76%, var(--background));
-  --accent: oklch(28.4% 0 0);
+  --accent: color-mix(in oklab, var(--parcela-ink) 28%, oklch(25% 0 0));
   --accent-foreground: var(--foreground);
   --destructive: #ff8a8d;
   --border: color-mix(in oklab, var(--foreground) 14%, transparent);
   --input: var(--border);
-  --ring: oklch(78% 0.12 225);
+  --ring: var(--parcela-pen);
   --radius: 1rem;
-  --parcela-sky: #65c6e3;
-  --parcela-sky-strong: #34bfed;
 }
