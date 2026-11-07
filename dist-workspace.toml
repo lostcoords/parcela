@@ -13,3 +13,8 @@ auto-includes = false
 include = ["LICENSE", "COPYRIGHT", "target/notices/THIRD_PARTY_NOTICES.txt"]
 checksum = "sha256"
 unix-archive = ".tar.gz"
+
+# GitHub retired the macos-14 image dist picks by default.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
+x86_64-apple-darwin = "macos-15"
