@@ -31,9 +31,16 @@ fn report(state: &Path, out: Output) -> Result<i32> {
     let value = json!({"enabled": enabled, "location": location, "pending": pending});
     out.emit(&value, |style| {
         if enabled {
-            format!("{} Autostart enabled\n", style.ok())
+            format!(
+                "{} Autostart enabled\n{}\n",
+                style.ok(),
+                style.dim("Environments left running start again at login.")
+            )
         } else {
-            "Autostart disabled\n".into()
+            format!(
+                "Autostart disabled\n{}\n",
+                style.dim("Turn it on with `parcela autostart enable`.")
+            )
         }
     })?;
     Ok(0)

@@ -206,6 +206,21 @@ fn proxy(state: &Path) -> Check {
     }
 }
 
+/// Whether this checkout's environment already runs, so the next step is to open it.
+fn running(path: &Path, state: &Path) -> bool {
+    (|| -> Result<bool> {
+        let source = locate(path)?;
+        let manifest = Manifest::load(&source.join("parcela.yaml"))?;
+        let Some(registry) = parcela::registry::Registry::open(state, false)? else {
+            return Ok(false);
+        };
+        let workspace = registry.current(&source, &manifest)?;
+        let status = parcela::lifecycle::status(&registry, &workspace)?;
+        Ok(status["state"] == "ready")
+    })()
+    .unwrap_or(false)
+}
+
 pub struct Probes<'a> {
     pub path: &'a Path,
     pub state: &'a Path,
@@ -254,7 +269,13 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
     let next = checks
         .iter()
         .find_map(|check| check.fix.clone())
-        .unwrap_or_else(|| "parcela up".into());
+        .unwrap_or_else(|| {
+            if running(probes.path, probes.state) {
+                "parcela open".into()
+            } else {
+                "parcela up".into()
+            }
+        });
     out.emit(
         &serde_json::json!({"ready": ready, "checks": checks, "notes": notes}),
         |style| {

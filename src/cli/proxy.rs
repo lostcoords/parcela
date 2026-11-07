@@ -210,20 +210,32 @@ pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
         RelayCommand::Status => {
             let (installed, http) = parcela::relay::status();
             let front_door = FrontDoor::load(state)?;
+            let relayed = parcela::relay::target().filter(|_| installed);
+            let target = relayed.unwrap_or(front_door.https);
             let report = json!({
                 "installed": installed,
                 "http": http,
                 "location": parcela::relay::location(),
-                "target": front_door.https,
+                "target": target,
+                "proxy_port": front_door.https,
             });
-            out.emit(&report, |style| match (installed, http) {
-                (false, _) => "Relay not installed\n".into(),
-                (true, true) => format!(
-                    "{} Relaying :443 and :80 to :{}\n",
-                    style.ok(),
-                    front_door.https
-                ),
-                (true, false) => format!("{} Relaying :443 to :{}\n", style.ok(), front_door.https),
+            out.emit(&report, |style| {
+                let ports = if http { ":443 and :80" } else { ":443" };
+                match relayed {
+                    None if !installed => format!(
+                        "Relay not installed\n{}\n",
+                        style.dim("Serve URLs without a port with `parcela relay install`.")
+                    ),
+                    Some(target) if target != front_door.https => format!(
+                        "{} Relaying {ports} to :{target}\n{}\n",
+                        style.ok(),
+                        style.dim(&format!(
+                            "This proxy is on :{}, so its URLs keep the port.",
+                            front_door.https
+                        ))
+                    ),
+                    _ => format!("{} Relaying {ports} to :{target}\n", style.ok()),
+                }
             })?;
             Ok(0)
         }

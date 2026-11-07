@@ -20,13 +20,15 @@ pub(super) fn run(state: &Path, command: ConfigCommand, out: Output) -> Result<i
                 .map(|(key, value)| (key.to_string(), value.clone()))
                 .collect();
             out.emit(&value, |style| {
+                let width = entries.iter().map(|(key, _)| key.len()).max().unwrap_or(0) + 2;
                 entries
                     .iter()
                     .map(|(key, value)| match text(value) {
-                        text if text.is_empty() => {
-                            format!("{}\n", style.dim(&format!("{key}=")))
-                        }
-                        text => format!("{key}={text}\n"),
+                        text if text.is_empty() => format!(
+                            "{key:width$}{}\n",
+                            style.dim(&format!("{} (default)", default(key)))
+                        ),
+                        text => format!("{key:width$}{text}\n"),
                     })
                     .collect()
             })?;
@@ -102,6 +104,29 @@ fn move_proxy(state: &Path, path: &Path, previous: &Host, host: &Host) -> Result
         before.save(state)?;
     }
     moved
+}
+
+/// What an unset key means, for `parcela config list`.
+fn default(key: &str) -> String {
+    match key {
+        "sharing.domains" => "none",
+        "sharing.domain_port" => "1480",
+        "sharing.lan" | "sharing.tailscale" => "false",
+        "sharing.lan_ip" => "detected",
+        "telemetry" | "updates" | "trust" => "true",
+        "worktrees.directory" => "beside the repository",
+        "ports.backend" => {
+            return format!(
+                "{}-{}",
+                host::BACKEND_PORTS.start(),
+                host::BACKEND_PORTS.end()
+            );
+        }
+        "proxy.port" => "1443",
+        "proxy.caddy" => "caddy",
+        _ => "-",
+    }
+    .into()
 }
 
 fn text(value: &Value) -> String {

@@ -282,7 +282,7 @@ Serves URLs without a port. The relay is not the proxy: it is a system service t
 
 | Subcommand | Effect |
 | --- | --- |
-| `status` | Shows whether the relay is installed, whether it takes port 80, and the port it forwards to. |
+| `status` | Shows whether the relay is installed, whether it takes port 80, and the port it forwards to, as installed. JSON adds `proxy_port`, this state directory's proxy port. |
 | `install` | Installs the relay after a password prompt. Refuses an occupied 443. On macOS it is a launchd daemon running `nc`; on Linux, systemd socket units running `systemd-socket-proxyd`. |
 | `uninstall` | Removes the relay. |
 

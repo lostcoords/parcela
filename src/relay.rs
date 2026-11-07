@@ -113,6 +113,23 @@ fn relays_http() -> bool {
     }
 }
 
+/// The proxy port the installed relay forwards to, read from its service file. It is fixed at
+/// install, and only the state directory that installed it has its proxy there.
+pub fn target() -> Option<u16> {
+    if cfg!(target_os = "macos") {
+        let plist = std::fs::read_to_string(PLIST).ok()?;
+        target_in(&plist, "<string>127.0.0.1</string><string>", '<')
+    } else {
+        let unit = std::fs::read_to_string(format!("{UNITS}/{HTTPS_UNIT}.service")).ok()?;
+        target_in(&unit, "-proxyd 127.0.0.1:", '\n')
+    }
+}
+
+fn target_in(text: &str, before: &str, end: char) -> Option<u16> {
+    let (_, rest) = text.split_once(before)?;
+    rest.split(end).next()?.trim().parse().ok()
+}
+
 /// The installed relay: whether it exists and whether it also takes port 80.
 pub fn status() -> (bool, bool) {
     let installed = installed();
@@ -243,6 +260,10 @@ mod tests {
     #[test]
     fn the_relay_runs_nc_as_the_user_on_a_launchd_socket() {
         let plist = super::plist("you", 1443, false);
+        assert_eq!(
+            super::target_in(&plist, "<string>127.0.0.1</string><string>", '<'),
+            Some(1443)
+        );
         assert!(!plist.contains("<string>80</string>"), "{plist}");
         for part in [
             "<key>UserName</key><string>you</string>",
@@ -281,6 +302,10 @@ mod tests {
             "/usr/lib/systemd/systemd-socket-proxyd",
         );
         assert!(socket.contains("ListenStream=127.0.0.1:443\n"), "{socket}");
+        assert_eq!(
+            super::target_in(&service, "-proxyd 127.0.0.1:", '\n'),
+            Some(1443)
+        );
         for part in [
             "User=you\n",
             "ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:1443\n",

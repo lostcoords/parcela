@@ -72,7 +72,10 @@ pub fn status(row: &Value, style: &Style) -> String {
     }
     text.push_str(&format!(
         "  {}\n",
-        style.dim(&format!("path {}", cell(&workspace["source"])))
+        style.dim(&format!(
+            "path {}",
+            super::output::home(&cell(&workspace["source"]))
+        ))
     ));
     text
 }
@@ -111,7 +114,11 @@ pub fn context(value: &Value, style: &Style) -> String {
         }
     }
     text.push_str(&ports(&value["ports"]));
-    text.push_str(&format!("  {:<10}{}\n", "path", cell(&workspace["source"])));
+    text.push_str(&format!(
+        "  {:<10}{}\n",
+        "path",
+        super::output::home(&cell(&workspace["source"]))
+    ));
     text.push_str(&format!(
         "  {:<10}{}\n",
         "runtime",

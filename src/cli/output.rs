@@ -149,7 +149,7 @@ pub fn status_rows(rows: &[Value], style: &Style) -> String {
                 ),
                 style.state(&cell(&row["state"])),
                 url_of(row),
-                cell(&workspace["source"]),
+                home(&cell(&workspace["source"])),
             ]
         })
         .collect();
@@ -157,6 +157,18 @@ pub fn status_rows(rows: &[Value], style: &Style) -> String {
         return "No environments registered. Start one with `parcela up`.\n".into();
     }
     table(&["PROJECT", "NAME", "STATE", "URL", "PATH"], &rows)
+}
+
+/// A path for people to read, with the home directory as `~`.
+pub fn home(path: &str) -> String {
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && home != "/" => match path.strip_prefix(&home) {
+            Some("") => "~".into(),
+            Some(rest) if rest.starts_with('/') => format!("~{rest}"),
+            _ => path.to_owned(),
+        },
+        _ => path.to_owned(),
+    }
 }
 
 /// The URL `lifecycle::status` resolved for the row.

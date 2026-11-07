@@ -147,7 +147,8 @@ fn relay_status_reports_without_changing_anything() {
         &["relay", "--json"],
     );
     let report: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap();
-    assert_eq!(report["target"], 1443);
+    assert_eq!(report["proxy_port"], 1443);
+    assert!(report["target"].is_u64());
     assert!(report["installed"].is_boolean() && report["location"].is_string());
     assert!(!state.exists(), "status writes no state");
 }
@@ -160,7 +161,7 @@ fn proxy_port_and_caddy_come_from_the_host_config() {
     let run = |args: &[&str]| cli(&config, &state, args);
     let target = || -> serde_json::Value {
         serde_json::from_str::<serde_json::Value>(&stdout(&run(&["relay", "--json"]))).unwrap()
-            ["target"]
+            ["proxy_port"]
             .clone()
     };
     assert_eq!(target(), 1443);

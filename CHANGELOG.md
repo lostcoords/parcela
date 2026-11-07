@@ -23,12 +23,19 @@
 - The debug menu on an app page lists, starts, stops and shows logs for that page's own environment only, so a script in one app cannot see or stop another. **Manage all** opens the menu on `parcela-ui.localhost`, which manages every environment.
 - `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
 - Errors and notices show the command to run in cyan.
+- `parcela config` lists keys in columns, with each unset key's default.
+- `ls`, `status` and the checkout view show paths under the home directory as `~/…`.
+- `parcela doctor` suggests `parcela open` when the environment already runs, and `parcela autostart` and `parcela relay` say how to turn them on.
 - Ready environments check their processes and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.
 - Commands check whether a running proxy needs updating without taking its lock: about 1 ms instead of 5 ms per command.
 
 ### Removed
 
 - `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting; a file that still has `sharing` fails and names the `parcela config add sharing.domains` command to run instead.
+
+### Fixed
+
+- `parcela relay status` reports the port the installed relay forwards to, read from its service file, not the current state directory's proxy port, and says when they differ.
 
 ## 0.7.6 - 2026-10-31
 
