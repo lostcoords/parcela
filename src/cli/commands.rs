@@ -307,7 +307,16 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             command.unwrap_or(super::args::RelayCommand::Status),
             out,
         ),
-        Command::Trust { print, caddy } => super::proxy::trust(&state, print, &caddy),
+        Command::Trust {
+            print,
+            export,
+            remove,
+            caddy,
+        } => super::proxy::trust(
+            &state,
+            super::proxy::TrustAction::from_flags(print, export, remove),
+            &caddy.unwrap_or_else(parcela::host::caddy),
+        ),
         Command::Run {
             name,
             primary,

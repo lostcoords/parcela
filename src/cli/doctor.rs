@@ -221,7 +221,7 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
     if !headless {
         checks.push(backend(
             "caddy",
-            probes.caddy.unwrap_or("caddy"),
+            probes.caddy.unwrap_or(&parcela::host::caddy()),
             "v2.",
             "install Caddy 2: brew install caddy (or https://caddyserver.com/docs/install)",
         ));

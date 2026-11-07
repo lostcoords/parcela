@@ -17,6 +17,13 @@ use std::path::Path;
 /// An explicit `--port` is a port profile; otherwise the saved profile or the default.
 fn requested(state: &Path, port: Option<u16>) -> Result<FrontDoor> {
     let saved = FrontDoor::load(state)?;
+    if let Some(configured) = parcela::host::Host::current()?.proxy.port
+        && port.is_some_and(|port| port != configured)
+    {
+        anyhow::bail!(
+            "proxy.port is {configured} in the host config; change it with `parcela config set proxy.port N`"
+        );
+    }
     match port {
         Some(https) if saved.relay && https != saved.https => anyhow::bail!(
             "the port 443 relay sends to :{}; run `parcela relay uninstall` before moving the proxy",
@@ -30,12 +37,30 @@ fn requested(state: &Path, port: Option<u16>) -> Result<FrontDoor> {
     }
 }
 
+/// Move a running proxy to `front_door`'s port. A stopped proxy starts there next time.
+pub(super) fn move_running(state: &Path, front_door: FrontDoor) -> Result<()> {
+    let Status::Running(router) = proxy::status(state)? else {
+        return Ok(());
+    };
+    if router.front_door.https == front_door.https {
+        return Ok(());
+    }
+    parcela::router::probe_listener(front_door.https)?;
+    proxy::stop(state)?;
+    proxy::start(state, &parcela::host::caddy(), front_door, true)?;
+    eprintln!(
+        "parcela: the proxy moved to :{}; restart running environments to update their URLs",
+        front_door.https
+    );
+    Ok(())
+}
+
 /// Save `front_door` and restart a running proxy on it, so new URLs take effect.
 fn switch(state: &Path, front_door: FrontDoor, out: Output) -> Result<i32> {
     front_door.save(state)?;
     if matches!(proxy::status(state)?, Status::Running(_)) {
         proxy::stop(state)?;
-        proxy::start(state, "caddy", front_door, true)?;
+        proxy::start(state, &parcela::host::caddy(), front_door, true)?;
     }
     let report = json!({"front_door": front_door, "url": front_door.url("<name>.localhost")});
     out.emit(&report, |style| {
@@ -84,7 +109,7 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
         ProxyCommand::Run { listen } => {
             let registry = Registry::open(state, true)?.context("cannot create the registry")?;
             let front_door = requested(registry.state_path(), listen.port)?;
-            parcela::router::run(&registry, &listen.caddy, front_door)
+            parcela::router::run(&registry, &listen.caddy(), front_door)
         }
         ProxyCommand::Refresh => {
             let refreshed = proxy::refresh(state)?;
@@ -119,7 +144,7 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             Registry::open(state, true)?.context("cannot create the registry")?;
             let started = proxy::start(
                 state,
-                &listen.caddy,
+                &listen.caddy(),
                 requested(state, listen.port)?,
                 listen.port.is_some(),
             )?;
@@ -143,7 +168,7 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
                 parcela::router::probe_listener(front_door.https)?;
             }
             proxy::stop(state)?;
-            let started = proxy::start(state, &listen.caddy, front_door, true)?;
+            let started = proxy::start(state, &listen.caddy(), front_door, true)?;
             report_started(state, &started, out)
         }
         ProxyCommand::Install => relay(state, RelayCommand::Install, out),
@@ -215,24 +240,57 @@ fn report_started(state: &Path, started: &Started, out: Output) -> Result<i32> {
     Ok(0)
 }
 
-/// `parcela trust`: trusts the CA on request. The only other path is `offer_trust`.
-pub fn trust(state: &Path, print: bool, caddy: &str) -> Result<i32> {
+pub enum TrustAction {
+    Trust,
+    Print,
+    Export,
+    Remove,
+}
+
+impl TrustAction {
+    pub fn from_flags(print: bool, export: bool, remove: bool) -> Self {
+        match (print, export, remove) {
+            (true, _, _) => Self::Print,
+            (_, true, _) => Self::Export,
+            (_, _, true) => Self::Remove,
+            _ => Self::Trust,
+        }
+    }
+}
+
+/// `parcela trust`: trusts or untrusts the CA on request. The only other path is `offer_trust`.
+pub fn trust(state: &Path, action: TrustAction, caddy: &str) -> Result<i32> {
     use std::io::IsTerminal;
 
     let certificate = proxy::certificate(state);
-    if print {
-        anyhow::ensure!(
-            certificate.is_file(),
+    let missing = || {
+        format!(
             "no certificate authority yet at {}; start the proxy with `parcela proxy start`",
             certificate.display()
-        );
-        println!("{}", certificate.display());
-        return Ok(0);
+        )
+    };
+    match action {
+        TrustAction::Print => {
+            anyhow::ensure!(certificate.is_file(), missing());
+            println!("{}", certificate.display());
+            return Ok(0);
+        }
+        TrustAction::Export => {
+            let pem = std::fs::read_to_string(&certificate).with_context(missing)?;
+            print!("{pem}");
+            return Ok(0);
+        }
+        TrustAction::Trust | TrustAction::Remove => {}
     }
     anyhow::ensure!(
         std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
         "parcela trust requires a terminal; run it directly in a terminal to approve system trust"
     );
+    if matches!(action, TrustAction::Remove) {
+        anyhow::ensure!(certificate.is_file(), missing());
+        proxy::remove_trust(state, caddy)?;
+        return Ok(0);
+    }
     Registry::open(state, true)?.context("cannot create the registry")?;
     proxy::ensure_running(state, "<name>.localhost")?;
     proxy::install_trust(state, caddy)?;

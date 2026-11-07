@@ -16,7 +16,7 @@ Caddy generates a local root certificate so browsers can accept Parcela's HTTPS 
 
 The CA has no name constraints. Anyone who obtains its private key can issue certificates your system accepts for any hostname. The key lives under the private state directory at `proxy/data/pki/authorities/local/root.key`. Keep that directory out of shared backups and dotfiles repositories.
 
-Use `parcela trust` to add trust. To undo it, run `caddy untrust --cert "$(parcela trust --print)"` before deleting the state directory. Set `PARCELA_NO_TRUST=1` to suppress automatic terminal trust attempts.
+Use `parcela trust` to add trust and `parcela trust --remove` to undo it, before deleting the state directory. Set `parcela config set trust false`, or `PARCELA_NO_TRUST=1` for one shell, to stop `up` from offering it.
 
 ## Why port 1443?
 
@@ -142,7 +142,7 @@ Save any data you need before removing state. A configured `hooks.teardown` can 
 3. If you trusted the certificate authority, remove that trust before deleting its certificate.
 
    ```sh
-   caddy untrust --cert "$(parcela trust --print)"
+   parcela trust --remove
    ```
 
 4. If you installed the port 443 relay, run `parcela relay uninstall`.

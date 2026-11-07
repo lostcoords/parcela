@@ -631,7 +631,7 @@ pub fn probe_listener(port: u16) -> Result<()> {
         Err(_) => {}
     }
     anyhow::bail!(
-        "port {port} is already in use by {}; choose another port with `parcela proxy start --port <n>`",
+        "port {port} is already in use by {}; choose another with `parcela config set proxy.port N`",
         crate::process::port_holder(port)
     )
 }

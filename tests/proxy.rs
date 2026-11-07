@@ -213,7 +213,12 @@ fn proxy_start_runs_in_the_background_until_proxy_stop() {
 
     let stopped = json_of(&cli(&proxy.state, &["--json", "proxy", "stop"]));
     assert_eq!(stopped["stopped"], true);
-    assert!(!alive(pid) && !alive(caddy_pid));
+    // `proxy stop` waited for both; kill(0) also sees an exited process until it is reaped.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while alive(pid) || alive(caddy_pid) {
+        assert!(std::time::Instant::now() < deadline, "proxy outlived stop");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     assert_eq!(
         cli(&proxy.state, &["proxy", "status"]).status.code(),
         Some(1)
@@ -249,7 +254,7 @@ fn a_busy_port_fails_naming_its_holder_and_keeps_the_saved_profile() {
     assert!(
         message.starts_with(&format!(
             "parcela: the proxy did not start: port {port} is already in use by "
-        )) && message.ends_with("; choose another port with `parcela proxy start --port <n>`\n"),
+        )) && message.ends_with("; choose another with `parcela config set proxy.port N`\n"),
         "{message}"
     );
     assert!(

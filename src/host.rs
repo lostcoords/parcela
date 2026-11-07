@@ -12,7 +12,7 @@ use std::{
 };
 
 /// Every key `parcela config set` accepts.
-pub const KEYS: [&str; 9] = [
+pub const KEYS: [&str; 12] = [
     "sharing.domains",
     "sharing.domain_port",
     "sharing.lan",
@@ -22,6 +22,9 @@ pub const KEYS: [&str; 9] = [
     "updates",
     "worktrees.directory",
     "ports.backend",
+    "proxy.port",
+    "proxy.caddy",
+    "trust",
 ];
 
 /// Where backend ports come from unless `ports.backend` says otherwise. Below every OS
@@ -40,6 +43,18 @@ pub struct Host {
     pub updates: Option<bool>,
     pub worktrees: Worktrees,
     pub ports: Ports,
+    pub proxy: Proxy,
+    /// `false`: `up` never offers to trust the CA; `parcela trust` still does.
+    pub trust: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Proxy {
+    /// The proxy's HTTPS port, instead of 1443.
+    pub port: Option<u16>,
+    /// The Caddy binary, instead of `caddy` on PATH.
+    pub caddy: Option<String>,
 }
 
 /// How `up` and `restart` share every run on this machine unless `--no-share` says otherwise.
@@ -145,6 +160,13 @@ impl Host {
         if let Some(range) = &self.ports.backend {
             port_range(range)?;
         }
+        if let Some(caddy) = &self.proxy.caddy {
+            program(caddy)?;
+        }
+        ensure!(
+            self.proxy.port != Some(0),
+            "proxy.port must be between 1 and 65535"
+        );
         Ok(())
     }
 
@@ -201,6 +223,9 @@ impl Host {
             "updates" => json!(self.updates),
             "worktrees.directory" => json!(self.worktrees.directory),
             "ports.backend" => json!(self.ports.backend),
+            "proxy.port" => json!(self.proxy.port),
+            "proxy.caddy" => json!(self.proxy.caddy),
+            "trust" => json!(self.trust),
             _ => bail!(unknown(key)),
         })
     }
@@ -246,6 +271,22 @@ impl Host {
                 let range = port_range(value)?;
                 self.ports.backend = Some(format!("{}-{}", range.start(), range.end()));
             }
+            "proxy.port" => {
+                self.proxy.port = Some(
+                    value
+                        .parse()
+                        .ok()
+                        .filter(|port| *port > 0)
+                        .with_context(|| {
+                            format!("{key} {value}: use a port between 1 and 65535")
+                        })?,
+                );
+            }
+            "proxy.caddy" => {
+                program(value)?;
+                self.proxy.caddy = Some(value.to_owned());
+            }
+            "trust" => self.trust = Some(boolean(key, value)?),
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -296,6 +337,9 @@ impl Host {
             "updates" => self.updates = None,
             "worktrees.directory" => self.worktrees.directory = None,
             "ports.backend" => self.ports.backend = None,
+            "proxy.port" => self.proxy.port = None,
+            "proxy.caddy" => self.proxy.caddy = None,
+            "trust" => self.trust = None,
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -335,6 +379,18 @@ impl Host {
             .transpose()
     }
 
+    /// The Caddy binary to run: `proxy.caddy`, else `caddy` on PATH.
+    pub fn caddy(&self) -> String {
+        self.proxy
+            .caddy
+            .as_deref()
+            .and_then(|caddy| program(caddy).ok())
+            .map_or_else(
+                || "caddy".into(),
+                |path| path.to_string_lossy().into_owned(),
+            )
+    }
+
     pub fn backend_ports(&self) -> RangeInclusive<u16> {
         self.ports
             .backend
@@ -364,6 +420,28 @@ fn directory_path(value: &str) -> Result<PathBuf> {
         "worktrees.directory {value}: use an absolute path or one under ~/"
     );
     Ok(path)
+}
+
+/// A program name looked up on PATH, or an absolute path or one under `~/`.
+fn program(value: &str) -> Result<PathBuf> {
+    ensure!(!value.trim().is_empty(), "proxy.caddy must not be empty");
+    if !value.contains('/') {
+        return Ok(PathBuf::from(value));
+    }
+    let path = match value.strip_prefix("~/") {
+        Some(rest) => home()?.join(rest),
+        None => PathBuf::from(value),
+    };
+    ensure!(
+        path.is_absolute(),
+        "proxy.caddy {value}: use a program name, an absolute path or one under ~/"
+    );
+    Ok(path)
+}
+
+/// The Caddy binary this machine uses, for code without a loaded [`Host`].
+pub fn caddy() -> String {
+    Host::current().map_or_else(|_| "caddy".into(), |host| host.caddy())
 }
 
 fn port_range(value: &str) -> Result<RangeInclusive<u16>> {
@@ -402,6 +480,9 @@ mod tests {
             ("updates", "true"),
             ("worktrees.directory", "/srv/my worktrees: #1/"),
             ("ports.backend", " 30000 - 30999"),
+            ("proxy.port", "8443"),
+            ("proxy.caddy", "/opt/caddy/bin/caddy"),
+            ("trust", "false"),
         ] {
             host.set(key, value).unwrap();
         }
@@ -423,6 +504,9 @@ mod tests {
                 ["updates", true],
                 ["worktrees.directory", "/srv/my worktrees: #1"],
                 ["ports.backend", "30000-30999"],
+                ["proxy.port", 8443],
+                ["proxy.caddy", "/opt/caddy/bin/caddy"],
+                ["trust", false],
             ])
         );
         assert_eq!(parsed.backend_ports(), 30000..=30999);
@@ -446,6 +530,8 @@ mod tests {
         assert!(host.set("worktrees.directory", "worktrees").is_err());
         assert!(host.set("ports.backend", "500-600").is_err());
         assert!(host.set("ports.backend", "30000-20000").is_err());
+        assert!(host.set("proxy.port", "0").is_err());
+        assert!(host.set("proxy.caddy", "bin/caddy").is_err());
         assert!(Host::parse("sharing:\n  domain_port: 1481\n").is_err());
         assert!(Host::parse("sharing:\n  funnel: true\n").is_err());
         assert!(Host::parse("ports:\n  backend: lots\n").is_err());

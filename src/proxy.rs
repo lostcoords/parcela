@@ -86,7 +86,7 @@ pub fn ensure_running(state: &Path, host: &str) -> Result<Router> {
     let started = match status(state)? {
         Status::Running(router) => Started::Already(router),
         Status::Stopped | Status::Unhealthy(_) => {
-            start(state, "caddy", FrontDoor::load(state)?, false)?
+            start(state, &crate::host::caddy(), FrontDoor::load(state)?, false)?
         }
     };
     match &started {
@@ -124,7 +124,7 @@ pub fn refresh(state: &Path) -> Result<Option<Router>> {
         return Ok(None);
     }
     // Check the replacement binary before withdrawing working routes.
-    let backend = crate::process::version("caddy", "version")?;
+    let backend = crate::process::version(&crate::host::caddy(), "version")?;
     ensure!(
         backend.starts_with("v2."),
         "unsupported Caddy version: {backend}"
@@ -134,7 +134,7 @@ pub fn refresh(state: &Path) -> Result<Option<Router>> {
         router.version
     );
     stop_locked(state)?;
-    let started = launch_locked(state, "caddy", router.front_door, true, false)?;
+    let started = launch_locked(state, &crate::host::caddy(), router.front_door, true, false)?;
     ensure!(
         started.router().protocol == PROTOCOL && started.router().version == VERSION,
         "replacement proxy does not match this Parcela"
@@ -191,7 +191,13 @@ pub fn revive(state: &Path) -> Result<bool> {
     {
         return Ok(false);
     }
-    match launch(state, "caddy", FrontDoor::load(state)?, false, true)? {
+    match launch(
+        state,
+        &crate::host::caddy(),
+        FrontDoor::load(state)?,
+        false,
+        true,
+    )? {
         Started::Launched(_) => Ok(true),
         Started::Already(_) => Ok(false),
     }
@@ -416,8 +422,7 @@ pub fn trust_command(state: &Path, caddy: &str) -> Command {
 pub fn install_trust(state: &Path, caddy: &str) -> Result<()> {
     let certificate = certificate(state);
     eprintln!(
-        "Adding Parcela's certificate authority to the system trust store. It may ask for your password.\n  certificate  {}\n  undo         {caddy} untrust --cert {}",
-        certificate.display(),
+        "Adding Parcela's certificate authority to the system trust store. It may ask for your password.\n  certificate  {}\n  undo         parcela trust --remove",
         certificate.display(),
     );
     let status = trust_command(state, caddy)
@@ -428,12 +433,30 @@ pub fn install_trust(state: &Path, caddy: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn remove_trust(state: &Path, caddy: &str) -> Result<()> {
+    let certificate = certificate(state);
+    eprintln!(
+        "Removing Parcela's certificate authority from the system trust store. It may ask for your password.\n  certificate  {}",
+        certificate.display()
+    );
+    let status = Command::new(caddy)
+        .arg("untrust")
+        .arg("--cert")
+        .arg(&certificate)
+        .status()
+        .with_context(|| format!("run {caddy} untrust"))?;
+    anyhow::ensure!(status.success(), "{caddy} untrust failed ({status})");
+    eprintln!("Untrusted. `parcela trust` adds it back.");
+    Ok(())
+}
+
 /// The first `up` in a terminal trusts a new CA, behind the system's own password prompt, so
 /// HTTPS works without a separate `parcela trust`. Asked once per CA, never without a
 /// terminal (agents, scripts, CI), and never with `PARCELA_NO_TRUST=1`.
 pub fn offer_trust(state: &Path) {
     use std::io::IsTerminal;
     if std::env::var("PARCELA_NO_TRUST").is_ok_and(|value| !value.is_empty() && value != "0")
+        || crate::host::Host::current().is_ok_and(|host| host.trust == Some(false))
         || !std::io::stdin().is_terminal()
         || !std::io::stderr().is_terminal()
     {
@@ -453,7 +476,7 @@ pub fn offer_trust(state: &Path) {
     if crate::private::write_bytes(&asked, &current).is_err() {
         return;
     }
-    if let Err(error) = install_trust(state, "caddy") {
+    if let Err(error) = install_trust(state, &crate::host::caddy()) {
         eprintln!(
             "parcela: the certificate authority is not trusted ({error:#}); run `parcela trust` to try again"
         );

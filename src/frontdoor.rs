@@ -23,17 +23,23 @@ fn path(state: &Path) -> PathBuf {
 }
 
 impl FrontDoor {
-    /// The saved port, or the default when none has been saved yet.
+    /// The host's `proxy.port`, else the saved port, else the default.
     pub fn load(state: &Path) -> Result<Self> {
         let file = path(state);
-        if std::fs::symlink_metadata(&file).is_err() {
-            return Self::default_port();
-        }
-        private::read_json(&file)
-            .with_context(|| format!("unreadable proxy port file {}", file.display()))
+        let saved = if std::fs::symlink_metadata(&file).is_err() {
+            Self::default_port()?
+        } else {
+            private::read_json(&file)
+                .with_context(|| format!("unreadable proxy port file {}", file.display()))?
+        };
+        Ok(match crate::host::Host::current()?.proxy.port {
+            Some(https) => Self { https, ..saved },
+            None => saved,
+        })
     }
 
-    fn default_port() -> Result<Self> {
+    /// `PARCELA_HTTPS_PORT`, else 1443.
+    pub fn default_port() -> Result<Self> {
         let https = match std::env::var(PORT_ENV) {
             Ok(value) => value
                 .parse()

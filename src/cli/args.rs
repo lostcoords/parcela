@@ -253,11 +253,17 @@ pub enum Command {
     /// Trust the local certificate authority
     Trust {
         /// Print the CA certificate path
-        #[arg(long)]
+        #[arg(long, conflicts_with_all = ["export", "remove"])]
         print: bool,
+        /// Print the CA certificate, to copy to other devices
+        #[arg(long, conflicts_with = "remove")]
+        export: bool,
+        /// Remove the CA from the system trust store
+        #[arg(long)]
+        remove: bool,
         /// Caddy binary.
-        #[arg(long, default_value = "caddy", hide = true)]
-        caddy: String,
+        #[arg(long, hide = true)]
+        caddy: Option<String>,
     },
     /// Run a command as the web service
     Run {
@@ -423,6 +429,13 @@ pub struct Listen {
     #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
     pub port: Option<u16>,
     /// Caddy binary.
-    #[arg(long, default_value = "caddy", hide = true)]
-    pub caddy: String,
+    #[arg(long, hide = true)]
+    caddy: Option<String>,
+}
+
+impl Listen {
+    /// `--caddy`, else the host's `proxy.caddy`, else `caddy` on PATH.
+    pub fn caddy(&self) -> String {
+        self.caddy.clone().unwrap_or_else(parcela::host::caddy)
+    }
 }

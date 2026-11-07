@@ -69,13 +69,13 @@ fn config_sets_reads_and_clears_host_settings() {
     );
     assert_eq!(list["sharing.domain_port"], 1481);
     assert_eq!(list["sharing.lan"], serde_json::Value::Null);
-    assert_eq!(list["proxy.port"], 1443);
+    assert_eq!(list["proxy.port"], serde_json::Value::Null);
     assert!(fs::read_to_string(&config).unwrap().contains(
         "sharing:\n  domains: [\"tower.example.com\",\"mb.example.org\"]\n  domain_port: 1481\n"
     ));
 
     assert!(stderr(&run(&["config", "set", "sharing.funnel", "true"])).contains("unknown key"));
-    assert!(stderr(&run(&["config", "set", "proxy.port", "8443"])).contains("read-only"));
+    assert!(stderr(&run(&["config", "set", "proxy.port", "0"])).contains("between 1 and 65535"));
     assert!(
         stderr(&run(&["config", "add", "sharing.domains", "a.localhost"])).contains(".localhost")
     );
@@ -96,11 +96,11 @@ fn config_sets_reads_and_clears_host_settings() {
         })
         .map(|(key, _)| key.as_str())
         .collect();
-    assert_eq!(set, ["proxy.port"]);
+    assert!(set.is_empty(), "{set:?}");
 }
 
 #[test]
-fn up_takes_the_host_domain_unless_sharing_is_off() {
+fn up_takes_the_host_domain_and_refuses_an_invalid_host_config() {
     let temp = TempDir::new().unwrap();
     let config = temp.path().join("config.yaml");
     let state = temp.path().join("state");
@@ -135,11 +135,6 @@ fn up_takes_the_host_domain_unless_sharing_is_off() {
         error.contains("invalid") && error.contains("config.yaml"),
         "{error}"
     );
-    let error = up(&["--no-share"]);
-    assert!(
-        !error.contains("config.yaml"),
-        "--no-share never reads it: {error}"
-    );
 }
 
 #[test]
@@ -155,4 +150,42 @@ fn relay_status_reports_without_changing_anything() {
     assert_eq!(report["target"], 1443);
     assert!(report["installed"].is_boolean() && report["location"].is_string());
     assert!(!state.exists(), "status writes no state");
+}
+
+#[test]
+fn proxy_port_and_caddy_come_from_the_host_config() {
+    let temp = TempDir::new().unwrap();
+    let config = temp.path().join("config.yaml");
+    let state = temp.path().join("state");
+    let run = |args: &[&str]| cli(&config, &state, args);
+    let target = || -> serde_json::Value {
+        serde_json::from_str::<serde_json::Value>(&stdout(&run(&["relay", "--json"]))).unwrap()
+            ["target"]
+            .clone()
+    };
+    assert_eq!(target(), 1443);
+    stdout(&run(&["config", "set", "proxy.port", "24999"]));
+    assert_eq!(target(), 24999, "a stopped proxy starts on the new port");
+    let error = stderr(&run(&["proxy", "start", "--port", "24998"]));
+    assert!(error.contains("proxy.port is 24999"), "{error}");
+    stdout(&run(&["config", "unset", "proxy.port"]));
+    assert_eq!(target(), 1443);
+
+    fs::write(&config, "proxy:\n  caddy: /nonexistent/caddy\n").unwrap();
+    let doctor = run(&["doctor", "--json"]);
+    let report = String::from_utf8_lossy(&doctor.stdout);
+    assert!(report.contains("/nonexistent/caddy"), "{report}");
+}
+
+#[test]
+fn trust_export_and_print_need_a_certificate_and_change_nothing() {
+    let temp = TempDir::new().unwrap();
+    let state = temp.path().join("state");
+    let config = temp.path().join("config.yaml");
+    for flag in ["--export", "--print"] {
+        let error = stderr(&cli(&config, &state, &["trust", flag]));
+        assert!(error.contains("no certificate authority yet"), "{error}");
+    }
+    let error = stderr(&cli(&config, &state, &["trust", "--remove"]));
+    assert!(error.contains("requires a terminal"), "{error}");
 }

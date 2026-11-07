@@ -23,7 +23,7 @@ npm ci --prefix docs/website
 node scripts/build-brand-icon.mjs
 ```
 
-The builder uses resvg to resize the PNG. It does not redraw the mascot or convert it to vector paths.
+The builder removes 10% of transparent padding on each edge and uses resvg to resize the PNG. It does not redraw the mascot or convert it to vector paths.
 
 ## Rebuild the pixel mascot
 

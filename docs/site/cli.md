@@ -289,12 +289,16 @@ Restart running environments after either change so their URLs update. `proxy in
 ## trust
 
 ```text
-parcela trust [--print]
+parcela trust [--print | --export | --remove]
 ```
 
 Adds Caddy's local CA to the system trust store using `caddy trust`. Prints the certificate and undo command before the system password prompt. All projects use the same CA.
 
-`--print` only prints the certificate path and changes no trust settings. See [Use local HTTPS](faq.md#clients-and-certificates).
+| Flag | Effect |
+| --- | --- |
+| `--print` | Prints the certificate path. Changes nothing. |
+| `--export` | Prints the certificate itself, to install on a phone or another computer that opens `.local` URLs: `parcela trust --export > parcela-ca.crt`. Changes nothing. |
+| `--remove` | Removes the CA from the system trust store with `caddy untrust`, behind the system password prompt. | See [Use local HTTPS](faq.md#clients-and-certificates).
 
 ## upgrade
 
@@ -329,7 +333,9 @@ Shows or changes this machine's settings. Without a subcommand, lists them. `get
 | `updates` | `false` turns off release checks, like `PARCELA_NO_UPDATE=1`. |
 | `worktrees.directory` | Where `create` puts new checkouts, as `<directory>/<repository>-<NAME>`. An absolute path or one under `~/`. |
 | `ports.backend` | The backend port range, like `30000-30999`. Default `20000-29999`. |
-| `proxy.port` | The proxy's HTTPS port. Read-only; change it with `parcela proxy restart --port N`. |
+| `proxy.port` | The proxy's HTTPS port, 1443 by default. Setting it moves a running proxy; restart environments to update their URLs. Remove the relay first if it is installed. |
+| `proxy.caddy` | The Caddy binary: a name on `PATH` or an absolute path. Default `caddy`. |
+| `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
 
 `sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](worktrees.md#share-with-another-device) covers each kind.
 
