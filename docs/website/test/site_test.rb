@@ -54,7 +54,7 @@ class SiteTest < ActiveSupport::TestCase
       assert_equal url, head.at_css("link[rel=canonical]")["href"]
       assert_equal [ url ], meta.("og:url")
       %w[og:title og:description twitter:card twitter:image].each { assert_equal 1, meta.(it).size, "#{page.source} has #{it}" }
-      assert_equal [ "#171717" ], meta.("theme-color")
+      assert_equal [ "#11171b" ], meta.("theme-color")
       assert_equal [ "https://parcela.run/og/#{page.slug}.png" ], meta.("og:image")
       assert_includes sitemap, "<loc>#{url}</loc>"
       meta.("description").first
