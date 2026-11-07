@@ -223,6 +223,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                 | Command::Telemetry { .. }
                 | Command::Config { .. }
                 | Command::Relay { .. }
+                | Command::Autostart { .. }
         )
     {
         let registry =
@@ -300,6 +301,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         Command::Config { command } => super::config::run(
             &state,
             command.unwrap_or(super::args::ConfigCommand::List),
+            out,
+        ),
+        Command::Autostart { command } => super::autostart::run(
+            &state,
+            command.unwrap_or(super::args::AutostartCommand::Status),
             out,
         ),
         Command::Relay { command } => super::proxy::relay(

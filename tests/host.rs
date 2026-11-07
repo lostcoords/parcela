@@ -189,3 +189,39 @@ fn trust_export_and_print_need_a_certificate_and_change_nothing() {
     let error = stderr(&cli(&config, &state, &["trust", "--remove"]));
     assert!(error.contains("requires a terminal"), "{error}");
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn autostart_writes_and_removes_a_launch_agent() {
+    let temp = TempDir::new().unwrap();
+    let config = temp.path().join("config.yaml");
+    let state = temp.path().join("state");
+    let agent = temp
+        .path()
+        .join("Library/LaunchAgents/org.parcela.autostart.plist");
+    let run = |args: &[&str]| -> serde_json::Value {
+        let output = Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .args(["--state-dir", state.to_str().unwrap(), "--json"])
+            .args(args)
+            .env("HOME", temp.path())
+            .env("PARCELA_CONFIG", &config)
+            .env("DO_NOT_TRACK", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        serde_json::from_slice(&output.stdout).unwrap()
+    };
+    assert_eq!(run(&["autostart"])["enabled"], false);
+    assert_eq!(run(&["autostart", "enable"])["enabled"], true);
+    let plist = fs::read_to_string(&agent).unwrap();
+    assert!(
+        plist.contains("<string>autostart</string><string>run</string>"),
+        "{plist}"
+    );
+    assert_eq!(
+        run(&["autostart", "run"])["environments"],
+        serde_json::json!([])
+    );
+    assert_eq!(run(&["autostart", "disable"])["enabled"], false);
+    assert!(!agent.exists());
+}

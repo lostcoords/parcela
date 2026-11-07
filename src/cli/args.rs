@@ -245,6 +245,11 @@ pub enum Command {
         #[command(subcommand)]
         command: ProxyCommand,
     },
+    /// Start environments left running again at login
+    Autostart {
+        #[command(subcommand)]
+        command: Option<AutostartCommand>,
+    },
     /// Serve URLs without a port, relaying 443 and 80 to the proxy
     Relay {
         #[command(subcommand)]
@@ -414,6 +419,19 @@ pub enum ProxyCommand {
 }
 
 #[derive(Subcommand, Clone, Copy)]
+pub enum AutostartCommand {
+    /// Show whether autostart is enabled
+    Status,
+    /// Start environments left running at each login
+    Enable,
+    /// Stop starting environments at login
+    Disable,
+    /// Start environments left running now
+    #[command(hide = true)]
+    Run,
+}
+
+#[derive(clap::Subcommand)]
 pub enum RelayCommand {
     /// Show whether the relay is installed
     Status,

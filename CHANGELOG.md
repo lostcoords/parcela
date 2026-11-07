@@ -12,6 +12,7 @@
 
 - `parcela relay install` also works on Linux, with systemd socket units running `systemd-socket-proxyd` as the user.
 
+- `parcela autostart enable` starts again, at login, the environments that were running when the machine went down. It installs a per-user LaunchAgent or systemd user unit and needs no password.
 - `parcela trust --remove` untrusts the CA, and `parcela trust --export` prints the certificate to install on other devices.
 - Host settings `proxy.port` (moves a running proxy, and puts the old port back if the new one is taken), `proxy.caddy` (the Caddy binary) and `trust` (`false` stops `up` from offering to trust the CA).
 

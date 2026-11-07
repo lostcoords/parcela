@@ -114,6 +114,7 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `startup`, `runtime` | Registers a checkout and coordinates startup and readiness. |
 | `supervisor`, `logs` | Runs the process graph and retains process output. |
 | `owner`, `control`, `lifecycle` | Owns environments and handles stop, restart, and recovery. |
+| `autostart` | Installs the per-user login service and finds environments a reboot interrupted. |
 | `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration, runs the proxy, and installs the optional 443/80 relay. |
 | `share` | Plans LAN, Tailscale and domain sharing and allowed host variables. |
 | `host` | Reads and writes the machine's own settings, `parcela config`. |
@@ -129,6 +130,8 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 ## Privileged changes
 
 CA trust changes occur only through `parcela trust` or a first terminal `up`, behind the system password prompt. Nonterminal runs never change trust.
+
+`parcela autostart enable` installs a per-user service (a LaunchAgent, or a systemd user unit) that runs `parcela autostart run` once at login. It runs `up --detach` for each environment whose last session was running but whose owner is gone, which is what a reboot leaves; `down` marks a session stopped, so stopped environments stay stopped. It needs no root.
 
 `parcela relay install` is the only system-service installation path. The service manager owns loopback port 443 (and 80 when free) and relays connections as the user: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. Parcela code does not run as root. Packet-filter redirection is not used.
 

@@ -286,6 +286,22 @@ Serves URLs without a port. The relay is not the proxy: it is a system service t
 
 Restart running environments after either change so their URLs update. `proxy install` and `proxy uninstall` still work as aliases.
 
+## autostart
+
+```text
+parcela autostart [status | enable | disable]
+```
+
+Starts again, at login, the environments that were running when the machine went down. Environments stopped with `down` stay stopped, as do checkouts that no longer exist. Off by default. Without a subcommand, shows whether it is on and how many environments it would start.
+
+| Subcommand | Effect |
+| --- | --- |
+| `status` | Shows whether autostart is on. |
+| `enable` | Installs a per-user service that runs once at login: a LaunchAgent on macOS, a systemd user unit on Linux. No password prompt. It keeps the current `PATH` and `PARCELA_CONFIG`. |
+| `disable` | Removes the service. |
+
+Each environment starts with `parcela up --detach` in its checkout. Flags from the original run, such as `--lan`, are not kept; [host `sharing`](#config) applies. Output goes to `autostart.log` in the state directory. On a Linux machine nobody logs in to, run `loginctl enable-linger` so user services start at boot.
+
 ## trust
 
 ```text
