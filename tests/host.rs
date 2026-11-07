@@ -13,6 +13,7 @@ fn cli(config: &Path, state: &Path, args: &[&str]) -> Output {
         .env("DO_NOT_TRACK", "1")
         .env_remove("PARCELA_DOMAIN")
         .env_remove("PARCELA_DOMAIN_PORT")
+        .env_remove("PARCELA_HTTPS_PORT")
         .args(args)
         .output()
         .unwrap()
@@ -56,25 +57,31 @@ fn config_sets_reads_and_clears_host_settings() {
         "\"tower.example.com\""
     );
     let list: serde_json::Value = serde_json::from_str(&stdout(&run(&["config"]))).unwrap();
-    assert_eq!(
-        list,
-        serde_json::json!({"sharing.domain": "tower.example.com", "sharing.domain_port": 1481})
-    );
+    assert_eq!(list["sharing.domain"], "tower.example.com");
+    assert_eq!(list["sharing.domain_port"], 1481);
+    assert_eq!(list["sharing.lan"], serde_json::Value::Null);
+    assert_eq!(list["proxy.port"], 1443);
     assert!(
         fs::read_to_string(&config)
             .unwrap()
-            .contains("sharing:\n  domain: tower.example.com\n  domain_port: 1481\n")
+            .contains("sharing:\n  domain: \"tower.example.com\"\n  domain_port: 1481\n")
     );
 
-    assert!(stderr(&run(&["config", "set", "sharing.lan", "true"])).contains("unknown key"));
+    assert!(stderr(&run(&["config", "set", "sharing.funnel", "true"])).contains("unknown key"));
+    assert!(stderr(&run(&["config", "set", "proxy.port", "8443"])).contains("read-only"));
     assert!(
         stderr(&run(&["config", "set", "sharing.domain", "a.localhost"])).contains(".localhost")
     );
     stdout(&run(&["config", "unset", "sharing.domain"]));
-    assert_eq!(
-        stdout(&run(&["config"])),
-        "{\n  \"sharing.domain\": null,\n  \"sharing.domain_port\": null\n}\n"
-    );
+    let list: serde_json::Value = serde_json::from_str(&stdout(&run(&["config"]))).unwrap();
+    let set: Vec<_> = list
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(_, value)| !value.is_null())
+        .map(|(key, _)| key.as_str())
+        .collect();
+    assert_eq!(set, ["proxy.port"]);
 }
 
 #[test]
@@ -107,7 +114,7 @@ fn up_takes_the_host_domain_unless_sharing_is_off() {
     let error = up(&["--domain-port", "1481"]);
     assert!(!error.contains("--domain-port requires"), "{error}");
 
-    fs::write(&config, "sharing:\n  lan: true\n").unwrap();
+    fs::write(&config, "sharing:\n  funnel: true\n").unwrap();
     let error = up(&[]);
     assert!(
         error.contains("invalid") && error.contains("config.yaml"),

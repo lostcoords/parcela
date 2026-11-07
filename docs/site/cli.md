@@ -43,7 +43,7 @@ parcela create NAME [--directory DIR] [--revision REV] [--from SNAPSHOT]
 
 Creates and registers a preview without starting services or running setup. Git repositories get a detached worktree at `HEAD` by default. jj repositories get a named workspace based on `@`, including the changes jj snapshots from the source checkout. `--revision` chooses another revision. jj takes precedence in colocated repositories; a jj failure never falls back to Git. Other VCS backends are unsupported.
 
-The default directory is a sibling named `<repository>-<NAME>`. `--directory` chooses a new directory whose parent already exists. Existing directories, workspace names, and registered environment names are refused. Git checkout hooks are disabled. Ignored files are not copied; files already committed to Git or tracked by jj follow that VCS's rules.
+The default directory is a sibling named `<repository>-<NAME>`, or `<repository>-<NAME>` in [`worktrees.directory`](#config), which is created if missing. `--directory` chooses a new directory whose parent already exists. Existing directories, workspace names, and registered environment names are refused. Git checkout hooks are disabled. Ignored files are not copied; files already committed to Git or tracked by jj follow that VCS's rules.
 
 `--from` restores a data snapshot before the first start. It does not restore source history, secrets, setup markers, or running processes. JSON includes `checkout` with the path, VCS and source revision, `workspace` with the environment ID, and `state: stopped`. A creation failure retains any checkout already created and names it in the error.
 
@@ -84,7 +84,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--lan-ip IP` | Chooses the LAN IPv4 address. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
 | `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Also set by `PARCELA_DOMAIN`. |
-| `--no-share` | Disables all sharing for this run, including the host domain and environment variables. Use `restart --no-share` for an already shared run. |
+| `--no-share` | Disables all sharing for this run, including host defaults and environment variables. Use `restart --no-share` for an already shared run. |
 | `--domain-port N` | The loopback port for `--domain`, 1480 by default. Also set by `PARCELA_DOMAIN_PORT`. |
 
 `hooks.prestart` runs on every new start after setup. A hook failure, an HTTP service exit, or a nonzero process exit before first readiness stops startup. A non-HTTP process may finish with code 0.
@@ -164,7 +164,7 @@ To add Parcela's debug menu to your own app in development, include its script f
 Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
 
 - **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
-- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions never share: they ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, though the host domain still applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
 
 The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
@@ -295,7 +295,7 @@ For shell-installer installations, downloads and runs the installer. Installs th
 
 Normal interactive commands check for a stable release at most once a day. Shell-installer installations offer **Update now? [Y/n]**. Accepting installs the release, refreshes the running proxy, and resumes the original command with the new CLI. Declining continues the command and suppresses another prompt for a day. Offline release checks do not block the command.
 
-Piped commands, `--json`, background owners, shutdown commands, and diagnostic proxy commands never check for updates or prompt. `PARCELA_NO_UPDATE=1` disables automatic release checks. It does not disable local proxy maintenance after an update.
+Piped commands, `--json`, background owners, shutdown commands, and diagnostic proxy commands never check for updates or prompt. `PARCELA_NO_UPDATE=1` or `parcela config set updates false` disables automatic release checks. It does not disable local proxy maintenance after an update.
 
 For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade` prints the matching package-manager command without replacing the installation. After that update, the next regular CLI command refreshes an older running proxy. Builds outside known installation paths skip automatic release checks.
 
@@ -309,18 +309,29 @@ Shows or changes this machine's settings. Without a subcommand, lists them. `get
 
 | Key | Value |
 | --- | --- |
-| `sharing.domain` | The domain `up` and `restart` share every environment with an HTTP service under, like `--domain`. Unsetting it also unsets `sharing.domain_port`. |
+| `sharing.domain` | Shares every run under this domain, like `--domain`. Unsetting it also unsets `sharing.domain_port`. |
 | `sharing.domain_port` | The loopback port for `sharing.domain`, 1480 by default. |
+| `sharing.lan` | `true` shares every run at `.local` names, like `--lan`. |
+| `sharing.lan_ip` | The LAN address when LAN sharing is on, like `--lan-ip`. It does not turn LAN sharing on. |
+| `sharing.tailscale` | `true` shares every run through `tailscale serve`, like `--tailscale`. Never uses Funnel. |
+| `telemetry` | `false` turns off anonymous usage data, like `parcela telemetry disable`. |
+| `updates` | `false` turns off release checks, like `PARCELA_NO_UPDATE=1`. |
+| `worktrees.directory` | Where `create` puts new checkouts, as `<directory>/<repository>-<NAME>`. An absolute path or one under `~/`. |
+| `ports.backend` | The backend port range, like `30000-30999`. Default `20000-29999`. |
+| `proxy.port` | The proxy's HTTPS port. Read-only; change it with `parcela proxy restart --port N`. |
+
+`sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](worktrees.md#share-with-another-device) covers each kind.
 
 The file is `$XDG_CONFIG_HOME/parcela/config.yaml`, or `~/.config/parcela/config.yaml`. `PARCELA_CONFIG` names another file. It is YAML, and `set` rewrites it without comments:
 
 ```yaml
 sharing:
-  domain: tower.example.com
-  domain_port: 1480
+  domain: "tower.example.com"
+  tailscale: true
+telemetry: false
+worktrees:
+  directory: "~/worktrees"
 ```
-
-Flags override `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT`, which override these settings. [Share under your own domain](worktrees.md#share-under-your-own-domain) covers the front proxy.
 
 ## telemetry
 

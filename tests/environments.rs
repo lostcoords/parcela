@@ -302,3 +302,47 @@ fn data_policy_rejects_unsafe_or_overlapping_paths() {
         assert!(parcela::config::Manifest::parse(&config).is_err());
     }
 }
+
+#[test]
+fn host_config_places_new_checkouts_and_leases_ports_from_its_range() {
+    let f = Fixture::new(false);
+    let root = f.source.parent().unwrap();
+    let config = root.join("config.yaml");
+    let worktrees = root.join("worktrees");
+    fs::write(
+        &config,
+        format!(
+            "worktrees:\n  directory: {:?}\nports:\n  backend: 30500-30510\n",
+            worktrees.display().to_string()
+        ),
+    )
+    .unwrap();
+    let with_config = |path: &Path, args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .arg("--state-dir")
+            .arg(&f.state)
+            .arg("--path")
+            .arg(path)
+            .arg("--json")
+            .env("PARCELA_NO_TRUST", "1")
+            .env("PARCELA_CONFIG", &config)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let made = value(with_config(&f.source, &["create", "trial"]));
+    assert_eq!(
+        PathBuf::from(made["workspace"]["source"].as_str().unwrap()),
+        worktrees.join("source-trial")
+    );
+
+    let mut manifest = fs::read_to_string(f.source.join("parcela.yaml")).unwrap();
+    manifest.push_str("ports: [cache]\n");
+    fs::write(f.source.join("parcela.yaml"), manifest).unwrap();
+    value(with_config(&f.source, &["up", "--detach"]));
+    let port = value(with_config(&f.source, &["context"]))["ports"]["cache"]
+        .as_u64()
+        .unwrap();
+    value(with_config(&f.source, &["down"]));
+    assert!((30500..=30510).contains(&port), "{port}");
+}

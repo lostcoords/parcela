@@ -27,7 +27,7 @@ The CLI accepts only standard input, output, and error as inherited descriptors.
 
 1. Find and validate the nearest `parcela.yaml`.
 2. Register the checkout on first use. A main checkout gets the project URL. A linked jj workspace or Git worktree gets a preview name.
-3. Reserve service hostnames and lease backend ports from 20000 through 29999, including each port a `compose` service's containers publish. Port leases use one transaction.
+3. Reserve service hostnames and lease backend ports from 20000 through 29999 (the host's `ports.backend` changes the range), including each port a `compose` service's containers publish. Port leases use one transaction.
 4. Start the shared proxy if HTTP endpoints are configured. Watcher-only environments skip the proxy and trust setup.
 5. Build the process graph. Start hook dependencies, setup if due, prestart, and the remaining services in dependency order.
 6. Wait for hooks to complete, services to start, and explicit readiness checks to pass. For HTTP services, confirm that listeners belong to the graph and readiness paths return 2xx.
@@ -41,7 +41,7 @@ A dependency is ready after its readiness check passes, after it starts if it ha
 
 `down` asks the owner to withdraw routes and stop the graph. Once nothing that depends on a service is running or stopping, the owner runs the service's `stop` command, if it has one, then sends SIGTERM to its process group. After 10 seconds, remaining groups receive SIGKILL. A `stop` command runs even when its service already exited, because it manages what lives outside the process tree, like containers. Each success is saved in `owner.json`, so an owner that adopts a half-stopped run runs only the commands still owed. The run is stopped only when no recorded process is alive and every `stop` command succeeded. A failed one leaves the run interrupted until `down` runs it again.
 
-`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing belongs to that generation. The domain default comes from `sharing` in the host configuration (`parcela config`), never the project; CLI and environment values override it. `--no-share` disables all sharing for the new generation. Detached owners receive the resolved sharing flags without reapplying defaults.
+`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing belongs to that generation. Sharing defaults come from `sharing` in the host configuration (`parcela config`), never the project; CLI and environment values add to or override them. `--no-share` disables all sharing for the new generation. Detached owners receive the resolved sharing flags without reapplying defaults.
 
 If the owner dies, services may survive. The next lifecycle operation acquires the ownership lock and compares recorded PIDs, start times, and boot identity with live processes. Matching processes are adopted. Parcela never signals a bare PID from disk. A small check-to-signal PID reuse race remains possible.
 

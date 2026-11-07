@@ -5,6 +5,12 @@
 ### Added
 
 - `parcela config` keeps this machine's settings in `~/.config/parcela/config.yaml` (`$XDG_CONFIG_HOME`, or `PARCELA_CONFIG`). `sharing.domain` and `sharing.domain_port` there share every environment on the machine under its own domain, so a repository no longer needs to name one host's domain. Flags and `PARCELA_DOMAIN` override them. They apply only to projects with an HTTP service.
+- Host settings `sharing.lan`, `sharing.lan_ip` and `sharing.tailscale` share every run on the machine, for a remote dev box reached over the LAN or tailnet. `--no-share` still turns sharing off for a run.
+- Host settings `telemetry`, `updates` (like `PARCELA_NO_UPDATE=1`), `worktrees.directory` (where `create` puts checkouts) and `ports.backend` (the backend port range). `parcela config` also shows the proxy's `proxy.port`.
+
+### Changed
+
+- `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
 
 ### Removed
 

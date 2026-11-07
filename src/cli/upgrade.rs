@@ -140,6 +140,7 @@ fn latest_release() -> Result<String> {
 
 fn offer_update(state: &Path) -> Result<Option<semver::Version>> {
     if std::env::var_os("PARCELA_NO_UPDATE").is_some_and(|value| value == "1")
+        || parcela::host::Host::current().is_ok_and(|host| host.updates == Some(false))
         || !std::io::stdin().is_terminal()
         || !std::io::stderr().is_terminal()
         || !std::io::stdout().is_terminal()

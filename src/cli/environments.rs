@@ -34,12 +34,20 @@ pub fn create(
         .transpose()?;
     let main =
         parcela::config::main_checkout(&source).context("checkout creation needs Git or jj")?;
-    let default = main.with_file_name(format!(
+    let leaf = format!(
         "{}-{name}",
         main.file_name()
             .context("repository needs a name")?
             .to_string_lossy()
-    ));
+    );
+    let default = match parcela::host::Host::current()?.worktrees_directory()? {
+        Some(directory) => {
+            std::fs::create_dir_all(&directory)
+                .with_context(|| format!("create {}", directory.display()))?;
+            directory.join(leaf)
+        }
+        None => main.with_file_name(leaf),
+    };
     let checkout =
         parcela::checkout::create(&source, directory.unwrap_or(&default), name, revision)?;
     let (workspace, registry, created_manifest) = (|| -> Result<_> {

@@ -2,15 +2,24 @@
 use super::args::ConfigCommand;
 use super::output::Output;
 use anyhow::Result;
-use parcela::host::{self, Host};
+use parcela::{
+    frontdoor::FrontDoor,
+    host::{self, Host},
+};
 use serde_json::{Map, Value, json};
+use std::path::Path;
 
-pub(super) fn run(command: ConfigCommand, out: Output) -> Result<i32> {
+/// Shown by `list` and `get` but changed by `parcela proxy start --port`.
+const PROXY_PORT: &str = "proxy.port";
+
+pub(super) fn run(state: &Path, command: ConfigCommand, out: Output) -> Result<i32> {
     let path = host::path()?;
     let mut host = Host::load(&path)?;
+    let proxy_port = || -> Result<Value> { Ok(json!(FrontDoor::load(state)?.https)) };
     match command {
         ConfigCommand::List => {
-            let entries = host.entries();
+            let mut entries = host.entries();
+            entries.push((PROXY_PORT, proxy_port()?));
             let value: Map<String, Value> = entries
                 .iter()
                 .map(|(key, value)| (key.to_string(), value.clone()))
@@ -24,6 +33,13 @@ pub(super) fn run(command: ConfigCommand, out: Output) -> Result<i32> {
                     })
                     .collect()
             })?;
+        }
+        ConfigCommand::Get { key } if key == PROXY_PORT => {
+            let value = proxy_port()?;
+            out.emit(&value, |_| text(&value))?;
+        }
+        ConfigCommand::Set { key, .. } | ConfigCommand::Unset { key } if key == PROXY_PORT => {
+            anyhow::bail!("{PROXY_PORT} is read-only; use `parcela proxy restart --port N`")
         }
         ConfigCommand::Get { key } => match host.get(&key)? {
             Value::Null => return Ok(1),

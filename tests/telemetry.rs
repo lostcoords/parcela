@@ -23,6 +23,7 @@ fn parcela(t: &Path, args: &[&str], env: &[(&str, &str)]) -> std::process::Outpu
         .env_remove("DO_NOT_TRACK")
         .env_remove("PARCELA_TELEMETRY_DISABLED")
         .env_remove("PARCELA_TELEMETRY_DEBUG")
+        .env("PARCELA_CONFIG", t.join("config.yaml"))
         .envs(env.iter().copied())
         .output()
         .unwrap()
@@ -46,8 +47,29 @@ fn telemetry_command_turns_it_off_and_on() {
     let off = status(t, &["disable"], &[]);
     assert_eq!(off["enabled"], false);
     assert_eq!(off["disabled_by"], "parcela telemetry disable");
+    assert!(
+        fs::read_to_string(t.join("config.yaml"))
+            .unwrap()
+            .contains("telemetry: false\n")
+    );
     assert_eq!(status(t, &["status"], &[])["enabled"], false);
     assert_eq!(status(t, &["enable"], &[])["enabled"], true);
+    // A choice saved by an older release still counts until the host config makes one.
+    fs::write(t.join("config.yaml"), "").unwrap();
+    fs::write(
+        t.join("state/telemetry.json"),
+        "{\"noticed\":true,\"enabled\":false}",
+    )
+    .unwrap();
+    fs::set_permissions(
+        t.join("state/telemetry.json"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    assert_eq!(status(t, &["status"], &[])["enabled"], false);
+    let set = parcela(t, &["config", "set", "telemetry", "true"], &[]);
+    assert!(set.status.success());
+    assert_eq!(status(t, &["status"], &[])["enabled"], true);
     let tracked = status(t, &["status"], &[("DO_NOT_TRACK", "1")]);
     assert_eq!(tracked["disabled_by"], "DO_NOT_TRACK");
     let env = status(t, &["status"], &[("PARCELA_TELEMETRY_DISABLED", "1")]);

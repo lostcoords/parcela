@@ -223,6 +223,14 @@ fn piped_commands_and_the_opt_out_never_check_for_updates() {
     assert_eq!(code, 0, "{text}");
     assert!(!f.root.join("curl.log").exists());
     assert!(!f.state.exists());
+
+    let config = f.root.join("config.yaml");
+    fs::write(&config, "updates: false\n").unwrap();
+    let mut command = f.command();
+    command.env("PARCELA_CONFIG", &config);
+    let (code, text) = f.terminal(command, "n\n");
+    assert_eq!(code, 0, "{text}");
+    assert!(!f.root.join("curl.log").exists(), "the host opt-out");
 }
 
 #[test]

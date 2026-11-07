@@ -138,7 +138,7 @@ $ parcela up --detach --lan
 
 Each service also answers at a `.local` name, which the device on your network resolves over mDNS. Parcela publishes the names with `dns-sd` on macOS or `avahi-publish` on Linux, and Caddy listens on this machine's LAN address with the same port. Devices on the network reach only the environments started with `--lan`.
 
-The device does not trust Parcela's certificate authority, so it warns first. To stop the warning, install the certificate from `parcela trust --print` on the device. If the network changes, run `parcela restart --lan`. `--lan-ip IP` picks the address when the detected one is wrong, for example behind a VPN. `--lan` refuses a public address, so a machine with one, such as a cloud VM, cannot serve its app to the internet this way. `PARCELA_LAN=1` in the environment works like `--lan`, and `PARCELA_TAILSCALE=1` like `--tailscale`.
+The device does not trust Parcela's certificate authority, so it warns first. To stop the warning, install the certificate from `parcela trust --print` on the device. If the network changes, run `parcela restart --lan`. `--lan-ip IP` picks the address when the detected one is wrong, for example behind a VPN. `--lan` refuses a public address, so a machine with one, such as a cloud VM, cannot serve its app to the internet this way. `PARCELA_LAN=1` in the environment works like `--lan`, and `PARCELA_TAILSCALE=1` like `--tailscale`. To share every run on this machine, for example a remote dev box you reach over the tailnet, run `parcela config set sharing.tailscale true` or `sharing.lan true`.
 
 ### Share on your tailnet
 
@@ -190,7 +190,7 @@ The publishers show up in `parcela status --current` and `parcela logs` as `parc
 
 ### Stop sharing
 
-Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach --no-share`. This overrides sharing flags, environment variables and the host domain.
+Run `parcela down` in the shared checkout. This stops the environment and its mDNS or Tailscale publishers. To keep the app running locally, start it again with `parcela up --detach --no-share`. This overrides sharing flags, environment variables and host sharing defaults.
 
 Check `parcela status`. For Tailscale, also check `tailscale serve status` to confirm the run's ports are gone. Parcela leaves unrelated serve configuration alone.
 

@@ -13,6 +13,8 @@ use std::{
 };
 use uuid::Uuid;
 
+type Range = std::ops::RangeInclusive<u16>;
+
 pub(crate) type Allocation = (Vec<Endpoint>, BTreeMap<String, u16>, Vec<TcpListener>);
 
 /// Claim a free backend port for every service endpoint and named port, skipping every port
@@ -24,6 +26,8 @@ pub(crate) fn allocate(
     router: Option<&Router>,
     port: Option<u16>,
 ) -> Result<Allocation> {
+    // The host's `ports.backend`, read where the run starts.
+    let range = crate::host::Host::current()?.backend_ports();
     let unavailable: BTreeSet<_> = registry
         .sessions()?
         .iter()
@@ -42,7 +46,7 @@ pub(crate) fn allocate(
                         crate::process::port_holder(requested)
                     )
                 })?,
-                None => free_port(&unavailable)?,
+                None => free_port(&range, &unavailable)?,
             };
         let backend_port = probe.local_addr()?.port();
         ensure!(
@@ -67,11 +71,11 @@ pub(crate) fn allocate(
     for name in &manifest.ports {
         let reused = previous
             .get(name)
-            .filter(|port| BACKEND_PORTS.contains(port) && !unavailable.contains(port))
+            .filter(|port| range.contains(port) && !unavailable.contains(port))
             .and_then(|port| claim(*port));
         let probe = match reused {
             Some(probe) => probe,
-            None => free_port(&unavailable)?,
+            None => free_port(&range, &unavailable)?,
         };
         ports.insert(name.clone(), probe.local_addr()?.port());
         probes.push(probe);
@@ -79,30 +83,28 @@ pub(crate) fn allocate(
     Ok((endpoints, ports, probes))
 }
 
-/// Below every OS ephemeral range (Linux 32768+, macOS and Windows 49152+), so a process
-/// binding port 0 cannot take an allocated port before the backend binds it. It holds no
-/// WHATWG bad ports and stays clear of rb-portless's 4000-4999 range.
-const BACKEND_PORTS: std::ops::RangeInclusive<u16> = 20000..=29999;
-
-fn free_port(unavailable: &BTreeSet<u16>) -> Result<TcpListener> {
-    let start =
-        BACKEND_PORTS.start() + (Uuid::new_v4().as_u128() % BACKEND_PORTS.len() as u128) as u16;
-    candidates(start, unavailable)
+fn free_port(range: &Range, unavailable: &BTreeSet<u16>) -> Result<TcpListener> {
+    let start = range.start() + (Uuid::new_v4().as_u128() % range.len() as u128) as u16;
+    candidates(range, start, unavailable)
         .find_map(claim)
         .with_context(|| {
             format!(
                 "no free backend port in {}-{}; foreign listeners are never stopped",
-                BACKEND_PORTS.start(),
-                BACKEND_PORTS.end()
+                range.start(),
+                range.end()
             )
         })
 }
 
 /// Every allowed backend port once, from `start` upward and wrapping, so concurrent
 /// allocations rarely contend for the same port.
-fn candidates(start: u16, unavailable: &BTreeSet<u16>) -> impl Iterator<Item = u16> {
-    (start..=*BACKEND_PORTS.end())
-        .chain(*BACKEND_PORTS.start()..start)
+fn candidates<'a>(
+    range: &Range,
+    start: u16,
+    unavailable: &'a BTreeSet<u16>,
+) -> impl Iterator<Item = u16> + 'a {
+    (start..=*range.end())
+        .chain(*range.start()..start)
         .filter(|port| !unavailable.contains(port))
 }
 
@@ -177,6 +179,7 @@ fn bind_only(address: SocketAddr) -> std::io::Result<OwnedFd> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::BACKEND_PORTS;
 
     const IPV6_LOOPBACK_PORT: u16 = 47343;
     const IPV4_LOOPBACK_PORT: u16 = 47344;
@@ -184,7 +187,7 @@ mod tests {
     #[test]
     fn candidates_cover_the_range_once_without_leased_ports() {
         let leased = BTreeSet::from([20000, 25000, 29999]);
-        let ports: Vec<_> = candidates(29998, &leased).collect();
+        let ports: Vec<_> = candidates(&BACKEND_PORTS, 29998, &leased).collect();
         assert_eq!(&ports[..3], &[29998, 20001, 20002]);
         assert_eq!(ports.len(), BACKEND_PORTS.len() - leased.len());
         assert_eq!(ports.iter().collect::<BTreeSet<_>>().len(), ports.len());
@@ -198,7 +201,7 @@ mod tests {
     #[test]
     fn free_port_is_outside_the_ephemeral_ranges_and_skips_leases() {
         let leased: BTreeSet<_> = BACKEND_PORTS.filter(|port| port % 2 == 0).collect();
-        let probe = free_port(&leased).unwrap();
+        let probe = free_port(&BACKEND_PORTS, &leased).unwrap();
         let port = probe.local_addr().unwrap().port();
         assert!(BACKEND_PORTS.contains(&port) && port % 2 == 1, "{port}");
         assert!(probe.local_addr().unwrap().ip().is_loopback());
@@ -206,10 +209,10 @@ mod tests {
 
     #[test]
     fn exhausted_range_is_a_clear_error() {
-        let error = free_port(&BACKEND_PORTS.collect()).unwrap_err();
+        let error = free_port(&(30000..=30001), &BTreeSet::from([30000, 30001])).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "no free backend port in 20000-29999; foreign listeners are never stopped"
+            "no free backend port in 30000-30001; foreign listeners are never stopped"
         );
     }
 

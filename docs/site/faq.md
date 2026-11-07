@@ -6,7 +6,7 @@ Parcela stores its registry, logs, certificates, and environment data in a priva
 
 `parcela init` writes `parcela.yaml` in your checkout. Your configured commands and hooks can write other files or change external services.
 
-The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999. LAN and tailnet access require a sharing flag for that run. System services require `parcela proxy install`.
+The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`. System services require `parcela proxy install`.
 
 Parcela sends anonymous command telemetry unless disabled. [Telemetry](telemetry.md) describes its fields and controls.
 
@@ -122,7 +122,7 @@ Read the [changelog](https://github.com/lostcoords/parcela/blob/main/CHANGELOG.m
 
 The installer refreshes an older running proxy automatically. If you update through Homebrew or Cargo, the next regular Parcela command does that refresh. Application processes keep running; their URLs briefly disconnect. Stopped proxies stay stopped.
 
-Interactive commands check for a stable release at most once a day and offer an update for shell-installer installations. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` to disable release checks.
+Interactive commands check for a stable release at most once a day and offer an update for shell-installer installations. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` or run `parcela config set updates false` to disable release checks.
 
 A CLI installed before automatic update checks needs one explicit `parcela upgrade` to acquire this behavior.
 

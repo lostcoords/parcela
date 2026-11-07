@@ -294,9 +294,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             command.unwrap_or(super::args::TelemetryCommand::Status),
             out,
         ),
-        Command::Config { command } => {
-            super::config::run(command.unwrap_or(super::args::ConfigCommand::List), out)
-        }
+        Command::Config { command } => super::config::run(
+            &state,
+            command.unwrap_or(super::args::ConfigCommand::List),
+            out,
+        ),
         Command::Trust { print, caddy } => super::proxy::trust(&state, print, &caddy),
         Command::Run {
             name,
@@ -588,11 +590,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     if start.no_share {
         start.share = Share::default();
     } else if snapshot.is_none() {
-        let host = parcela::host::Host::load(&parcela::host::path()?)?.sharing_for(&manifest);
-        if start.share.domain.is_none() {
-            start.share.domain = host.domain;
-        }
-        start.share.domain_port = start.share.domain_port.or(host.domain_port);
+        parcela::host::Host::current()?.share(&mut start.share, &manifest);
     }
     ensure!(
         start.share.domain_port.is_none() || start.share.domain.is_some(),

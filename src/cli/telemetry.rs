@@ -4,6 +4,7 @@ use super::args::{Args, TelemetryCommand};
 use super::output::Output;
 use anyhow::Result;
 use clap::{ArgMatches, CommandFactory, parser::ValueSource};
+use parcela::host::Host;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -42,9 +43,14 @@ impl Settings {
         parcela::private::write_json(&Self::path(state), self)
     }
 
+    /// Saves the choice in the host config, which supersedes the one older releases kept here.
     pub(super) fn set_enabled(state: &Path, enabled: bool) -> Result<()> {
+        let path = parcela::host::path()?;
+        let mut host = Host::load(&path)?;
+        host.telemetry = Some(enabled);
+        host.save(&path)?;
         let mut settings = Self::load(state);
-        settings.enabled = Some(enabled);
+        settings.enabled = None;
         settings.noticed = true;
         settings.save(state)
     }
@@ -74,10 +80,17 @@ pub(super) fn disabled_by(state: &Path) -> Option<&'static str> {
         Some("DO_NOT_TRACK")
     } else if truthy("PARCELA_TELEMETRY_DISABLED") {
         Some("PARCELA_TELEMETRY_DISABLED")
-    } else if Settings::load(state).enabled == Some(false) {
-        Some("parcela telemetry disable")
     } else {
-        None
+        // An unreadable host config sends nothing rather than guess.
+        match Host::current().map(|host| host.telemetry) {
+            Err(_) => Some("invalid host config"),
+            Ok(Some(false)) => Some("parcela telemetry disable"),
+            Ok(Some(true)) => None,
+            Ok(None) if Settings::load(state).enabled == Some(false) => {
+                Some("parcela telemetry disable")
+            }
+            Ok(None) => None,
+        }
     }
 }
 
@@ -353,11 +366,6 @@ mod tests {
         let Step::Send(id) = next_step(&state) else {
             panic!("second run sends")
         };
-        assert_eq!(next_step(&state), Step::Send(id));
-        Settings::set_enabled(&state, false).unwrap();
-        assert_eq!(disabled_by(&state), Some("parcela telemetry disable"));
-        Settings::set_enabled(&state, true).unwrap();
-        assert_eq!(disabled_by(&state), None);
         assert_eq!(next_step(&state), Step::Send(id));
     }
 

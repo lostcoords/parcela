@@ -224,7 +224,7 @@ ports: [db, cache]
 - No two running environments get the same port. Parcela does not route or check these ports.
 - A [compose](#compose) service adds one for every port its containers publish.
 
-Ports come from 20000 through 29999.
+Ports come from 20000 through 29999, or the host's [`ports.backend`](cli.md#config).
 
 ## env
 
