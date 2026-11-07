@@ -146,11 +146,8 @@ onBeforeUnmount(() => resize?.disconnect());
   width: 100%;
   height: 100%;
   overflow: visible;
-  color: var(--home-sky);
-  pointer-events: none;
-}
-:root.dark .arrows {
   color: #21a8d2;
+  pointer-events: none;
 }
 .arrows path {
   fill: none;

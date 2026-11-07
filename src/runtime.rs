@@ -448,6 +448,8 @@ fn stdout_is(path: &std::path::Path) -> bool {
 }
 
 /// A process log is copied to `<name>.log.1` and emptied past this size.
+/// How often a ready run re-checks its process tree and listeners.
+const READY_CHECK: Duration = Duration::from_secs(2);
 const LOG_LIMIT: u64 = 16 * 1024 * 1024;
 /// How long the running loop keeps going while it cannot inspect its processes and listeners.
 const INSPECTION_GRACE: Duration = Duration::from_secs(30);
@@ -763,6 +765,7 @@ impl Owner<'_> {
         let mut proxy_checked = Instant::now();
         let mut proxy_error: Option<String> = None;
         let mut inspection_failing: Option<Instant> = None;
+        let mut observed_at: Option<Instant> = None;
         loop {
             if *requested_stop {
                 return Ok(0);
@@ -778,6 +781,12 @@ impl Owner<'_> {
                 *requested_stop = true;
                 return Ok(128 + self.signals.received() as i32);
             }
+            // `ps` and `lsof` run every tick only while starting; a ready run is checked less often.
+            if ready && observed_at.is_some_and(|at| at.elapsed() < READY_CHECK) {
+                self.idle(Duration::from_millis(200), requested_stop)?;
+                continue;
+            }
+            observed_at = Some(Instant::now());
             let observation = self.record.refresh(self.path).and_then(|()| {
                 let listeners = Listeners::inspect(endpoints.iter().map(|e| e.backend_port))?;
                 let roots = self.supervisor.roots();

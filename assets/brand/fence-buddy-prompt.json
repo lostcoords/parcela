@@ -1,0 +1,8 @@
+{
+  "generator": "Built-in image_gen tool",
+  "date": "2026-11-07",
+  "edit_target": "concepts/06-fence-ivory.png",
+  "output": "fence-buddy-reference.png",
+  "transparent_background": true,
+  "prompt": "Use case: precise-object-edit. Input image is the EDIT TARGET: Parcela's selected ivory Fence Buddy mascot. Remove ONLY the two short dark vertical lines above the two oval eyes. Fill the removed lines seamlessly with the same uniform off-white as the surrounding body. Preserve the three-picket silhouette, taller center picket, proportions, two feet, dark outer contour, the exact size, shape, positions and spacing of both oval eyes. Keep the entire rest of the image unchanged. No new marks or features, no mouth, no face panel. Clean flat off-white body and charcoal contour/eyes, no texture, gradients, shadows or 3D. Keep the genuinely transparent background and same square canvas. This is the final brand icon."
+}

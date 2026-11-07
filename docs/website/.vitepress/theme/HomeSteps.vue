@@ -142,7 +142,7 @@ h3 {
   line-height: 1.7;
 }
 /* The file reads as an editor and the command as a terminal, each on its own surface inside
-   the tile. The terminal stays dark in both themes. */
+   the tile. */
 .visual {
   /* Both top surfaces grow to the same height. */
   flex: 1;
@@ -154,11 +154,8 @@ h3 {
   background: var(--background);
 }
 .terminal {
-  background: #16181c;
-  color: #e4e6ea;
-}
-:root.dark .terminal {
   background: #0c0d0f;
+  color: #e4e6ea;
 }
 
 .file {
@@ -182,11 +179,11 @@ h3 {
 }
 .code .k,
 .code .ok {
-  color: #287547;
+  color: #79ca94;
 }
 .code .v,
 .code .p {
-  color: var(--home-sky);
+  color: #65c6e3;
 }
 .code .o {
   color: var(--subtle-foreground);
@@ -197,21 +194,6 @@ h3 {
 }
 .terminal .code {
   color: #e4e6ea;
-}
-.terminal .code .ok {
-  color: #79ca94;
-}
-.terminal .code .v,
-.terminal .code .p {
-  color: #65c6e3;
-}
-:root.dark .code .k,
-:root.dark .code .ok {
-  color: #79ca94;
-}
-:root.dark .code .v,
-:root.dark .code .p {
-  color: #65c6e3;
 }
 /* The laptop with a phone in front of its right corner. */
 .pair {

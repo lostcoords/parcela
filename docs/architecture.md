@@ -47,7 +47,9 @@ If the owner dies, services may survive. The next lifecycle operation acquires t
 
 ## Proxy and route leases
 
-The background `parcela proxy run` process supervises one Caddy instance. It renews active routes twice per second. Routes expire three seconds after the last renewal, preventing stale routes from remaining active.
+The background `parcela proxy run` process supervises one Caddy instance. Every second it renews a lease file per active route; Caddy matches a route only while the file for the current second exists, so routes expire five seconds after the last renewal even if the proxy process dies. Owners publish and withdraw their routes at once; renewal only keeps them alive.
+
+Listener ownership is checked with `ps` and `lsof`. An owner checks its own process tree and listeners every 200 ms while starting and every 2 seconds once ready, re-entering the starting phase (and withdrawing its routes) when a listener changes. The proxy re-checks every routed listener at most every 5 seconds.
 
 If the proxy dies, environment owners attempt to restart it within about two seconds and republish routes. An explicit `proxy stop` leaves a stopped marker that prevents this recovery. App services keep running while the proxy is stopped.
 

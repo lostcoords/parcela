@@ -48,7 +48,7 @@ const questions = [
     <section class="home-section cta" aria-labelledby="install">
       <div class="cta-inner">
         <div class="pitch">
-          <div class="mascot-reveal"><img class="mascot" :src="withBase('/assets/logo.svg')" alt="" width="120" height="120" /></div>
+          <div class="mascot-reveal"><img class="mascot" :src="withBase('/assets/logo.png')" alt="" width="120" height="120" /></div>
           <SectionHeading id="install">Install Parcela</SectionHeading>
           <p class="cta-lead">Install the CLI, then run <code class="inline-code">parcela init</code> in your project.</p>
           <InstallCommand class="install" />

@@ -112,16 +112,15 @@ onBeforeUnmount(() => {
   background:
     linear-gradient(
       135deg,
-      rgb(255 255 255 / 0.75),
-      rgb(255 255 255 / 0.25) 48%,
-      rgb(147 217 247 / 0.17)
+      rgb(255 255 255 / 0.12),
+      rgb(255 255 255 / 0.025) 50%,
+      rgb(33 168 210 / 0.12)
     ),
     var(--glass-fill);
   box-shadow:
-    inset 0 1px 1px rgb(255 255 255 / 0.9),
-    inset 0 0 0 1px rgb(255 255 255 / 0.45),
-    0 2px 4px rgb(0 0 0 / 0.04),
-    0 8px 24px -12px rgb(34 106 150 / 0.25);
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 0 0 1px rgb(255 255 255 / 0.07),
+    0 4px 16px rgb(0 0 0 / 0.16);
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   margin: 0 0 24px;
@@ -137,23 +136,6 @@ onBeforeUnmount(() => {
   height: 14px;
 }
 .release-pill:hover {
-  color: var(--home-sky);
-}
-:root.dark .release-pill {
-  background:
-    linear-gradient(
-      135deg,
-      rgb(255 255 255 / 0.12),
-      rgb(255 255 255 / 0.025) 50%,
-      rgb(33 168 210 / 0.12)
-    ),
-    var(--glass-fill);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.18),
-    inset 0 0 0 1px rgb(255 255 255 / 0.07),
-    0 4px 16px rgb(0 0 0 / 0.16);
-}
-:root.dark .release-pill:hover {
   color: #65c6e3;
 }
 .heading {
@@ -222,7 +204,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 0.24em;
   overflow: visible;
-  color: var(--home-sky);
+  color: #21a8d2;
   pointer-events: none;
 }
 .pen-underline path {
@@ -235,12 +217,8 @@ onBeforeUnmount(() => {
   stroke-dasharray: 1;
   stroke-dashoffset: 0;
 }
-:root.dark .pen-underline {
-  color: #21a8d2;
-}
 @media (prefers-reduced-transparency: reduce) {
-  .release-pill,
-  :root.dark .release-pill {
+  .release-pill {
     background: var(--secondary);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

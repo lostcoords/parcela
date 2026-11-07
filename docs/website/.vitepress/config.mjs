@@ -31,13 +31,13 @@ export default defineConfig({
   lang: 'en',
   title: 'Parcela',
   description: 'Isolated dev environments for your AI agents.',
+  appearance: 'force-dark',
   sitemap: { hostname: site },
   head: [
     ['meta', { name: 'darkreader-lock' }],
-    ['link', { rel: 'icon', href: `${base}assets/logo.svg?v=picket-a` }],
+    ['link', { rel: 'icon', type: 'image/png', href: `${base}assets/logo.png?v=fence-buddy` }],
     ['link', { rel: 'apple-touch-icon', href: `${base}apple-touch-icon.png` }],
-    ['meta', { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' }],
-    ['meta', { name: 'theme-color', content: '#171717', media: '(prefers-color-scheme: dark)' }],
+    ['meta', { name: 'theme-color', content: '#171717' }],
   ],
   // Each page's title and description come from its source (see content.mjs).
   transformPageData(pageData) {
@@ -78,6 +78,7 @@ export default defineConfig({
     return html.replace('<div id="app"></div>', `<div id="app">${content}</div>`);
   },
   markdown: {
+    theme: 'github-dark',
     html: false,
     attrs: { disable: true },
     anchor: { slugify: slug },
@@ -89,7 +90,7 @@ export default defineConfig({
     },
   },
   themeConfig: {
-    logo: '/assets/logo.svg',
+    logo: '/assets/logo.png',
     release: {
       tag: 'v0.7.6',
       link: 'https://github.com/lostcoords/parcela/releases/tag/v0.7.6',

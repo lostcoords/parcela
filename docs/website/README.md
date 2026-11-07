@@ -69,7 +69,7 @@ to `src` in both Vite and TypeScript.
 
 | Location | Responsibility |
 | --- | --- |
-| `src/theme.css` | Semantic colors, radii, shadows, glass, motion, and Tailwind utilities. Light and dark themes use the same token names. |
+| `src/theme.css` | The dark palette, semantic colors, radii, shadows, glass, motion, and Tailwind utilities. |
 | `src/parcela.css` | Maps VitePress colors to the semantic theme and styles documentation, fonts, and navigation. |
 | `src/media/` | The dashboard recording and its poster, and desktop and phone captures of a real Parcela project's homepage, imported as Vite assets. |
 | `src/home.css` | Homepage section width, gutters and rhythm, headings, flat windows, and solid actions with an outer glow. |
@@ -131,9 +131,15 @@ block and arrow in place, and disables CSS animations. The video placeholder sta
 preference take effect without reloading.
 Documentation navigation keeps its 280ms article fade. Reduced motion disables it.
 
-The site uses VitePress's `html.dark` class rather than Lostcoords UI's
+The site sets VitePress's `appearance: 'force-dark'`. Every page stays dark regardless
+of system preferences or a saved light preference, and there is no theme switch.
+VitePress uses the `html.dark` class rather than Lostcoords UI's
 `data-theme="dark"` attribute. Both sites declare a `darkreader-lock` meta tag so
 Dark Reader does not recolor the native theme.
+
+The header, closing section, favicon, social cards, and Apple touch icon use
+Fence Buddy from `assets/brand/logo.png`. The generated master and its rebuild
+command are recorded in `assets/brand/README.md` at the repository root.
 
 Use semantic tokens for site-wide changes. Add a component variant for a repeated
 control treatment. Use a call-site `class` for layout or a local adjustment.
@@ -181,7 +187,7 @@ configured browser's `run-code --filename` command. For the Brave extension:
 ```
 
 The check exercises the homepage and documentation at desktop and phone sizes,
-light and dark themes, local search, mobile navigation, FAQ answers, and the
+dark-only behavior with light and dark system preferences, local search, mobile navigation, FAQ answers, and the
 static video placeholder's aspect ratio and alignment. It also checks the
 loaded screens on all three devices, headline rotation, sharing arrows, mascot motion, and reduced motion without a reload. It dispatches
 DOM events in the owned tab to avoid changing desktop focus. Native keyboard

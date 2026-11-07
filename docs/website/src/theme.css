@@ -36,42 +36,17 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: oklch(23.1% 0 0);
+  color-scheme: dark;
+  --background: oklch(20.5% 0 0);
+  --foreground: oklch(91.5% 0 0);
   --card: var(--secondary);
   --card-foreground: var(--foreground);
   --popover: var(--secondary);
   --popover-foreground: var(--foreground);
-  --primary: oklch(23.1% 0 0);
-  --primary-foreground: #ffffff;
-  --secondary: oklch(97.6% 0 0);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(95.2% 0 0);
-  --muted-foreground: oklch(39.4% 0 0);
-  --subtle-foreground: oklch(52% 0 0);
-  --accent: var(--muted);
-  --accent-foreground: var(--foreground);
-  --destructive: #c53338;
-  --border: oklch(93.1% 0 0);
-  --input: var(--border);
-  --ring: var(--primary);
-  --radius: 1rem;
-  --surface-shadow: 0 1px 3px rgb(0 0 0 / 0.05), 0 8px 24px -8px rgb(0 0 0 / 0.09);
-  --glass-fill: color-mix(in oklab, var(--background) 74%, transparent);
-  --glass-edge: rgb(255 255 255 / 0.4);
-  --glass-bar-edge: var(--glass-edge);
-  --glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 0 0 1px rgb(255 255 255 / 0.22);
-  --hero-dot: color-mix(in oklab, var(--foreground) 11%, transparent);
-  --hero-wash: color-mix(in oklab, var(--foreground) 3%, transparent);
-  --motion-control: 180ms;
-}
-
-:root.dark {
-  --background: oklch(20.5% 0 0);
-  --foreground: oklch(91.5% 0 0);
   --primary: var(--foreground);
   --primary-foreground: var(--background);
   --secondary: oklch(24.2% 0 0);
+  --secondary-foreground: var(--foreground);
   --muted: oklch(28.4% 0 0);
   --muted-foreground: color-mix(in oklab, var(--foreground) 76%, var(--background));
   --subtle-foreground: color-mix(in oklab, var(--foreground) 68%, var(--background));
@@ -79,7 +54,9 @@
   --accent-foreground: var(--primary);
   --destructive: #ff8a8d;
   --border: color-mix(in oklab, var(--foreground) 16%, transparent);
+  --input: var(--border);
   --ring: var(--primary);
+  --radius: 1rem;
   --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 24px -8px rgb(0 0 0 / 0.32);
   --glass-fill: color-mix(in oklab, var(--background) 80%, transparent);
   --glass-edge: transparent;
@@ -87,6 +64,7 @@
   --glass-rim: 0 0 #0000;
   --hero-dot: color-mix(in oklab, var(--foreground) 9%, transparent);
   --hero-wash: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --motion-control: 180ms;
 }
 
 @layer theme {

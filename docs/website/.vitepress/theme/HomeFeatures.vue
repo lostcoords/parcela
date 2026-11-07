@@ -92,11 +92,8 @@ const capabilities = [
 .capability svg {
   width: 22px;
   height: 22px;
-  color: var(--home-sky);
-  stroke-width: 1.8;
-}
-:root.dark .capability svg {
   color: #65c6e3;
+  stroke-width: 1.8;
 }
 h3 {
   margin: 16px 0 0;

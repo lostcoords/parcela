@@ -17,7 +17,9 @@ use std::{
 };
 use uuid::Uuid;
 
-pub const LEASE_MS: u64 = 3000;
+pub const LEASE_MS: u64 = 5000;
+/// How often the proxy renews route leases; a lease outlives four missed renewals.
+const RENEW: Duration = Duration::from_secs(1);
 /// The Parcela release that started a proxy, shown to people.
 pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
@@ -136,6 +138,30 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
 /// The last configuration whose LAN or domain listener Caddy refused.
 static FAILED_SHARE: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
 
+/// How long one `lsof` answer stands for the same ports. Owners re-check their own listeners
+/// every 2s and withdraw a run whose listener changed, so this is a second line of defense.
+const LISTENER_CHECK: Duration = Duration::from_secs(5);
+type CachedListeners = (Instant, Vec<u16>, crate::process::Listeners);
+static LISTENERS: std::sync::Mutex<Option<CachedListeners>> = std::sync::Mutex::new(None);
+
+fn listeners(ports: impl IntoIterator<Item = u16>) -> Result<crate::process::Listeners> {
+    let mut ports: Vec<u16> = ports.into_iter().collect();
+    ports.sort_unstable();
+    ports.dedup();
+    let mut cache = LISTENERS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("listener cache poisoned"))?;
+    if let Some((at, cached, listeners)) = cache.as_ref()
+        && *cached == ports
+        && at.elapsed() < LISTENER_CHECK
+    {
+        return Ok(listeners.clone());
+    }
+    let listeners = crate::process::Listeners::inspect(ports.iter().copied())?;
+    *cache = Some((Instant::now(), ports, listeners.clone()));
+    Ok(listeners)
+}
+
 fn load(state: &Path, config: &Value) -> Result<()> {
     let (status, response) = http::admin(
         &socket(state)?,
@@ -219,9 +245,9 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
             ));
         }
     }
-    let listeners = crate::process::Listeners::inspect(candidates.iter().flat_map(
-        |(_, _, endpoints, _, _, _)| endpoints.iter().map(|endpoint| endpoint.backend_port),
-    ))?;
+    let listeners = listeners(candidates.iter().flat_map(|(_, _, endpoints, _, _, _)| {
+        endpoints.iter().map(|endpoint| endpoint.backend_port)
+    }))?;
     let mut routes = Vec::new();
     for (session, roots, endpoints, lan, domains, wildcard) in candidates {
         let owned = endpoints.iter().all(|endpoint| {
@@ -577,7 +603,7 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
             if let Err(error) = sync(registry, &router) {
                 eprintln!("parcela: route lease renewal failed; routes expire: {error:#}");
             }
-            refresh = Instant::now() + Duration::from_millis(500);
+            refresh = Instant::now() + RENEW;
         }
         thread::sleep(Duration::from_millis(100));
     };

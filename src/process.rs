@@ -255,9 +255,9 @@ pub fn listener_identity(port: u16, roots: &[u32]) -> Result<Vec<u32>> {
 
 /// Every LISTEN socket on a set of ports, from one lsof call.
 /// lsof is a diagnosed prerequisite for this initial Unix TCP implementation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Listeners(Vec<Listener>);
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Listener {
     pid: u32,
     port: u16,

@@ -28,11 +28,8 @@ svg {
   width: 104%;
   height: 0.22em;
   overflow: visible;
-  color: var(--home-sky);
-  pointer-events: none;
-}
-:root.dark svg {
   color: #21a8d2;
+  pointer-events: none;
 }
 path {
   fill: none;

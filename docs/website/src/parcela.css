@@ -419,8 +419,8 @@ body {
 .vp-doc .tool-name {
   padding: 3px 6px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--tool-color) 9%, transparent);
-  color: var(--tool-color);
+  background: color-mix(in srgb, var(--tool-dark) 12%, transparent);
+  color: var(--tool-dark);
   font-size: var(--vp-code-font-size);
   font-weight: 600;
   white-space: nowrap;
@@ -435,10 +435,6 @@ body {
   fill: currentColor;
 }
 
-.dark .vp-doc .tool-name {
-  color: var(--tool-dark);
-  background: color-mix(in srgb, var(--tool-dark) 12%, transparent);
-}
 
 .vp-doc :is(h1, h2, h3, h4) .tool-name {
   font-size: 0.9em;

@@ -117,11 +117,11 @@ const { armed, playing } = useEntrance(root);
   color: var(--subtle-foreground);
 }
 .dollar {
-  color: var(--home-sky);
+  color: #65c6e3;
 }
 .result {
   padding-left: 22px;
-  color: #287547;
+  color: #79ca94;
 }
 .result svg {
   flex: none;
@@ -131,12 +131,6 @@ const { armed, playing } = useEntrance(root);
 }
 .result.fail {
   color: var(--destructive);
-}
-:root.dark .result:not(.fail) {
-  color: #79ca94;
-}
-:root.dark .dollar {
-  color: #65c6e3;
 }
 h3 {
   display: block;

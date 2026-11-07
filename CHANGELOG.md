@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Ready environments check their process tree and listeners every 2 seconds instead of every 200 ms, and the proxy renews routes every second with a 5-second lease, reusing a listener check for up to 5 seconds. One idle environment spawns about 7 times fewer `ps` and `lsof` processes.
 - `parcela telemetry enable` and `disable` save the choice in the host config, so it applies to every state directory. A choice saved in `telemetry.json` by an older release still applies until then.
 
 ### Removed

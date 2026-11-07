@@ -39,7 +39,7 @@ export const route = (slug) => slug === 'index' ? '/' : slug === 'docs' ? '/docs
 
 export const downloads = {
   'parcela-skill.txt': '.agents/skills/parcela/SKILL.md',
-  'logo.svg': 'assets/brand/logo.svg',
+  'logo.png': 'assets/brand/logo.png',
   'third-party-notices.txt': 'docs/website/THIRD_PARTY_NOTICES.txt',
 };
 

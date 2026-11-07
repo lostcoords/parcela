@@ -100,9 +100,6 @@ svg {
   flex: none;
   width: 1.15em;
   height: 1.15em;
-  color: var(--brand);
-}
-:root.dark svg {
   color: var(--brand-dark);
 }
 @keyframes stack-scroll {

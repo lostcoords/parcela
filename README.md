@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/logo.svg" alt="Parcela picket mascot" width="150">
+  <img src="assets/brand/logo.png" alt="Parcela Fence Buddy mascot" width="150">
 </p>
 
 <h1 align="center">Parcela</h1>
