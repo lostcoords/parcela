@@ -127,7 +127,7 @@ pub enum Command {
         /// Loopback HTTP port for --domain [default: 1480]
         #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
-        /// Disable all sharing for this run, including project and environment defaults
+        /// Disable all sharing for this run, including host and environment defaults
         #[arg(long)]
         no_share: bool,
         /// Readiness timeout in seconds, instead of readiness_timeout_seconds
@@ -172,7 +172,7 @@ pub enum Command {
         /// Loopback HTTP port for --domain [default: 1480]
         #[arg(long, env = "PARCELA_DOMAIN_PORT", value_parser = clap::value_parser!(u16).range(1024..))]
         domain_port: Option<u16>,
-        /// Disable all sharing for this run, including project and environment defaults
+        /// Disable all sharing for this run, including host and environment defaults
         #[arg(long)]
         no_share: bool,
         /// Readiness timeout in seconds, instead of readiness_timeout_seconds
@@ -297,11 +297,42 @@ pub enum Command {
     /// Serve a Compose service's container port on $PORT
     #[command(hide = true)]
     ComposeForward { service: String, port: u16 },
+    /// Manage host settings
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+    },
     /// Manage anonymous usage data
     Telemetry {
         #[command(subcommand)]
         command: Option<TelemetryCommand>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    /// List settings
+    #[command(visible_alias = "ls")]
+    List,
+    /// Print a setting
+    Get {
+        /// Setting key
+        key: String,
+    },
+    /// Change a setting
+    Set {
+        /// Setting key
+        key: String,
+        /// New value
+        value: String,
+    },
+    /// Remove a setting
+    Unset {
+        /// Setting key
+        key: String,
+    },
+    /// Print the config file path
+    Path,
 }
 
 #[derive(Subcommand, Clone, Copy)]

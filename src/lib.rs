@@ -7,6 +7,7 @@ pub mod control;
 pub mod dashboard;
 pub mod discovery;
 pub mod frontdoor;
+pub mod host;
 pub mod http;
 pub mod inventory;
 pub mod lifecycle;

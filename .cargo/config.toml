@@ -1,0 +1,3 @@
+[env]
+# Tests and `cargo run` never read this machine's host settings; `parcela config` explains them.
+PARCELA_CONFIG = "/dev/null"

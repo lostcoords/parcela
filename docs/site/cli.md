@@ -84,7 +84,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--lan-ip IP` | Chooses the LAN IPv4 address. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
 | `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Also set by `PARCELA_DOMAIN`. |
-| `--no-share` | Disables all sharing for this run, including project defaults and environment variables. Use `restart --no-share` for an already shared run. |
+| `--no-share` | Disables all sharing for this run, including the host domain and environment variables. Use `restart --no-share` for an already shared run. |
 | `--domain-port N` | The loopback port for `--domain`, 1480 by default. Also set by `PARCELA_DOMAIN_PORT`. |
 
 `hooks.prestart` runs on every new start after setup. A hook failure, an HTTP service exit, or a nonzero process exit before first readiness stops startup. A non-HTTP process may finish with code 0.
@@ -164,7 +164,7 @@ To add Parcela's debug menu to your own app in development, include its script f
 Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
 
 - **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
-- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions never share: they ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, though project `sharing` defaults still apply. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+- **Environments** lists every project and worktree Parcela knows, stopped and unregistered ones included. Registered ones get Open, Start, Stop, Restart and Logs; run `parcela up` in a checkout once to register it. Actions never share: they ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, though the host domain still applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
 
 The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
@@ -298,6 +298,29 @@ Normal interactive commands check for a stable release at most once a day. Shell
 Piped commands, `--json`, background owners, shutdown commands, and diagnostic proxy commands never check for updates or prompt. `PARCELA_NO_UPDATE=1` disables automatic release checks. It does not disable local proxy maintenance after an update.
 
 For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade` prints the matching package-manager command without replacing the installation. After that update, the next regular CLI command refreshes an older running proxy. Builds outside known installation paths skip automatic release checks.
+
+## config
+
+```text
+parcela config [list | get KEY | set KEY VALUE | unset KEY | path]
+```
+
+Shows or changes this machine's settings. Without a subcommand, lists them. `get` exits 1 when the key is unset.
+
+| Key | Value |
+| --- | --- |
+| `sharing.domain` | The domain `up` and `restart` share every environment with an HTTP service under, like `--domain`. Unsetting it also unsets `sharing.domain_port`. |
+| `sharing.domain_port` | The loopback port for `sharing.domain`, 1480 by default. |
+
+The file is `$XDG_CONFIG_HOME/parcela/config.yaml`, or `~/.config/parcela/config.yaml`. `PARCELA_CONFIG` names another file. It is YAML, and `set` rewrites it without comments:
+
+```yaml
+sharing:
+  domain: tower.example.com
+  domain_port: 1480
+```
+
+Flags override `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT`, which override these settings. [Share under your own domain](worktrees.md#share-under-your-own-domain) covers the front proxy.
 
 ## telemetry
 

@@ -219,7 +219,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
     if let Some(selector) = &cli.workspace
         && !matches!(
             cli.command,
-            Command::Init { .. } | Command::Telemetry { .. }
+            Command::Init { .. } | Command::Telemetry { .. } | Command::Config { .. }
         )
     {
         let registry =
@@ -294,6 +294,9 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             command.unwrap_or(super::args::TelemetryCommand::Status),
             out,
         ),
+        Command::Config { command } => {
+            super::config::run(command.unwrap_or(super::args::ConfigCommand::List), out)
+        }
         Command::Trust { print, caddy } => super::proxy::trust(&state, print, &caddy),
         Command::Run {
             name,
@@ -585,15 +588,15 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     if start.no_share {
         start.share = Share::default();
     } else if snapshot.is_none() {
-        start.share.domain = start
-            .share
-            .domain
-            .or_else(|| manifest.sharing.domain.clone());
-        start.share.domain_port = start.share.domain_port.or(manifest.sharing.domain_port);
+        let host = parcela::host::Host::load(&parcela::host::path()?)?.sharing_for(&manifest);
+        if start.share.domain.is_none() {
+            start.share.domain = host.domain;
+        }
+        start.share.domain_port = start.share.domain_port.or(host.domain_port);
     }
     ensure!(
         start.share.domain_port.is_none() || start.share.domain.is_some(),
-        "--domain-port requires --domain or sharing.domain"
+        "--domain-port requires --domain or `parcela config set sharing.domain`"
     );
     let readiness_timeout = start
         .readiness_timeout

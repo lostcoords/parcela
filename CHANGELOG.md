@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `parcela config` keeps this machine's settings in `~/.config/parcela/config.yaml` (`$XDG_CONFIG_HOME`, or `PARCELA_CONFIG`). `sharing.domain` and `sharing.domain_port` there share every environment on the machine under its own domain, so a repository no longer needs to name one host's domain. Flags and `PARCELA_DOMAIN` override them. They apply only to projects with an HTTP service.
+
+### Removed
+
+- `sharing` in `parcela.yaml`. A domain names one machine's front proxy, so it is now a host setting; a file that still has `sharing` fails with the `parcela config set` command to run instead.
+
 ## 0.7.6 - 2026-10-31
 
 ### Added

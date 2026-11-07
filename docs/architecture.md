@@ -41,7 +41,7 @@ A dependency is ready after its readiness check passes, after it starts if it ha
 
 `down` asks the owner to withdraw routes and stop the graph. Once nothing that depends on a service is running or stopping, the owner runs the service's `stop` command, if it has one, then sends SIGTERM to its process group. After 10 seconds, remaining groups receive SIGKILL. A `stop` command runs even when its service already exited, because it manages what lives outside the process tree, like containers. Each success is saved in `owner.json`, so an owner that adopts a half-stopped run runs only the commands still owed. The run is stopped only when no recorded process is alive and every `stop` command succeeded. A failed one leaves the run interrupted until `down` runs it again.
 
-`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing belongs to that generation. Domain defaults come from `sharing` in the project configuration; CLI and environment values override them. `--no-share` disables all sharing for the new generation. Detached owners receive the resolved sharing flags without reapplying defaults.
+`restart` validates the replacement configuration before stopping the old run, then starts a new generation. Sharing belongs to that generation. The domain default comes from `sharing` in the host configuration (`parcela config`), never the project; CLI and environment values override it. `--no-share` disables all sharing for the new generation. Detached owners receive the resolved sharing flags without reapplying defaults.
 
 If the owner dies, services may survive. The next lifecycle operation acquires the ownership lock and compares recorded PIDs, start times, and boot identity with live processes. Matching processes are adopted. Parcela never signals a bare PID from disk. A small check-to-signal PID reuse race remains possible.
 
@@ -114,6 +114,7 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 | `owner`, `control`, `lifecycle` | Owns environments and handles stop, restart, and recovery. |
 | `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration and runs the proxy and optional macOS relay. |
 | `share` | Plans LAN, Tailscale and domain sharing and allowed host variables. |
+| `host` | Reads and writes the machine's own settings, `parcela config`. |
 | `process`, `http` | Checks process identity, listener ownership, and readiness. `http` is a client. |
 | `discovery` | Reads jj and Git checkout inventory without modifying it. Unresolvable jj roots are reported and omitted without hiding live checkouts. |
 | `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |

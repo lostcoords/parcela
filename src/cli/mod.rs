@@ -1,5 +1,6 @@
 mod args;
 mod commands;
+mod config;
 mod doctor;
 mod environments;
 mod init;
