@@ -4,9 +4,7 @@ on:
   pull_request:
     paths:
       - 'CONTRIBUTING.md'
-      - 'docs/architecture.md'
-      - 'docs/site/**'
-      - 'docs/website/**'
+      - 'docs/**'
       - '.agents/skills/parcela/SKILL.md'
       - 'examples/docs-demo/**'
       - 'assets/brand/logo.svg'
@@ -16,9 +14,7 @@ on:
     branches: [main]
     paths:
       - 'CONTRIBUTING.md'
-      - 'docs/architecture.md'
-      - 'docs/site/**'
-      - 'docs/website/**'
+      - 'docs/**'
       - '.agents/skills/parcela/SKILL.md'
       - 'examples/docs-demo/**'
       - 'assets/brand/logo.svg'
@@ -38,19 +34,19 @@ jobs:
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: docs/website
+        working-directory: docs
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: '4.0'
           bundler-cache: true
-          working-directory: docs/website
+          working-directory: docs
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: docs/website/package-lock.json
+          cache-dependency-path: docs/package-lock.json
       - run: npm ci
       - run: bin/rails test
       - run: npm test

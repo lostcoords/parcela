@@ -1,0 +1,21 @@
+source "https://rubygems.org"
+
+# parcela.run: a Rails app rendered to static files by Kiln, styled with lostcoords-ui. Pages are
+# Kiln Markdown views in app/views/pages; Tensaku edits them on the page in development.
+
+gem "rails", "~> 8.1.0"
+gem "propshaft"
+gem "importmap-rails"
+gem "stimulus-rails"
+gem "tailwindcss-rails", "~> 4.4"
+gem "puma"
+
+gem "lostcoords-ui", "~> 0.8.2"
+
+gem "kiln", path: "../../kiln"
+gem "commonmarker", "~> 2.9"
+gem "rouge"
+
+group :development do
+  gem "tensaku", path: "../../tensaku"
+end

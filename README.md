@@ -44,7 +44,7 @@ Open the URL in the output, such as `https://shop.localhost:1443`. The first ter
 
 `parcela logs` shows process output. `parcela down` stops the environment and retains source and data.
 
-For Homebrew and source builds, see [Get started](docs/site/getting-started.md#install-it-by-hand). Upgrades are in the [FAQ](docs/site/faq.md#upgrade-parcela). The [getting started guide](docs/site/getting-started.md) also has a setup prompt for coding agents.
+For Homebrew and source builds, see [Get started](https://parcela.run/docs/getting-started/#install-it-by-hand). Upgrades are in the [FAQ](https://parcela.run/docs/faq/#upgrade-parcela). The [getting started guide](https://parcela.run/docs/getting-started/) also has a setup prompt for coding agents.
 
 ## Describe the whole stack
 
@@ -79,19 +79,19 @@ parcela -w experiment up --detach
 parcela -w experiment down
 ```
 
-Parcela creates a jj workspace or detached Git worktree and registers its preview name. Creation starts nothing. With [declared data](docs/site/configuration.md#data), `snapshot` and `create --from` reproduce a stopped environment's dataset from explicitly declared files, with consistent SQLite backups. See [worktrees and agents](docs/site/worktrees.md#reproduce-a-test-dataset).
+Parcela creates a jj workspace or detached Git worktree and registers its preview name. Creation starts nothing. With [declared data](https://parcela.run/docs/configuration/#data), `snapshot` and `create --from` reproduce a stopped environment's dataset from explicitly declared files, with consistent SQLite backups. See [worktrees and agents](https://parcela.run/docs/worktrees/#reproduce-a-test-dataset).
 
-Parcela sends anonymous command telemetry unless disabled. Run `parcela telemetry disable` to turn it off. [Telemetry](docs/site/telemetry.md) lists the fields and controls.
+Parcela sends anonymous command telemetry unless disabled. Run `parcela telemetry disable` to turn it off. [Telemetry](https://parcela.run/docs/telemetry/) lists the fields and controls.
 
 ## Documentation
 
-Start with the [documentation index](docs/site/docs.md).
+Start with the [documentation index](https://parcela.run/docs/).
 
-- [Get started](docs/site/getting-started.md) with your app, or [build the tutorial app](docs/site/tutorial.md).
-- [Configure a project](docs/site/frameworks.md#services-and-setup) and [run parallel worktrees](docs/site/worktrees.md).
-- Look up [CLI commands](docs/site/cli.md) and [configuration fields](docs/site/configuration.md).
-- Read [environment boundaries](docs/site/worktrees.md#names-and-isolation) and the [FAQ](docs/site/faq.md).
-- [Contribute](CONTRIBUTING.md), inspect the [architecture](docs/architecture.md), or read the [changelog](CHANGELOG.md).
+- [Get started](https://parcela.run/docs/getting-started/) with your app, or [build the tutorial app](https://parcela.run/docs/tutorial/).
+- [Configure a project](https://parcela.run/docs/frameworks/#services-and-setup) and [run parallel worktrees](https://parcela.run/docs/worktrees/).
+- Look up [CLI commands](https://parcela.run/docs/cli/) and [configuration fields](https://parcela.run/docs/configuration/).
+- Read [environment boundaries](https://parcela.run/docs/worktrees/#names-and-isolation) and the [FAQ](https://parcela.run/docs/faq/).
+- [Contribute](CONTRIBUTING.md), inspect the [architecture](https://parcela.run/docs/architecture/), or read the [changelog](CHANGELOG.md).
 
 ## License
 

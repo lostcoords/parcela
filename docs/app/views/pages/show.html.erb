@@ -1,0 +1,6 @@
+<%= render layout: "shared/docs_shell", locals: { navigation: render("shared/navigation"), contents: render("shared/outline"), menu_label: "Pages", width: "max-w-3xl" } do %>
+  <article class="<%= lc_prose_class(extra: "max-w-none") %>">
+    <%= page_html(@html) %>
+  </article>
+  <%= render "shared/pager" %>
+<% end %>

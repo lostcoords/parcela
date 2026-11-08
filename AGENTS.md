@@ -3,7 +3,7 @@
 Workspace/environment organization and named HTTPS for arbitrary local services.
 Use jj for version control; preserve unrelated work and never use mutating Git commands.
 
-- Read docs/architecture.md before architecture changes.
+- Read docs/app/views/pages/architecture.html.md before architecture changes.
 - Keep Caddy as the maintained routing/TLS backend. Parcela's own supervisor runs each environment's processes.
 - Defaults: HTTPS on the no-sudo port 1443, loopback only, flat names, tenants off.
 - Never take over listeners, trust a CA, expose LAN/tailnet services, or delete source/data implicitly. Sharing is per run, from explicit flags, environment settings or host defaults the person set with `parcela config`; never from the project. Domain routes remain loopback-only; `--no-share` disables all sharing. Never Tailscale Funnel.

@@ -1,5 +1,5 @@
 //! Anonymous usage telemetry: which commands run and how they end, never what they act on.
-//! docs/site/telemetry.md lists every field and the ways to turn it off.
+//! docs/app/views/pages/telemetry.html.md lists every field and the ways to turn it off.
 use super::args::{Args, TelemetryCommand};
 use super::output::Output;
 use anyhow::Result;

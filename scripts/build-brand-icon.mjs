@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
-const require = createRequire(new URL('../docs/website/package.json', import.meta.url));
+const require = createRequire(new URL('../docs/package.json', import.meta.url));
 const { Resvg } = require('@resvg/resvg-js');
 const source = readFileSync(new URL('../assets/brand/fence-buddy-reference.png', import.meta.url));
 const width = source.readUInt32BE(16);

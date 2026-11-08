@@ -19,7 +19,7 @@ Fence Buddy uses an ivory body and charcoal eyes and outline. It has no blue acc
 Install the docs dependencies, then resize the generated master:
 
 ```sh
-npm ci --prefix docs/website
+npm ci --prefix docs
 node scripts/build-brand-icon.mjs
 ```
 
@@ -30,7 +30,7 @@ The builder removes 10% of transparent padding on each edge and uses resvg to re
 Install the docs dependencies and run:
 
 ```sh
-npm ci --prefix docs/website
+npm ci --prefix docs
 node scripts/build-brand-pixel.mjs
 ```
 

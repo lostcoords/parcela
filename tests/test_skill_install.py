@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 
-DOCUMENT = Path(__file__).resolve().parents[1] / 'docs/site/worktrees.md'
+DOCUMENT = Path(__file__).resolve().parents[1] / 'docs/app/views/pages/worktrees.html.md'
 PAYLOAD = b'---\nname: parcela\ndescription: Test fixture\n---\nFixture instructions.\n'
 ZSH = shutil.which('zsh')
 

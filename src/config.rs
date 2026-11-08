@@ -947,7 +947,7 @@ pub fn locate(start: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod schema {
     /// The schema editors load from https://parcela.run/schema/v1.json.
-    const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/schema/v1.json");
+    const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/schema/v1.json");
 
     #[test]
     fn published_schema_matches_the_parser() {

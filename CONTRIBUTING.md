@@ -1,6 +1,6 @@
 # Contribute to Parcela
 
-Parcela's Rust CLI supervises local development processes. Caddy handles HTTPS and routing. Read [Architecture](docs/architecture.md) before changing lifecycle, routing, state, or process ownership.
+Parcela's Rust CLI supervises local development processes. Caddy handles HTTPS and routing. Read [Architecture](https://parcela.run/docs/architecture/) before changing lifecycle, routing, state, or process ownership.
 
 ## Build and check code
 
@@ -33,7 +33,7 @@ Do not change system trust or take over occupied listeners. Tests with a termina
 
 ## Write documentation
 
-The [documentation index](docs/site/docs.md) is the user entry point. Keep each page focused on one reader need, following [Diátaxis](https://diataxis.fr/):
+The [documentation index](https://parcela.run/docs/) is the user entry point. Keep each page focused on one reader need, following [Diátaxis](https://diataxis.fr/):
 
 - Tutorials produce a working result with expected observations.
 - How-to guides solve a named task.
@@ -42,12 +42,12 @@ The [documentation index](docs/site/docs.md) is the user entry point. Keep each 
 
 Use direct instructions and the names in the CLI and configuration. Put a fact in one canonical page and link to it elsewhere. Retain historical release notes rather than rewriting them as current instructions.
 
-To add or move a page, update `docs/website/app/models/docs.rb`. Keep existing public routes when possible. Relative Markdown links must work in the repository and the built site. The [site guide](docs/website/README.md) covers the build and checks.
+Pages are Kiln Markdown views in `docs/app/views/pages/`. To add or move a page, update `docs/app/models/docs.rb`. Keep existing public routes when possible. Link pages by route, such as `/docs/cli/#config`. The [site guide](https://parcela.run/docs/docs-site/) covers the build and checks.
 
 ## Verify documentation changes
 
 ```sh
-cd docs/website
+cd docs
 bundle install && npm ci
 bin/rails test && npm test
 RAILS_ENV=production bin/rails kiln:build

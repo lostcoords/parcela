@@ -1,0 +1,17 @@
+// Serves the built site, target/docs from `bin/rails kiln:build` and `npm run cards`, at parcela.run;
+// worker.mjs only handles /api/*. POSTHOG_KEY is a secret (`wrangler secret put POSTHOG_KEY`).
+{
+  "name": "parcela-site",
+  "account_id": "1745c65c70c5efcde26eed7a4d79d42d",
+  "compatibility_date": "2025-09-01",
+  "main": "worker.mjs",
+  "workers_dev": false,
+  "assets": {
+    "directory": "../target/docs",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "parcela.run", "custom_domain": true }]
+}

@@ -109,7 +109,7 @@ shutil.copyfile(source, output)
 ''')
             curl.chmod(0o755)
             mark_old()
-            environment = {**os.environ, 'HOME': str(home), 'PATH': f'{tools}:{os.environ["PATH"]}', 'PARCELA_SKIP_CADDY': '1', 'TEST_INSTALLER': str(ROOT / 'docs/website/install.sh'), 'TEST_ARCHIVE': str(archive), 'TEST_CHECKSUM': str(checksum), 'PARCELA_STATE_DIR': str(live.root / 'wrong-state')}
+            environment = {**os.environ, 'HOME': str(home), 'PATH': f'{tools}:{os.environ["PATH"]}', 'PARCELA_SKIP_CADDY': '1', 'TEST_INSTALLER': str(ROOT / 'docs/install.sh'), 'TEST_ARCHIVE': str(archive), 'TEST_CHECKSUM': str(checksum), 'PARCELA_STATE_DIR': str(live.root / 'wrong-state')}
             upgraded = subprocess.run([str(installed), '--state-dir', str(live.state), 'upgrade'], env=environment, capture_output=True, text=True, timeout=45)
             assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
             assert 'updating the proxy from' in upgraded.stderr

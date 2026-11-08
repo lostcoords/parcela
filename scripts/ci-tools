@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the tools the checks need into ~/.local/bin on a CI runner: jj for discovery tests,
-# Caddy for the live suites. Versions match docs/website/install.sh.
+# Caddy for the live suites. Versions match docs/install.sh.
 set -eu
 JJ_VERSION=0.40.0
 CADDY_VERSION=2.11.7

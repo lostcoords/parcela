@@ -254,7 +254,7 @@ Parcela runs each environment's processes itself, so Process Compose is no longe
 
 ## 0.3.0 - 2026-10-18
 
-`parcela.yaml` has a new format, version 1. Files written for 0.2 or earlier need rewriting, and `parcela doctor` links to the new format. The [configuration reference](docs/site/configuration.md) shows the new format.
+`parcela.yaml` has a new format, version 1. Files written for 0.2 or earlier need rewriting, and `parcela doctor` links to the new format. The [configuration reference](https://parcela.run/docs/configuration/) shows the new format.
 
 ### Added
 

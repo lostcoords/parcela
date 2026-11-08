@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
-const require = createRequire(new URL('../docs/website/package.json', import.meta.url));
+const require = createRequire(new URL('../docs/package.json', import.meta.url));
 const sharp = require('sharp');
 const source = JSON.parse(readFileSync(new URL('../assets/brand/mascot-pixel.json', import.meta.url), 'utf8'));
 const { size, palette, rows, outline } = source;
