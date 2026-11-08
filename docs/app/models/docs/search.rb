@@ -4,7 +4,7 @@
 module Docs
   module Search
     GROUPS = { "Pages" => "document-text", "Sections" => "hashtag" }.freeze
-    SKIPPED = "pre, svg, script, template".freeze
+    SKIPPED = "pre, svg, script, template, .lc-code-block".freeze
 
     Document = Data.define(:group, :title, :detail, :url, :text, :featured)
 
@@ -13,24 +13,27 @@ module Docs
     end
 
     def self.documents
-      pages = Docs.docs
-      pages.map { page_document(it) } + pages.flat_map { section_documents(it) }
+      pages = Docs.docs.to_h { [ it, article(it) ] }
+      pages.map { page_document(*it) } + pages.flat_map { section_documents(*it) }
     end
 
-    def self.page_document(page)
+    # The page's article as the build writes it, without code, icons and scripts.
+    def self.article(page)
+      Nokogiri::HTML5(Kiln.render(page.path)).at_css("article").tap { it.css(SKIPPED).each(&:remove) }
+    end
+
+    def self.page_document(page, body)
       meta = page.meta
-      body = Nokogiri::HTML5.fragment(page.html)
-      body.css(SKIPPED).each(&:remove)
       featured = Docs::GROUPS.first(2).flat_map(&:pages).include?(page)
       Document.new(group: "Pages", title: meta[:title], detail: meta[:description], url: page.path, text: body.css("p, li").map(&:text).join(" ").squish, featured:)
     end
 
-    def self.section_documents(page)
+    def self.section_documents(page, body)
       sections = []
-      Nokogiri::HTML5.fragment(page.html).children.each do |node|
-        if node.element? && %w[h2 h3].include?(node.name) && node["id"]
+      body.element_children.each do |node|
+        if %w[h2 h3].include?(node.name) && node["id"]
           sections << { title: node.text.squish, url: "#{page.path}##{node["id"]}", text: +"" }
-        elsif sections.any? && node.element? && !node.matches?(SKIPPED)
+        elsif sections.any?
           sections.last[:text] << " " << node.text
         end
       end

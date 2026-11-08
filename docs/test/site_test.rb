@@ -3,8 +3,6 @@ require "test_helper"
 # The built site: every page, its metadata, links and downloads. Kiln's verifier already fails
 # the build on a broken internal link, anchor or importmap module.
 class SiteTest < ActiveSupport::TestCase
-  include Kiln::TestHelper
-
   REPOSITORY = Docs::REPOSITORY
 
   # One build for the whole class; it takes a few seconds.

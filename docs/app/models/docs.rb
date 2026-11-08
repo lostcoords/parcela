@@ -1,6 +1,6 @@
 # The pages of parcela.run. Most are Kiln Markdown views in app/views/pages; a few are Markdown
 # files that live elsewhere in the repository (CONTRIBUTING.md, the operating skill, this site's
-# README) and render as Kiln content entries.
+# README) and render as Kiln content entries (see PagesController#show).
 module Docs
   REPOSITORY = Pathname(__dir__).join("../../..").expand_path
 
@@ -8,7 +8,6 @@ module Docs
     def initialize(slug:, title:, description:, file: nil) = super
     def path = Docs.route(slug)
     def card = "/og/#{slug}.png"
-    def html = Docs.html(self)
     def meta = { title:, description: }
   end
 
@@ -52,17 +51,14 @@ module Docs
     def find(slug) = PAGES.find { it.slug == slug }
     def docs = PAGES.reject { it == HOME }
 
+    # Route helpers add the trailing slash in Kiln's directory mode: /docs/cli/.
     def route(slug)
+      routes = Rails.application.routes.url_helpers
       case slug
-      when "index" then "/"
-      when "docs" then "/docs/"
-      else "/docs/#{slug}/"
+      when "index" then routes.root_path
+      when "docs" then routes.docs_index_path
+      else routes.page_path(slug)
       end
-    end
-
-    # The page's body: its Markdown view, or its file as a Kiln content entry.
-    def html(page)
-      page.file ? Kiln::Content.file(page.file).html : ApplicationController.render(template: "pages/#{page.slug}", layout: false)
     end
 
     # Headings for "On this page": [level, id, text] for each h2 and h3.
