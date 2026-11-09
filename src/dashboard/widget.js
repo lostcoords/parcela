@@ -6,6 +6,8 @@
   // A shared name is read-only and serves no logs or opened files; the server enforces it.
   const shared = !location.hostname.endsWith('.localhost');
   const dashboard = '__PARCELA_DASHBOARD__';
+  // Absolute, because a page's <base> would send relative ones to another host.
+  const own = path => new URL(path, location.origin).href;
   const RECENT_MS = 15000;
   const TOAST_MS = 8000;
   const SEEN = 'parcela:seen-opens';
@@ -118,7 +120,7 @@
   };
   const link = (href, ...children) => element('a', { href, target: '_blank', rel: 'noopener' }, ...children);
   const fetchJson = async (path, options) => {
-    const response = await fetch(path, { cache: 'no-store', credentials: 'omit', ...options });
+    const response = await fetch(own(path), { cache: 'no-store', credentials: 'omit', ...options });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   };
@@ -166,7 +168,7 @@
   // An app whose CSP blocks same-origin images still gets a badge it can see.
 
   const icon = () => {
-    const image = element('img', { src: '/_parcela/badge.png', alt: '', draggable: false });
+    const image = element('img', { src: own('/_parcela/badge.png'), alt: '', draggable: false });
     image.addEventListener('error', () => image.replaceWith(element('span', { className: 'wordmark', textContent: 'parcela' })));
     return image;
   };
@@ -210,7 +212,7 @@
       anchor(panel);
     });
     const away = iconButton('external', 'Open in a new tab', () => {
-      window.open(`/_parcela/#${current}${views.logs?.chosen() ? `:${encodeURIComponent(views.logs.chosen())}` : ''}`, '_blank', 'noopener');
+      window.open(own(`/_parcela/#${current}${views.logs?.chosen() ? `:${encodeURIComponent(views.logs.chosen())}` : ''}`), '_blank', 'noopener');
       hide();
     });
     const manage = location.hostname.endsWith('.localhost') && dashboard.startsWith('https://')

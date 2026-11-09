@@ -4,13 +4,17 @@
 use crate::{dashboard, private, sockets};
 use anyhow::{Context, Result, ensure};
 use std::{
+    collections::HashMap,
     io::{self, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
-    os::unix::net::{UnixListener, UnixStream},
+    os::{
+        fd::{AsRawFd, RawFd},
+        unix::net::{UnixListener, UnixStream},
+    },
     path::{Path, PathBuf},
     sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -26,6 +30,16 @@ const HEAD_LIMIT: usize = 256 * 1024;
 /// past either limit goes through without the badge rather than stalling.
 const SCAN_LIMIT: usize = 1024 * 1024;
 const SCAN_TIME: Duration = Duration::from_secs(5);
+/// Page loads served at once. Each holds three file descriptors, and the proxy may have only 256.
+const PAGES_AT_ONCE: usize = 64;
+/// Of those, how many one app can hold, so an app that hangs leaves room for the others.
+const PAGES_PER_APP: usize = 16;
+/// An app holding this few can always get a place, up to the limit...
+const PAGES_ANY_APP: usize = 4;
+/// ...and busier ones stop here, so that several hung apps together leave that room too.
+const PAGES_BUSY_APPS: usize = 48;
+/// How often a load waiting on its app checks that someone still wants the page.
+const CLIENT_CHECK: Duration = Duration::from_secs(1);
 
 const HOP_BY_HOP: [&str; 8] = [
     "connection",
@@ -92,24 +106,156 @@ impl Drop for Server {
     }
 }
 
-fn accept(listener: &UnixListener, stopped: &AtomicBool) {
-    while !stopped.load(Ordering::Relaxed) {
-        match listener.accept() {
-            // A slow page holds one thread, never another page or the dashboard.
-            Ok((stream, _)) => drop(
-                thread::Builder::new()
-                    .name("parcela-page".into())
-                    .spawn(move || drop(serve(stream))),
-            ),
-            Err(error) => {
-                crate::paint::Paint::note(&format!("page injector failed: {error}"));
-                break;
+/// Gives back a page's place when its thread ends, however it ends.
+struct Place(Arc<AtomicUsize>);
+impl Drop for Place {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+type Apps = Arc<Mutex<HashMap<SocketAddr, usize>>>;
+
+/// A page's place among those of its app.
+struct AppPlace(Apps, SocketAddr);
+impl AppPlace {
+    fn take(apps: &Apps, app: SocketAddr) -> Option<Self> {
+        let mut counts = apps.lock().ok()?;
+        let total: usize = counts.values().sum();
+        let count = counts.entry(app).or_default();
+        let limit = if *count < PAGES_ANY_APP {
+            PAGES_AT_ONCE
+        } else {
+            PAGES_BUSY_APPS
+        };
+        if total >= limit || *count >= PAGES_PER_APP {
+            return None;
+        }
+        *count += 1;
+        Some(Self(Arc::clone(apps), app))
+    }
+}
+impl Drop for AppPlace {
+    fn drop(&mut self) {
+        let Ok(mut counts) = self.0.lock() else {
+            return;
+        };
+        if let Some(count) = counts.get_mut(&self.1) {
+            *count -= 1;
+            if *count == 0 {
+                counts.remove(&self.1);
             }
         }
     }
 }
 
-fn serve(stream: UnixStream) -> Result<()> {
+fn accept(listener: &UnixListener, stopped: &AtomicBool) {
+    let pages = Arc::new(AtomicUsize::new(0));
+    let apps = Apps::default();
+    while !stopped.load(Ordering::Relaxed) {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                let place = Place(Arc::clone(&pages));
+                let apps = Arc::clone(&apps);
+                if pages.fetch_add(1, Ordering::Relaxed) >= PAGES_AT_ONCE {
+                    let _ = reply(&mut stream, "503 Service Unavailable");
+                    continue;
+                }
+                // A slow page holds one thread, never another page or the dashboard.
+                drop(
+                    thread::Builder::new()
+                        .name("parcela-page".into())
+                        .spawn(move || {
+                            let _place = place;
+                            drop(serve(stream, &apps));
+                        }),
+                );
+            }
+            // Out of file descriptors, for one: those come back, so keep listening.
+            Err(error) => {
+                crate::paint::Paint::note(&format!("page injector: {error}"));
+                thread::sleep(CLIENT_CHECK);
+            }
+        }
+    }
+}
+
+/// The app's side of a page load. It gives up when the client has gone, since an app that never
+/// answers would otherwise hold this load's thread and sockets forever.
+struct Upstream {
+    stream: TcpStream,
+    client: Option<RawFd>,
+    limit: Option<Instant>,
+    checked: Instant,
+}
+impl Upstream {
+    fn new(stream: TcpStream, client: Option<RawFd>) -> Result<Self> {
+        stream.set_read_timeout(Some(CLIENT_CHECK))?;
+        Ok(Self {
+            stream,
+            client,
+            limit: None,
+            checked: Instant::now(),
+        })
+    }
+
+    fn client_gone(&self) -> bool {
+        let Some(client) = self.client else {
+            return false;
+        };
+        let mut byte = 0u8;
+        // SAFETY: the buffer is one writable byte, and the caller keeps the descriptor open for
+        // as long as this value lives.
+        let read = unsafe {
+            libc::recv(
+                client,
+                (&raw mut byte).cast(),
+                1,
+                libc::MSG_PEEK | libc::MSG_DONTWAIT,
+            )
+        };
+        read == 0
+            || (read < 0
+                && !matches!(
+                    io::Error::last_os_error().kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ))
+    }
+}
+impl Read for Upstream {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        loop {
+            match self.stream.read(buffer) {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    if self.client_gone() {
+                        return Err(io::ErrorKind::BrokenPipe.into());
+                    }
+                    if self.limit.is_some_and(|limit| Instant::now() >= limit) {
+                        return Err(error);
+                    }
+                }
+                // An app that trickles never times out, so look between reads as well.
+                Ok(size) => {
+                    if self.checked.elapsed() >= CLIENT_CHECK {
+                        self.checked = Instant::now();
+                        if self.client_gone() {
+                            return Err(io::ErrorKind::BrokenPipe.into());
+                        }
+                    }
+                    return Ok(size);
+                }
+                other => return other,
+            }
+        }
+    }
+}
+
+fn serve(stream: UnixStream, apps: &Apps) -> Result<()> {
     stream.set_read_timeout(Some(REQUEST_TIME))?;
     let mut client = stream.try_clone()?;
     let mut request = BufReader::new(stream);
@@ -117,10 +263,14 @@ fn serve(stream: UnixStream) -> Result<()> {
     let Some(forward) = forwarded_request(&head) else {
         return reply(&mut client, "400 Bad Request");
     };
+    let Some(_place) = AppPlace::take(apps, forward.upstream) else {
+        return reply(&mut client, "503 Service Unavailable");
+    };
     let Ok(upstream) = TcpStream::connect_timeout(&forward.upstream, CONNECT_TIME) else {
         return reply(&mut client, "502 Bad Gateway");
     };
     (&upstream).write_all(&forward.bytes)?;
+    let upstream = Upstream::new(upstream, Some(client.as_raw_fd()))?;
     respond(BufReader::new(upstream), &mut client)
 }
 
@@ -138,8 +288,10 @@ fn read_head<R: BufRead>(reader: &mut R) -> Result<Vec<Vec<u8>>> {
     let mut size = 0;
     loop {
         let mut line = Vec::new();
-        reader.read_until(b'\n', &mut line)?;
-        ensure!(line.ends_with(b"\n"), "incomplete HTTP head");
+        reader
+            .take((HEAD_LIMIT - size + 1) as u64)
+            .read_until(b'\n', &mut line)?;
+        ensure!(line.ends_with(b"\n"), "incomplete or oversized HTTP head");
         size += line.len();
         ensure!(size <= HEAD_LIMIT, "HTTP head too large");
         line.pop();
@@ -202,7 +354,7 @@ fn forwarded_request(head: &[Vec<u8>]) -> Option<Forward> {
     })
 }
 
-fn respond<W: Write>(mut upstream: BufReader<TcpStream>, client: &mut W) -> Result<()> {
+fn respond<W: Write>(mut upstream: BufReader<Upstream>, client: &mut W) -> Result<()> {
     let head = loop {
         let head = read_head(&mut upstream)?;
         let status = status_code(&head[0]).context("invalid response status")?;
@@ -309,24 +461,25 @@ fn chunked(head: &[Vec<u8>]) -> bool {
 /// page is not markup at all; the bytes read so far are still returned.
 fn find_position(body: &mut Body) -> (Vec<u8>, Option<usize>) {
     let deadline = Instant::now() + SCAN_TIME;
+    body.set_limit(deadline);
     let mut page = Vec::new();
     let mut buffer = [0; 16 * 1024];
     let position = loop {
         if let Some(position) = insertion_point(&page) {
             break Some(position);
         }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() || page.len() >= SCAN_LIMIT || body.set_timeout(remaining).is_err() {
+        if Instant::now() >= deadline || page.len() >= SCAN_LIMIT {
             break None;
         }
         match body.read(&mut buffer) {
-            Ok(0) => break page.contains(&b'<').then_some(page.len()),
+            // UTF-16 and the like have NUL bytes, and an ASCII tag would be garbage in them.
+            Ok(0) => break (page.contains(&b'<') && !page.contains(&0)).then_some(page.len()),
             Ok(size) => page.extend_from_slice(&buffer[..size]),
             Err(error) if error.kind() == io::ErrorKind::Interrupted => (),
             Err(_) => break None,
         }
     };
-    let _ = body.clear_timeout();
+    body.clear_limit();
     (page, position)
 }
 
@@ -349,7 +502,10 @@ fn insertion_point(html: &[u8]) -> Option<usize> {
         let start = at + html.get(at..)?.iter().position(|byte| *byte == b'<')?;
         let rest = &html[start..];
         if rest.starts_with(b"<!--") {
-            at = start + 4 + find(&rest[4..], b"-->")? + 3;
+            // From the second byte, so that `<!-->` and `<!--->` end where browsers end them.
+            let end = find(&rest[2..], b"-->").map(|end| end + 3);
+            let bang = find(&rest[2..], b"--!>").map(|end| end + 4);
+            at = start + 2 + end.into_iter().chain(bang).min()?;
             continue;
         }
         if matches!(rest.get(1)?, b'!' | b'?') {
@@ -368,12 +524,23 @@ fn insertion_point(html: &[u8]) -> Option<usize> {
         let name = html[name_start..name_start + name_length].to_ascii_lowercase();
         let end = name_start + name_length + tag_end(&html[name_start + name_length..])?;
         match (closing, name.as_slice()) {
-            (true, b"head") | (false, b"body") => return Some(start),
+            // Before `<base>`, which would otherwise send the tag's URL to another host.
+            (true, b"head") | (false, b"body" | b"base") => return Some(start),
             (false, name) if RAW_TEXT.contains(&name) => {
                 let mut closer = b"</".to_vec();
                 closer.extend_from_slice(name);
                 let lowered = html[end + 1..].to_ascii_lowercase();
-                at = end + 1 + find(&lowered, &closer)?;
+                let mut from = 0;
+                // `</scripty>` does not close a script.
+                at = loop {
+                    let found = from + find(&lowered[from..], &closer)?;
+                    match lowered.get(found + closer.len())? {
+                        b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' => {
+                            break end + 1 + found;
+                        }
+                        _ => from = found + closer.len(),
+                    }
+                };
             }
             _ => at = end + 1,
         }
@@ -444,11 +611,11 @@ enum Framing {
 
 /// A response body with its framing removed.
 struct Body {
-    reader: BufReader<TcpStream>,
+    reader: BufReader<Upstream>,
     framing: Framing,
 }
 impl Body {
-    fn new(head: &[Vec<u8>], status: u16, reader: BufReader<TcpStream>) -> Self {
+    fn new(head: &[Vec<u8>], status: u16, reader: BufReader<Upstream>) -> Self {
         let length = headers(head, "content-length")
             .next()
             .and_then(|value| std::str::from_utf8(value).ok()?.parse().ok());
@@ -467,12 +634,12 @@ impl Body {
         Self { reader, framing }
     }
 
-    fn set_timeout(&self, timeout: Duration) -> io::Result<()> {
-        self.reader.get_ref().set_read_timeout(Some(timeout))
+    fn set_limit(&mut self, limit: Instant) {
+        self.reader.get_mut().limit = Some(limit);
     }
 
-    fn clear_timeout(&self) -> io::Result<()> {
-        self.reader.get_ref().set_read_timeout(None)
+    fn clear_limit(&mut self) {
+        self.reader.get_mut().limit = None;
     }
 }
 impl Read for Body {
@@ -497,7 +664,8 @@ impl Read for Body {
             Framing::Chunked { remaining, line } => {
                 while *remaining == 0 {
                     // `line` outlives a read timeout, so a size split across packets stays whole.
-                    self.reader.read_until(b'\n', line)?;
+                    let room = HEAD_LIMIT.saturating_sub(line.len()) as u64;
+                    (&mut self.reader).take(room).read_until(b'\n', line)?;
                     if !line.ends_with(b"\n") {
                         return Err(io::ErrorKind::UnexpectedEof.into());
                     }
@@ -545,6 +713,108 @@ mod tests {
         assert_eq!(at("<html><head><title>x</title></head>"), Some(28));
         assert_eq!(at("<!doctype html><HEAD></HEAD>"), Some(21));
         assert_eq!(at("<html><body class=\"a\">"), Some(6));
+    }
+
+    #[test]
+    fn a_head_with_no_end_stops_at_the_limit() {
+        let endless = vec![b'x'; HEAD_LIMIT * 4];
+        let mut reader = &endless[..];
+        assert!(read_head(&mut reader).is_err());
+        assert_eq!(reader.len(), endless.len() - HEAD_LIMIT - 1);
+    }
+
+    #[test]
+    fn one_app_cannot_take_every_place() {
+        let apps = Apps::default();
+        let first: SocketAddr = "127.0.0.1:1".parse().unwrap();
+        let second: SocketAddr = "127.0.0.1:2".parse().unwrap();
+        let held: Vec<_> = (0..PAGES_PER_APP)
+            .map(|_| AppPlace::take(&apps, first).unwrap())
+            .collect();
+        assert!(AppPlace::take(&apps, first).is_none());
+        assert!(AppPlace::take(&apps, second).is_some());
+        drop(held);
+        assert!(AppPlace::take(&apps, first).is_some());
+    }
+
+    #[test]
+    fn several_hung_apps_leave_room_for_the_rest() {
+        let apps = Apps::default();
+        let address = |port| SocketAddr::from(([127, 0, 0, 1], port));
+        let hung: Vec<_> = (1..=4)
+            .flat_map(|port| (0..PAGES_PER_APP).map(move |_| port))
+            .filter_map(|port| AppPlace::take(&apps, address(port)))
+            .collect();
+        assert_eq!(hung.len(), PAGES_BUSY_APPS + PAGES_ANY_APP);
+        let others: Vec<_> = (0..PAGES_ANY_APP)
+            .map(|_| AppPlace::take(&apps, address(99)).expect("a place for a quiet app"))
+            .collect();
+        assert_eq!(others.len(), PAGES_ANY_APP);
+    }
+
+    #[test]
+    fn leaves_other_encodings_alone_and_goes_before_base() {
+        let at = |html: &str| insertion_point(html.as_bytes());
+        let base = "<head><base href=\"https://cdn.example/\"><title>x</title></head>";
+        assert_eq!(at(base), Some(6));
+        let output = through(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<\0h\0t\0m\0l\0");
+        assert!(!output.contains("widget.js"), "{output}");
+    }
+
+    #[test]
+    fn follows_how_browsers_end_comments_and_raw_text() {
+        let at = |html: &str| insertion_point(html.as_bytes());
+        let script = "<head><script>var a=\"</scripty></head>\";</script></head>";
+        assert_eq!(at(script), Some(script.rfind("</head>").unwrap()));
+        for comment in ["<!-->", "<!--->", "<!-- x --!>", "<!-- x -->"] {
+            let html = format!("<head>{comment}</head>");
+            assert_eq!(at(&html), Some(html.rfind("</head>").unwrap()), "{comment}");
+        }
+    }
+
+    #[test]
+    fn a_load_ends_when_its_client_leaves_an_app_that_never_answers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let app = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (client, proxy) = UnixStream::pair().unwrap();
+        let upstream = Upstream::new(app, Some(proxy.as_raw_fd())).unwrap();
+        let load = thread::spawn(move || {
+            let mut output = Vec::new();
+            let _proxy = proxy;
+            respond(BufReader::new(upstream), &mut output)
+        });
+        drop(client);
+        let started = Instant::now();
+        while !load.is_finished() {
+            assert!(
+                started.elapsed() < 5 * CLIENT_CHECK,
+                "the load is still waiting"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(load.join().unwrap().is_err());
+    }
+
+    #[test]
+    fn a_trickling_app_loses_no_bytes_and_ends_when_its_client_leaves() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (client, proxy) = UnixStream::pair().unwrap();
+        let mut upstream = Upstream::new(stream, Some(proxy.as_raw_fd())).unwrap();
+        let (mut app, _) = listener.accept().unwrap();
+        app.write_all(b"first").unwrap();
+        upstream.checked = Instant::now() - CLIENT_CHECK;
+        let mut buffer = [0; 5];
+        assert_eq!(upstream.read(&mut buffer).unwrap(), 5);
+        assert_eq!(&buffer, b"first");
+        drop(client);
+        app.write_all(b"second").unwrap();
+        upstream.checked = Instant::now() - CLIENT_CHECK;
+        assert_eq!(
+            upstream.read(&mut buffer).unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+        drop(proxy);
     }
 
     #[test]
@@ -645,7 +915,7 @@ mod tests {
         });
         let mut output = Vec::new();
         respond(
-            BufReader::new(TcpStream::connect(address).unwrap()),
+            BufReader::new(Upstream::new(TcpStream::connect(address).unwrap(), None).unwrap()),
             &mut output,
         )
         .unwrap();
@@ -736,7 +1006,7 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let injector = thread::spawn(move || {
             respond(
-                BufReader::new(TcpStream::connect(address).unwrap()),
+                BufReader::new(Upstream::new(TcpStream::connect(address).unwrap(), None).unwrap()),
                 &mut server,
             )
         });

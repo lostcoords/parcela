@@ -24,6 +24,8 @@
 ### Fixed
 
 - The dashboard no longer marks an environment without a URL as "You are here".
+- Page loads abandoned while an app hangs no longer pile up until the proxy runs out of file descriptors and the badge's injector stops for good. A load ends when its client leaves, at most 64 run at once with 16 per app, and the proxy's listeners survive running out. An app sending an endless response head no longer uses up the proxy's memory.
+- The badge's tag no longer lands inside a script containing `</scripty>` or after an empty comment such as `<!-->`.
 - `proxy.log` no longer grows without limit: Caddy logs warnings and errors only, and the proxy cuts the file to its last 1 MB once it passes 16 MB.
 
 - On macOS the dashboard cut `/_parcela/widget.js` and other large responses off at the socket buffer, so the debug menu never loaded.

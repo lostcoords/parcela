@@ -167,11 +167,10 @@ impl Server {
                         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(20))
                         }
+                        // Out of file descriptors, for one: those come back, so keep listening.
                         Err(error) => {
-                            crate::paint::Paint::note(&format!(
-                                "dashboard listener failed: {error}"
-                            ));
-                            break;
+                            crate::paint::Paint::note(&format!("dashboard listener: {error}"));
+                            thread::sleep(Duration::from_secs(1));
                         }
                     }
                 }
@@ -231,7 +230,7 @@ fn serve(
     while !bytes.windows(4).any(|part| part == b"\r\n\r\n") {
         let remaining = deadline.saturating_duration_since(Instant::now());
         ensure!(
-            !remaining.is_zero() && bytes.len() < 16384,
+            !remaining.is_zero() && bytes.len() < 64 * 1024,
             "dashboard request headers exceeded budget"
         );
         stream.set_read_timeout(Some(remaining))?;
@@ -240,7 +239,8 @@ fn serve(
         ensure!(size > 0, "incomplete dashboard request");
         bytes.extend_from_slice(&buffer[..size]);
     }
-    let header = std::str::from_utf8(&bytes)?;
+    // Only Parcela's own ASCII headers matter here; an app's cookie can hold anything.
+    let header = String::from_utf8_lossy(&bytes);
     let mut lines = header.split("\r\n");
     let mut request = lines.next().unwrap_or_default().split_whitespace();
     let method = request.next().unwrap_or_default();
@@ -478,6 +478,15 @@ mod tests {
             ));
             assert!(reply.starts_with(&format!("HTTP/1.1 {status}")), "{path}");
         }
+    }
+
+    #[test]
+    fn a_large_or_non_utf8_header_does_not_break_a_request() {
+        let cookie = "a".repeat(32 * 1024);
+        let reply = response(&format!(
+            "GET /widget.js HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\nCookie: {cookie}\r\n\r\n"
+        ));
+        assert!(reply.starts_with("HTTP/1.1 200"));
     }
 
     #[test]
