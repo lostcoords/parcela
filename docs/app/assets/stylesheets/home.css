@@ -133,7 +133,7 @@
   padding: 0 25px;
   border: 0;
   border-radius: 999px;
-  background: var(--home-pen);
+  background: var(--parcela-brand-strong);
   color: #fff;
   box-shadow: none;
   font-size: 15px;
@@ -200,10 +200,9 @@
 }
 
 .home .home-start:hover {
-  background: var(--home-pen);
+  background: var(--parcela-brand-strong);
   color: #fff;
   transform: translateY(-1px);
-  filter: brightness(1.05);
 }
 
 .home .home-start:active {

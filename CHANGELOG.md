@@ -13,6 +13,7 @@
 ### Changed
 
 - The dashboard is now at `parcela-dashboard.localhost`, which is reserved in place of `parcela-ui.localhost`.
+- The docs site and dashboard use `lostcoords-ui` 0.9.1, and the Get started button uses the darker brand colour so its white text is readable.
 - The dashboard is rebuilt: dark, in the site's colours, one list grouped by project with running environments first and stopped ones collapsed, and Open, Logs, Start, Restart and Stop on each. It has its own logs page. Its CSS is served only on its own origin.
 - An environment whose supervisor died now shows `interrupted` if it left processes running, with Start to take them back, and `stopped` if it left nothing. `unknown` remains for a supervisor that cannot be reached for another reason.
 

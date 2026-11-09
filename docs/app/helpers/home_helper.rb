@@ -23,6 +23,8 @@ module HomeHelper
     "plus" => '<path d="M5 12h14"/><path d="M12 5v14"/>',
     "film" => '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
     "activity" => '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+    "layout-dashboard" => '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+    "bug" => '<path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
     "bot" => '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
     "plug" => '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
     "scroll-text" => '<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
@@ -35,6 +37,8 @@ module HomeHelper
     { icon: "activity", title: "Readiness checks", text: "`parcela up` waits until every healthcheck returns 2xx before it routes the URLs.", href: "/docs/configuration/#http-services" },
     { icon: "scroll-text", title: "Logs per process", text: "`parcela logs -f` follows every service, worker, and hook, with the process name on each line.", href: "/docs/cli/#logs" },
     { icon: "database-backup", title: "Data snapshots", text: "Snapshot the data of a stopped environment, then restore it into a new worktree to reproduce a test case.", href: "/docs/worktrees/#reproduce-a-test-dataset" },
+    { icon: "layout-dashboard", title: "Dashboard", text: "`parcela ui` prints the address of a page that lists every environment, with start, stop, restart, and logs.", href: "/docs/cli/#ui" },
+    { icon: "bug", title: "Debug menu", text: "The proxy adds a small badge to your app's pages on `.localhost`, with this environment's state and logs. Your code doesn't change.", href: "/docs/cli/#ui" },
     { icon: "bot", title: "Agent skill", text: "`parcela --skill` prints the instructions a coding agent needs to run Parcela.", href: "/docs/worktrees/#set-up-a-coding-agent" }
   ].freeze
 
