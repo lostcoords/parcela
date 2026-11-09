@@ -2,8 +2,10 @@
 use crate::process;
 use anyhow::{Context, Result, ensure};
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
     process::Command,
+    sync::Mutex,
     time::Duration,
 };
 
@@ -68,10 +70,17 @@ fn parse_jj(bytes: &[u8]) -> Result<Vec<Checkout>> {
     for row in rows {
         let path = PathBuf::from(row[1]);
         if !path.is_absolute() {
-            crate::paint::Paint::note(&format!(
-                "jj workspace {:?} has no readable root; omitted from checkout inventory",
-                row[0]
-            ));
+            // The proxy inventories checkouts every few seconds; say this once per workspace.
+            static NOTED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+            if NOTED
+                .lock()
+                .is_ok_and(|mut noted| noted.insert(row[0].to_owned()))
+            {
+                crate::paint::Paint::note(&format!(
+                    "jj workspace {:?} has no readable root; omitted from checkout inventory",
+                    row[0]
+                ));
+            }
             continue;
         }
         checkouts.push(Checkout {

@@ -25,7 +25,7 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 8;
+pub const PROTOCOL: u32 = 9;
 /// Paths on app hosts that Parcela answers for that environment instead of the app.
 pub const ENVIRONMENT_PATHS: &str = "/_parcela/*";
 
@@ -492,6 +492,8 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
     let http_app = json!({"https_port": https_port, "servers": servers});
     let mut config = json!({
         "admin":{"listen":format!("unix/{}", socket(state)?.display()), "config":{"persist":false}},
+        // At info, Caddy logs every request Parcela makes to its admin API.
+        "logging":{"logs":{"default":{"level":"WARN"}}},
         "storage":{"module":"file_system", "root":proxy_dir(state).join("data")},
         "apps":{
             "pki":{"certificate_authorities":{"local":{"install_trust":false}}},
@@ -563,6 +565,15 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
         .env("XDG_DATA_HOME", directory.join("data"))
         .env("XDG_CONFIG_HOME", directory.join("config"));
     let signals = Signals::new()?;
+    let log = crate::proxy::log_path(state);
+    thread::spawn(move || {
+        loop {
+            if let Err(error) = crate::proxy::trim_log(&log) {
+                eprintln!("parcela: proxy log not trimmed: {error:#}");
+            }
+            thread::sleep(Duration::from_secs(60));
+        }
+    });
     let mut child = if recovered.is_none() {
         Some(OwnedChild::spawn(&mut command)?)
     } else {

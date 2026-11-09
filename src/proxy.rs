@@ -10,6 +10,7 @@ use crate::{
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
     os::unix::{
         fs::{MetadataExt, OpenOptionsExt},
         process::CommandExt,
@@ -43,6 +44,40 @@ impl Started {
 
 pub fn log_path(state: &Path) -> PathBuf {
     router::proxy_dir(state).join("proxy.log")
+}
+
+const LOG_LIMIT: u64 = 16 * 1024 * 1024;
+const LOG_KEPT: u64 = 1024 * 1024;
+
+/// Cuts the log down to its last lines once it passes the limit. Caddy keeps appending to the same
+/// open file, so it has to be cut in place.
+pub fn trim_log(path: &Path) -> Result<()> {
+    trim(path, LOG_LIMIT, LOG_KEPT)
+}
+
+fn trim(path: &Path, limit: u64, kept: u64) -> Result<()> {
+    let Ok(mut file) = OpenOptions::new()
+        .read(true)
+        .append(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    else {
+        return Ok(());
+    };
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() <= limit {
+        return Ok(());
+    }
+    file.seek(SeekFrom::Start(metadata.len() - kept))?;
+    let mut tail = Vec::new();
+    file.read_to_end(&mut tail)?;
+    let start = tail
+        .iter()
+        .position(|&byte| byte == b'\n')
+        .map_or(0, |at| at + 1);
+    file.set_len(0)?;
+    file.write_all(&tail[start..])?;
+    Ok(())
 }
 
 /// Read-only: never creates the proxy directory or its lock.
@@ -519,4 +554,16 @@ mod tests {
             Path::new("/state/proxy/data/pki/authorities/local/root.crt")
         );
     }
+}
+
+#[test]
+fn a_long_log_keeps_its_last_whole_lines_and_a_short_one_is_untouched() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("proxy.log");
+    std::fs::write(&path, "first line\nsecond line\nthird\n").unwrap();
+    trim(&path, 100, 10).unwrap();
+    assert!(std::fs::read_to_string(&path).unwrap().starts_with("first"));
+    trim(&path, 20, 10).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "third\n");
+    trim(&temp.path().join("missing.log"), 1, 1).unwrap();
 }
