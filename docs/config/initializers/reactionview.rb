@@ -7,5 +7,11 @@ if defined?(ReActionView)
     # doesn't need them. Their script also waits for Herb's dev server, which only runs with
     # `slots`, and warns when nothing listens on its port.
     config.debug_mode = false
+
+    # Herb's source attribution turns this on by default, which writes tag helpers out as static
+    # markup and drops a double splat: `tag.button(**attributes)` loses every attribute, so
+    # lostcoords-ui's search, code blocks and collapsibles stop working. Helpers then render as
+    # usual, and Tensaku places their output by the nearest element written as markup.
+    config.engine.parser_options = { action_view_helpers: false }
   end
 end
