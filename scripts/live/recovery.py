@@ -179,7 +179,7 @@ def owner_crash(f):
     owner.kill()
     assert owner.wait(timeout=5) == -signal.SIGKILL
     status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
-    assert status['state'] == 'unknown'
+    assert status['state'] == 'interrupted'
     wait_for(lambda: f.probe(app)[0] == 503, timeout=10)
     down = f.cli(app['path'], 'down')
     assert down.returncode == 0, down.stderr
