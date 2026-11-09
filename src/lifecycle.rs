@@ -53,7 +53,24 @@ fn status_and_services(
                 };
                 live = Some(value);
             }
-            Err(failure) => error = Some(format!("{failure:#}")),
+            Err(failure) => {
+                // A dead owner is not the same as a slow one, and its record says what it left.
+                let record = crate::owner::Record::read(&registry.runtime_path(workspace), session)
+                    .ok()
+                    .filter(|record| !record.owner.alive());
+                match record {
+                    Some(record)
+                        if record.quiescent() && record.phase != crate::owner::Phase::Stopping =>
+                    {
+                        state = "stopped";
+                    }
+                    Some(_) => {
+                        state = "interrupted";
+                        error = Some(format!("{failure:#}"));
+                    }
+                    None => error = Some(format!("{failure:#}")),
+                }
+            }
         }
     }
     Ok((

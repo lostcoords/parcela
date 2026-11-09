@@ -105,7 +105,7 @@ parcela --workspace "$ENVIRONMENT_ID" logs api --tail 100
 
 `logs` without a name prints every process, each line prefixed with `name |`. `logs --follow` streams until interrupted, so do not use it in a command that must return.
 
-If `status` says `unknown`, and starting is authorized, run `up --detach`: it takes back services that are still running instead of starting a second copy, and says so on stderr. If it says the run was being stopped, run `parcela down` first. When Parcela refuses, report its message. Never kill processes by PID, use broad `pkill`, delete sockets or locks, or edit the state directory.
+If `status` says `interrupted` or `unknown`, and starting is authorized, run `up --detach`: it takes back services that are still running instead of starting a second copy, and says so on stderr. If it says the run was being stopped, run `parcela down` first. When Parcela refuses, report its message. Never kill processes by PID, use broad `pkill`, delete sockets or locks, or edit the state directory.
 
 ## Restart, stop and tasks
 

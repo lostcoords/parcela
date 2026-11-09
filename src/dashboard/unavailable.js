@@ -55,7 +55,8 @@
 
     const running = environment.action?.state === 'running';
     const stopped = environment.state === 'stopped' || environment.state === 'unregistered';
-    const name = stopped ? 'start' : 'restart';
+    const adrift = environment.state === 'interrupted' || environment.state === 'unknown';
+    const name = stopped || adrift ? 'start' : 'restart';
     $('action').hidden = !environment.manageable;
     $('action').disabled = running;
     $('action').textContent = name === 'start' ? 'Start' : 'Restart';
@@ -68,6 +69,7 @@
       show('busy', 'Starting…');
       if (await answering()) location.reload();
     } else if (stopped) show('', 'Stopped');
+    else if (adrift) show('failed', 'Parcela lost track of this run. Start takes it back.');
     else show('busy', `Not ready: ${environment.state}`);
   };
 

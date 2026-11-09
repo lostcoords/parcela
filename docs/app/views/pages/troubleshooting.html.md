@@ -103,9 +103,9 @@ If automatic refresh fails, Parcela prints the reason. Check that Caddy 2 is ava
 
 If the message says the proxy is newer, another Parcela on this machine is newer than the one you ran. Run `parcela upgrade`.
 
-## The state is `unknown`
+## The state is `interrupted` or `unknown`
 
-Parcela lost contact with the process that supervises the environment, for example after a crash. Run `parcela up`. If the services are still running, `up` takes control of them again without restarting them. If they are all gone, it starts them fresh. If `up` says the run was being stopped, finish the stop with `parcela down`, then run `parcela up`.
+Parcela lost contact with the process that supervises the environment, for example after a crash. If that process died and left nothing running, the state is simply `stopped`. Otherwise, run `parcela up`. If the services are still running, `up` takes control of them again without restarting them. If they are all gone, it starts them fresh. If `up` says the run was being stopped, finish the stop with `parcela down`, then run `parcela up`.
 
 If `down` says `shutdown incomplete: a process did not exit`, a process outlived the shutdown timeout. Run `parcela down` again: it stops whatever is left, by the process identity Parcela recorded.
 

@@ -731,6 +731,10 @@ fn down_stops_what_survives_a_crashed_owner_by_recorded_identity() {
     }
     supervisor.wait().unwrap();
     assert!(!supervisor_identity.alive() && survivor.alive());
+    assert_eq!(
+        lifecycle::status(&registry, &workspace).unwrap()["state"],
+        "interrupted"
+    );
     assert!(
         registry
             .begin_session(

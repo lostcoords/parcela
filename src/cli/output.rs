@@ -70,7 +70,7 @@ impl Style {
     pub fn state(&self, state: &str) -> String {
         match state {
             "ready" | "running" => self.paint("32", state),
-            "unhealthy" | "unknown" | "error" => self.paint("31", state),
+            "unhealthy" | "unknown" | "interrupted" | "error" => self.paint("31", state),
             "starting" | "stopping" => self.paint("33", state),
             _ => self.dim(state),
         }
