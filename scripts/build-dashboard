@@ -1,0 +1,7 @@
+#!/bin/sh
+# Rebuilds the dashboard page and its CSS, which are committed and compiled into the binary.
+set -eu
+cd "$(dirname "$0")/../docs"
+RAILS_ENV=test bin/rails runner ../scripts/dashboard/render.rb
+bin/rails tailwindcss:engines
+bundle exec tailwindcss -i ../scripts/dashboard/ui.input.css -o ../src/dashboard/ui.css --minify

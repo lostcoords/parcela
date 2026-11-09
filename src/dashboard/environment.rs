@@ -1,7 +1,8 @@
-//! `/_parcela/` on a loopback app host. Caddy names the environment in `X-Parcela-Environment`,
-//! the route's own hostname in `X-Parcela-Hostname`, and sets `X-Parcela-Access: local`; the
-//! dashboard name never carries them. LAN and domain names never route here, and a request
-//! without loopback access is refused.
+//! `/_parcela/` on an app host. Caddy names the environment in `X-Parcela-Environment`, the route's
+//! own hostname in `X-Parcela-Hostname`, and sets `X-Parcela-Access`: `local` on a loopback name,
+//! `shared` on a domain name. The dashboard name never carries them and LAN names never route here.
+//! A shared name is read-only and sees no logs or opened files, which can hold secrets and sign-in
+//! links, and a request with neither access is refused.
 use super::{Snapshot, widget};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -12,7 +13,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-const PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Parcela</title></head><body style=\"margin:0;background:#fff\"><script src=\"/_parcela/widget.js\" data-page></script></body></html>";
+const PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Parcela</title></head><body style=\"margin:0;background:#17181b\"><script src=\"/_parcela/widget.js\" data-page></script></body></html>";
+
+const BADGE: &[u8] = include_bytes!("badge.png");
+const POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const UNAVAILABLE: &str = include_str!("unavailable.html");
+const UNAVAILABLE_SCRIPT: &str = include_str!("unavailable.js");
 
 pub(super) type Actions = Arc<Mutex<BTreeMap<String, Action>>>;
 
@@ -31,6 +37,7 @@ pub(super) struct Request<'a> {
     pub origin: Option<&'a str>,
     pub acting: bool,
     pub local: bool,
+    pub shared: bool,
     /// Empty on the dashboard's own name, which may manage every environment. An app page
     /// manages only its own, so a script on one app cannot stop another or read its logs.
     pub environment: &'a str,
@@ -77,7 +84,7 @@ pub(super) fn respond(
     snapshot: &Mutex<Snapshot>,
     actions: &Actions,
 ) -> Response {
-    if !request.local {
+    if !request.local && !request.shared {
         return Response::text(403, "Only a .localhost name reaches Parcela");
     }
     if !request
@@ -98,6 +105,9 @@ pub(super) fn respond(
             .map(|snapshot| snapshot.rows.clone())
             .unwrap_or_default()
     };
+    if request.shared {
+        return shared(request, path, dashboard, &rows());
+    }
     if request.method == "POST" {
         return act(request, path, state, &rows(), actions);
     }
@@ -105,13 +115,24 @@ pub(super) fn respond(
         return Response::text(405, "Method not allowed");
     }
     match path {
-        "" => Response {
-            policy: Some(
-                "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-            ),
-            ..Response::new(200, "text/html; charset=utf-8", PAGE.as_bytes().to_vec())
-        },
+        "" => page(),
         "widget.js" => Response::new(200, "text/javascript; charset=utf-8", widget(dashboard)),
+        "badge.png" => Response::new(200, "image/png", BADGE.to_vec()),
+        "unavailable" if !request.dashboard() => Response {
+            policy: Some(POLICY),
+            ..Response::new(
+                503,
+                "text/html; charset=utf-8",
+                UNAVAILABLE.as_bytes().to_vec(),
+            )
+        },
+        "unavailable.js" if !request.dashboard() => Response::new(
+            200,
+            "text/javascript; charset=utf-8",
+            UNAVAILABLE_SCRIPT
+                .replace("__PARCELA_DASHBOARD__", dashboard)
+                .into_bytes(),
+        ),
         "opens" if request.dashboard() => Response::text(404, "Not found"),
         "opens" => {
             let offers: Vec<_> = crate::opens::list(&runtime)
@@ -140,6 +161,41 @@ pub(super) fn respond(
         "logs" => logs(request, state, query, &rows()),
         _ if request.dashboard() => Response::text(404, "Not found"),
         _ => file(&runtime, path),
+    }
+}
+
+pub(super) fn page() -> Response {
+    Response {
+        policy: Some(POLICY),
+        ..Response::new(200, "text/html; charset=utf-8", PAGE.as_bytes().to_vec())
+    }
+}
+
+/// What a domain name serves: the badge, this environment's state and the project's other running
+/// environments to switch to. Nothing here changes anything or reads a log.
+fn shared(request: &Request, path: &str, dashboard: &str, rows: &[Value]) -> Response {
+    if request.method != "GET" && request.method != "HEAD" {
+        return Response::text(403, "Only a .localhost name manages environments");
+    }
+    match path {
+        "" => page(),
+        "widget.js" => Response::new(200, "text/javascript; charset=utf-8", widget(dashboard)),
+        "badge.png" => Response::new(200, "image/png", BADGE.to_vec()),
+        "environments" => {
+            let own = find(rows, request.environment);
+            let environments: Vec<_> = rows
+                .iter()
+                .filter(|row| {
+                    own.is_some_and(|own| {
+                        row["workspace"]["project_id"] == own["workspace"]["project_id"]
+                    })
+                })
+                .filter(|row| key(row) == Some(request.environment) || row["state"] == "ready")
+                .map(|row| Listed::shared(row, request))
+                .collect();
+            Response::json(200, &json!({"environments": environments}))
+        }
+        _ => Response::text(403, "Only a .localhost name shows this"),
     }
 }
 
@@ -195,6 +251,34 @@ impl Listed {
                 .collect(),
             action: key.as_ref().and_then(|key| actions.get(key)).cloned(),
             key,
+        }
+    }
+}
+
+impl Listed {
+    /// A row for a shared name: no id, processes or actions, and URLs under the page's own domain.
+    fn shared(row: &Value, request: &Request) -> Self {
+        let string = |field: &Value| field.as_str().unwrap_or_default().to_owned();
+        let current = key(row) == Some(request.environment);
+        let domain = request.hostname.split_once('.').map(|(_, domain)| domain);
+        let label = row["url"]
+            .as_str()
+            .and_then(|url| url.strip_prefix("https://")?.split_once('.'))
+            .map(|(label, _)| label);
+        Self {
+            key: None,
+            project: string(&row["workspace"]["project_id"]),
+            name: string(&row["workspace"]["label"]),
+            role: string(&row["workspace"]["role"]),
+            state: string(&row["state"]),
+            current,
+            manageable: false,
+            url: label
+                .zip(domain)
+                .filter(|_| !current)
+                .map(|(label, domain)| format!("https://{label}.{domain}")),
+            processes: Vec::new(),
+            action: None,
         }
     }
 }
@@ -473,7 +557,7 @@ mod tests {
         environment: &'a str,
     ) -> Request<'a> {
         let host = if environment.is_empty() {
-            "parcela-ui.localhost:1443"
+            "parcela-dashboard.localhost:1443"
         } else {
             "shop.localhost:1443"
         };
@@ -482,12 +566,13 @@ mod tests {
             target: path,
             host: Some(host),
             origin: Some(if environment.is_empty() {
-                "https://parcela-ui.localhost:1443"
+                "https://parcela-dashboard.localhost:1443"
             } else {
                 "https://shop.localhost:1443"
             }),
             acting: true,
             local,
+            shared: false,
             environment,
             hostname: "shop.localhost",
         }
@@ -568,6 +653,62 @@ mod tests {
         );
         let listed: Value = serde_json::from_slice(&listed.body).unwrap();
         assert_eq!(listed["environments"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn a_shared_name_only_reads_and_never_sees_logs_ids_or_paths() {
+        let row = |id: &str, project: &str, state: &str, label: &str| {
+            json!({
+                "workspace": {"id": id, "project_id": project, "label": label, "source": "/src/x"},
+                "state": state,
+                "url": format!("https://{label}.localhost:1443"),
+                "processes": [{"name": "web", "state": "running", "pid": 7}],
+            })
+        };
+        let snapshot = Mutex::new(Snapshot {
+            rows: vec![
+                row("abc", "shop", "ready", "shop"),
+                row("sib", "shop", "ready", "auth-shop"),
+                row("off", "shop", "stopped", "old-shop"),
+                row("xyz", "blog", "ready", "blog"),
+            ],
+            ..Snapshot::default()
+        });
+        let actions = Actions::default();
+        let shared = |method, path: &str| {
+            let mut request = request(method, path, false, "abc");
+            request.shared = true;
+            request.hostname = "shop.tower.example.com";
+            respond(&request, Path::new("/nonexistent"), "", &snapshot, &actions)
+        };
+        for (method, path) in [
+            ("POST", "environments/abc/stop"),
+            ("POST", "environments/abc/restart"),
+            ("GET", "logs?environment=abc"),
+            ("GET", "opens"),
+            ("GET", "files/1/mail.html"),
+            ("GET", "secret"),
+        ] {
+            assert_eq!(shared(method, path).status, 403, "{method} {path}");
+        }
+        assert_eq!(shared("GET", "widget.js").status, 200);
+        assert_eq!(shared("GET", "badge.png").status, 200);
+        assert_eq!(shared("GET", "").status, 200);
+        let listed: Value = serde_json::from_slice(&shared("GET", "environments").body).unwrap();
+        let text = listed.to_string();
+        assert!(!text.contains("/src/") && !text.contains("pid"), "{text}");
+        let rows = listed["environments"].as_array().unwrap();
+        for row in rows {
+            assert!(row["key"].is_null() && row["manageable"] == false, "{row}");
+            assert_eq!(row["processes"], json!([]), "{row}");
+        }
+        let names: Vec<_> = rows
+            .iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["shop", "auth-shop"], "this project's running ones");
+        assert!(rows[0]["url"].is_null() && rows[0]["current"] == true);
+        assert_eq!(rows[1]["url"], "https://auth-shop.tower.example.com");
     }
 
     #[test]

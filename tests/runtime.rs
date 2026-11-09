@@ -132,8 +132,28 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
             .as_array()
             .unwrap()
             .len(),
-        3
+        5,
+        "the dashboard, a stopped name's own paths and page, its plain 503 and the 404"
     );
+    let stopped = &before["apps"]["http"]["servers"]["https"]["routes"];
+    assert_eq!(stopped[1]["match"][0]["path"][0], router::ENVIRONMENT_PATHS);
+    assert_eq!(
+        stopped[2]["match"][0]["header"]["Sec-Fetch-Dest"][0],
+        "document"
+    );
+    assert_eq!(stopped[2]["handle"][0]["uri"], "/_parcela/unavailable");
+    for route in [&stopped[1], &stopped[2]] {
+        let proxy = route["handle"].as_array().unwrap().last().unwrap();
+        assert_eq!(
+            proxy["headers"]["request"]["set"]["X-Parcela-Access"][0],
+            "local"
+        );
+        assert_eq!(
+            proxy["headers"]["request"]["set"]["X-Parcela-Environment"][0],
+            workspace.id.as_str()
+        );
+    }
+    assert_eq!(stopped[3]["handle"][0]["status_code"], 503);
     registry
         .session_status(&session, SessionStatus::Ready)
         .unwrap();
@@ -172,7 +192,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
     registry
         .session_status(&session, SessionStatus::Stopping)
         .unwrap();
-    assert_eq!(router::configuration(&registry,&router).unwrap()["apps"]["http"]["servers"]["https"]["routes"].as_array().unwrap().len(),3);
+    assert_eq!(router::configuration(&registry,&router).unwrap()["apps"]["http"]["servers"]["https"]["routes"].as_array().unwrap().len(),5);
     let replacement = Router {
         token: Uuid::new_v4().to_string(),
         ..router
@@ -186,7 +206,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
             .as_array()
             .unwrap()
             .len(),
-        3
+        5
     );
 }
 #[test]

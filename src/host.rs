@@ -12,7 +12,7 @@ use std::{
 };
 
 /// Every key `parcela config set` accepts.
-pub const KEYS: [&str; 12] = [
+pub const KEYS: [&str; 13] = [
     "sharing.domains",
     "sharing.domain_port",
     "sharing.lan",
@@ -25,6 +25,7 @@ pub const KEYS: [&str; 12] = [
     "proxy.port",
     "proxy.caddy",
     "trust",
+    "badge",
 ];
 
 /// Where backend ports come from unless `ports.backend` says otherwise. Below every OS
@@ -46,6 +47,8 @@ pub struct Host {
     pub proxy: Proxy,
     /// `false`: `up` never offers to trust the CA; `parcela trust` still does.
     pub trust: Option<bool>,
+    /// `false`: the proxy stops adding the Parcela badge to app pages.
+    pub badge: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -226,6 +229,7 @@ impl Host {
             "proxy.port" => json!(self.proxy.port),
             "proxy.caddy" => json!(self.proxy.caddy),
             "trust" => json!(self.trust),
+            "badge" => json!(self.badge),
             _ => bail!(unknown(key)),
         })
     }
@@ -287,6 +291,7 @@ impl Host {
                 self.proxy.caddy = Some(value.to_owned());
             }
             "trust" => self.trust = Some(boolean(key, value)?),
+            "badge" => self.badge = Some(boolean(key, value)?),
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -340,6 +345,7 @@ impl Host {
             "proxy.port" => self.proxy.port = None,
             "proxy.caddy" => self.proxy.caddy = None,
             "trust" => self.trust = None,
+            "badge" => self.badge = None,
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -483,6 +489,7 @@ mod tests {
             ("proxy.port", "8443"),
             ("proxy.caddy", "/opt/caddy/bin/caddy"),
             ("trust", "false"),
+            ("badge", "off"),
         ] {
             host.set(key, value).unwrap();
         }
@@ -507,6 +514,7 @@ mod tests {
                 ["proxy.port", 8443],
                 ["proxy.caddy", "/opt/caddy/bin/caddy"],
                 ["trust", false],
+                ["badge", false],
             ])
         );
         assert_eq!(parsed.backend_ports(), 30000..=30999);

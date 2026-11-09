@@ -153,21 +153,28 @@ Lists registered environments across projects. Inside a project, it also lists u
 parcela ui
 ```
 
-Prints the local dashboard URL, `https://parcela-ui.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, the next regular command refreshes an older running proxy automatically. The hostname `parcela-ui.localhost` is reserved for the dashboard.
+Prints the local dashboard URL, `https://parcela-dashboard.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, the next regular command refreshes an older running proxy automatically. The hostname `parcela-dashboard.localhost` is reserved for the dashboard.
 
-The dashboard groups registered environments by project, discovers unregistered worktrees of known projects, and shows service URLs and process states. Search filters the list. Status refreshes in the background; a failed connection or an old timestamp marks the display as stale. The dashboard only shows status and navigation.
+The dashboard groups registered environments by project and discovers unregistered worktrees of known projects. Each row shows its URL, state and process count, with Open, Logs, Start, Restart and Stop where they apply. The filter narrows the list. Status refreshes in the background; a failed connection or an old timestamp shows a warning. Apps open at their own URLs, never in a frame.
 
-**Open directly** opens a ready service at its own URL. **In workspace** keeps the switcher beside the app in an iframe. Relative app links remain on the app's origin. Apps that set `X-Frame-Options` or a restrictive `frame-ancestors` policy may refuse embedding. Login, cookies, and top-level navigation can also behave differently inside a frame. Use **Open directly** in those cases.
+Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture/) for what a tagged response changes.
 
-To add Parcela's debug menu to your own app in development, include its script from the app's own host:
+A CSP that allows neither same-origin scripts nor a nonce blocks the menu; Parcela never relaxes it. One that blocks same-origin images shows the word `parcela` in place of the icon. One that blocks same-origin `fetch` leaves the badge without data. An app that compresses even when asked not to passes through without the badge. If the extra script upsets a framework's hydration, turn the badge off.
+
+With `badge` off, an app can still include the script itself, from its own host:
 
 <code>&lt;script defer src="/_parcela/widget.js"&gt;&lt;/script&gt;</code>
 
-Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN and domain names pass `/_parcela/` to the app like any other path, so the menu does not appear there. A `parcela` badge sits in the page's top-right corner, with a count of new items your app opened. It opens a panel with three tabs:
+Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN names pass `/_parcela/` to the app like any other path, so the menu does not appear there.
 
-- **Opened** lists what the environment's processes asked a browser to open; see [browse](#browse). Remove items one by one or with Clear all. Removal is kept per browser.
-- **Environments**, on an app page, shows only that page's environment, with Restart, Stop and Logs. **Manage all** opens the same menu on `parcela-ui.localhost`, which lists every project and worktree Parcela knows, stopped and unregistered ones included, and gives registered ones Open, Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
+On a domain name the menu is read-only, since other people may reach that name. It shows this environment's state and links to the project's other running environments, with no actions, logs or opened files. With `badge` off, a domain name passes `/_parcela/` to the app.
+
+A Parcela icon sits in the page's top-right corner. Drag it to any edge of the window, or focus it and press the arrow keys; each host remembers its place per browser. On a `.localhost` name it shows a count of new items your app opened and opens a panel with three tabs:
+
+- **Environments**, on an app page, shows only that page's environment, with Restart, Stop and Logs. The grid button opens `parcela-dashboard.localhost`, which lists every project and worktree Parcela knows, stopped and unregistered ones included, and gives registered ones Open, Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
+
+When a process asks a browser to open something, such as a mail preview (see [browse](#browse)), it appears in **Opened by your app** above the environments, only while there is something to show. Remove items one by one or clear them all; removal is kept per browser.
 
 The expand button grows the panel to nearly the whole window, and the open button shows the same menu as a full page at `/_parcela/` in a new tab.
 
@@ -354,6 +361,7 @@ Shows or changes this machine's settings. Without a subcommand, lists them. `get
 | `proxy.port` | The proxy's HTTPS port, 1443 by default. Setting it moves a running proxy; restart environments to update their URLs. Remove the relay first if it is installed. |
 | `proxy.caddy` | The Caddy binary: a name on `PATH` or an absolute path. Default `caddy`. |
 | `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
+| `badge` | `false` stops the proxy adding the debug menu to `.localhost` and domain pages. Default `true`. A running proxy picks it up on its own. |
 
 `sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](/docs/worktrees/#share-with-another-device) covers each kind.
 

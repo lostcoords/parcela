@@ -3,6 +3,8 @@
   if (document.getElementById('parcela-switcher')) return;
   if (!document.currentScript) return;
   const page = document.currentScript.hasAttribute('data-page');
+  // A shared name is read-only and serves no logs or opened files; the server enforces it.
+  const shared = !location.hostname.endsWith('.localhost');
   const dashboard = '__PARCELA_DASHBOARD__';
   const RECENT_MS = 15000;
   const TOAST_MS = 8000;
@@ -10,68 +12,91 @@
   const CLEARED = 'parcela:cleared-opens';
   const TAB = 'parcela:tab';
   const LARGE = 'parcela:large';
+  const POSITION = 'parcela:position';
+
+  const EDGES = ['top', 'right', 'bottom', 'left'];
+  const MARGIN = 8;
+  const RADIUS = 12;
+  const GAP = 6;
+  // Within this many pixels of a corner, the badge settles in it.
+  const CORNER_PULL = 24;
 
   const STYLE = `
-    :host{all:initial;font:13px/1.4 system-ui,-apple-system,sans-serif;color:#15171b}
+    :host{all:initial;color-scheme:dark;--surface:#17181b;--raised:#26272b;--hover:#313237;--selected:#3a3b41;--well:#101114;--line:#ffffff1a;--text:#ecece8;--muted:#9a9ca3;--ready:#58b878;--busy:#dda35a;--failed:#ef7f68;font:13px/1.4 system-ui,-apple-system,sans-serif;color:var(--text)}
     *{box-sizing:border-box}
     button,select{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
-    button:focus-visible,a:focus-visible,select:focus-visible,section:focus-visible{outline:2px solid #15171b;outline-offset:2px}
+    button:focus-visible,a:focus-visible,select:focus-visible,section:focus-visible{outline:2px solid var(--text);outline-offset:2px}
     [hidden]{display:none !important}
-    .badge{position:fixed;z-index:2147483647;top:0;right:0;display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:0 0 0 9px;background:#ecece8;font:500 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 2px 10px #15171b14}
-    .badge:hover{background:#e2e2dd}
-    .muted{color:#6b6e75}
-    .panel{position:fixed;z-index:2147483647;top:30px;right:8px;width:min(440px,calc(100vw - 16px));height:min(560px,calc(100dvh - 40px));display:flex;flex-direction:column;border-radius:14px;background:#fff;box-shadow:0 16px 48px #15171b26,0 2px 8px #15171b14;overflow:hidden}
-    .panel.large{left:8px;width:auto;height:calc(100dvh - 38px)}
-    .panel.page{position:static;width:100%;height:100dvh;border-radius:0;box-shadow:none}
-    .bar{display:flex;align-items:center;gap:4px;padding:10px 10px 8px 12px}
-    .bar .tabs{margin-right:4px}
-    .tabs{flex:1;display:flex;gap:2px;padding:3px;border-radius:10px;background:#f1f1ee}
-    .tabs button{flex:1;padding:5px 8px;border-radius:8px;font-weight:550;font-size:12px;color:#6b6e75}
-    .tabs button[aria-selected=true]{background:#fff;color:#15171b;box-shadow:0 1px 3px #15171b1f}
-    .close{width:28px;height:28px;border-radius:8px;color:#6b6e75;font-size:16px}
-    .close:hover{background:#f1f1ee;color:#15171b}
+    .badge{position:fixed;z-index:2147483647;display:flex;align-items:center;justify-content:center;min-width:40px;height:40px;padding:0 8px;border-radius:12px;background:#1a1a1a;box-shadow:0 0 0 1px #ffffff1f,0 2px 10px #15171b33;touch-action:none;user-select:none;-webkit-user-select:none}
+    .badge:hover{background:#2e2e2e}
+    .badge.dragging{cursor:grabbing;box-shadow:0 0 0 1px #ffffff1f,0 6px 20px #15171b33}
+    .badge img{display:block;width:24px;height:auto;aspect-ratio:96/85;pointer-events:none;transform:translateY(-.5px)}
+    .wordmark{color:#ecece8;font:500 12px/18px ui-monospace,SFMono-Regular,Menlo,monospace}
+    .badge .count{position:absolute;top:-4px;right:-4px;min-width:15px;padding:0 4px;border-radius:8px;background:#b45d3c;color:#fff;font:600 10px/15px system-ui,-apple-system,sans-serif;text-align:center}
+    .hidden-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+    :host([data-count-x=left]) .badge .count{right:auto;left:-4px}
+    :host([data-count-y=bottom]) .badge .count{top:auto;bottom:-4px}
+    .guide{position:fixed;z-index:2147483646;width:40px;height:40px;border:1.5px dashed #b45d3c;border-radius:12px;background:#b45d3c33;pointer-events:none}
+    .panel{position:fixed;z-index:2147483647;width:min(440px,calc(100vw - 16px));max-height:min(560px,calc(100dvh - 70px));display:flex;flex-direction:column;border-radius:14px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 16px 48px #0000004d;overflow:hidden}
+    .panel.tall{height:min(560px,calc(100dvh - 70px))}
+    .panel.large{inset:8px;width:auto;height:auto;max-height:none}
+    .panel.page{position:static;width:100%;height:100dvh;max-height:none;border-radius:0;box-shadow:none}
+    .bar{flex:none;display:flex;align-items:center;gap:2px;padding:8px}
+    .bar .tabs{margin-right:6px}
+    .tabs{flex:1;display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--well)}
+    .tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 8px;border-radius:8px;font-weight:550;font-size:12px;color:var(--muted)}
+    .tabs button:hover{color:var(--text)}
+    .tabs button[aria-selected=true]{background:var(--selected);color:var(--text)}
+    .tabs svg{width:14px;height:14px}
+    .title{flex:1;padding-left:8px;font-weight:600}
+    .icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;color:var(--muted);text-decoration:none}
+    .icon:hover{background:var(--hover);color:var(--text)}
+    .icon.danger:hover{color:var(--failed)}
+    .icon:disabled{opacity:.4;cursor:default;background:none;color:var(--muted)}
+    .icon[aria-pressed=true]{background:var(--selected);color:var(--text)}
+    svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .view{flex:1;min-height:0;display:flex;flex-direction:column}
-    .toolbar{display:flex;align-items:center;gap:6px;padding:2px 12px 8px}
-    .toolbar .grow{flex:1}
-    .action{padding:5px 10px;border-radius:8px;background:#f1f1ee;font-size:12px;font-weight:550;color:#15171b;text-decoration:none;white-space:nowrap}
-    .action:hover{background:#e6e6e1}
-    .action:disabled{opacity:.45;cursor:default}
+    .toolbar{flex:none;display:flex;align-items:center;gap:6px;padding:0 8px 8px}
+    .action{padding:5px 10px;border-radius:8px;background:var(--raised);font-size:12px;font-weight:550;color:var(--text);text-decoration:none;white-space:nowrap}
+    .action:hover{background:var(--hover)}
     .scroll{flex:1;min-height:0;overflow:auto;padding:0 6px 8px}
     ol{list-style:none;margin:0;padding:0}
     li{display:flex;align-items:center;gap:6px;border-radius:9px}
-    .opened li:hover{background:#f4f4f1}
-    .opened a{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px;padding:9px 4px 9px 10px;color:inherit;text-decoration:none}
+    .tray{flex:none;margin:0 8px 8px;padding:2px 2px 4px;border-radius:10px;background:var(--raised)}
+    .tray header{display:flex;align-items:center;justify-content:space-between;padding-right:2px}
+    .tray h3{margin:0 8px}
+    .tray ol{max-height:136px;overflow:auto}
+    .opened li:hover{background:var(--hover)}
+    .opened a{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px;padding:6px 4px 6px 8px;color:inherit;text-decoration:none}
     .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .when{flex:none;color:#6b6e75;font-size:12px}
-    .remove{flex:none;width:30px;height:30px;border-radius:7px;color:#6b6e75;font-size:16px}
-    .remove:hover{background:#e6e6e1;color:#15171b}
-    .empty{margin:0;padding:8px 10px 16px;color:#6b6e75}
-    h3{margin:10px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6b6e75}
-    .environment{padding:8px 6px 8px 10px}
-    .environment.current{background:#f4f4f1}
-    .dot{flex:none;width:8px;height:8px;border-radius:50%;background:#c6c7c2}
-    .dot.ready{background:#3f9b5b}.dot.busy{background:#d79a2b}.dot.failed{background:#c8553d}
+    .when{flex:none;color:var(--muted);font-size:12px}
+    .empty{margin:0;padding:8px 10px 16px;color:var(--muted)}
+    h3{margin:6px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .environment{padding:6px 4px 6px 10px}
+    .environment.current{background:var(--raised)}
+    .dot{flex:none;width:8px;height:8px;border-radius:50%;background:#5c5e64}
+    .dot.ready{background:var(--ready)}.dot.busy{background:var(--busy)}.dot.failed{background:var(--failed)}
     .who{flex:1;min-width:0}
     .who strong{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .who small{display:block;color:#6b6e75;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .tag{margin-left:6px;padding:1px 6px;border-radius:6px;background:#ecece8;font-size:11px;font-weight:550;color:#6b6e75}
-    .buttons{flex:none;display:flex;gap:4px}
-    select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:#f1f1ee;font-size:12px}
-    .filter{flex:1;min-width:0;padding:6px 9px;border:0;border-radius:8px;background:#f1f1ee;font:inherit;font-size:12px;color:inherit}
-    .toggle[aria-pressed=true]{background:#15171b;color:#fff}
-    .chips{display:flex;gap:4px;flex-wrap:wrap;padding:0 12px 8px}
-    .chips button{padding:3px 9px;border-radius:7px;background:#f1f1ee;font-size:12px;color:#6b6e75}
-    .chips button[aria-pressed=true]{background:#15171b;color:#fff}
-    pre{flex:1;min-height:0;margin:0 8px 8px;padding:8px 0;overflow:auto;border-radius:10px;background:#f6f6f3;font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+    .who small{display:block;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tag{margin-left:6px;padding:1px 6px;border-radius:6px;background:var(--selected);font-size:11px;font-weight:550;color:var(--muted)}
+    .buttons{flex:none;display:flex;gap:2px}
+    select{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:var(--raised);font-size:12px}
+    .filter{flex:1;min-width:0;padding:6px 9px;border:0;border-radius:8px;background:var(--raised);font:inherit;font-size:12px;color:inherit}
+    .filter::placeholder{color:var(--muted)}
+    .chips{flex:none;display:flex;gap:4px;flex-wrap:wrap;padding:0 8px 8px}
+    .chips button{padding:3px 9px;border-radius:7px;background:var(--raised);font-size:12px;color:var(--muted)}
+    .chips button[aria-pressed=true]{background:var(--selected);color:var(--text)}
+    pre{flex:1;min-height:0;margin:0 8px 8px;padding:8px 0;overflow:auto;border-radius:10px;background:var(--well);font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
     pre.wrap{white-space:pre-wrap;word-break:break-word}
     pre div{padding:0 10px}
-    pre div:hover{background:#ecece8}
-    pre .error{background:#fbeae6}
-    pre .warn{background:#fbf3e2}
-    .t,.k{color:#8a8d93}.m{font-weight:700}.ok{color:#2f7d48}.redirect{color:#3b6fd8}.client{color:#a8681a}.server,.e{color:#b4432f;font-weight:600}.d{color:#3b6fd8}
-    .toast{position:fixed;z-index:2147483647;top:30px;right:8px;width:min(340px,calc(100vw - 16px));display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-radius:12px;background:#fff;box-shadow:0 12px 36px #15171b26,0 2px 6px #15171b14}
+    pre div:hover{background:var(--raised)}
+    pre .error{background:#3a1f1a}
+    pre .warn{background:#33291a}
+    .t,.k{color:#7d8087}.m{font-weight:700}.ok{color:#6fc58a}.redirect,.d{color:#7ba7f0}.client{color:#dda35a}.server,.e{color:#ef7f68;font-weight:600}
+    .toast{position:fixed;z-index:2147483647;width:min(340px,calc(100vw - 16px));display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-radius:12px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 12px 36px #0000004d}
     .toast span{flex:1;min-width:0}
-    .toast small{display:block;color:#6b6e75;font-size:11px}
+    .toast small{display:block;color:var(--muted);font-size:11px}
     .toast strong{display:block;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   `;
 
@@ -99,22 +124,71 @@
   };
   const ANSI = new RegExp(String.fromCharCode(27) + '\\[[0-9;:]*[A-Za-z]', 'g');
 
+  // Built node by node: an app's Trusted Types policy can refuse innerHTML.
+  const GLYPHS = {
+    close: ['M6 6l12 12', 'M18 6L6 18'],
+    expand: ['M14 4h6v6', 'M20 4l-6 6', 'M10 20H4v-6', 'M4 20l6-6'],
+    collapse: ['M4 14h6v6', 'M10 14l-6 6', 'M20 10h-6V4', 'M14 10l6-6'],
+    external: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'],
+    grid: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
+    layers: ['M12 3l9 5-9 5-9-5z', 'M3 13l9 5 9-5'],
+    terminal: ['M4 17l6-5-6-5', 'M12 19h8'],
+    start: ['M7 4.5v15l12-7.5z'],
+    stop: ['M6 6h12v12H6z'],
+    restart: ['M21 12a9 9 0 1 1-2.64-6.36L21 8', 'M21 3v5h-5'],
+    trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13'],
+    wrap: ['M4 6h16', 'M4 12h13a3 3 0 0 1 0 6h-4', 'M15 15l-3 3 3 3', 'M4 18h5'],
+  };
+  const glyph = name => {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const d of GLYPHS[name]) {
+      const path = document.createElementNS(SVG, 'path');
+      path.setAttribute('d', d);
+      svg.append(path);
+    }
+    return svg;
+  };
+  const named = (node, name, label, danger) => {
+    node.className = `icon${danger ? ' danger' : ''}`;
+    node.title = label;
+    node.setAttribute('aria-label', label);
+    node.replaceChildren(glyph(name));
+    return node;
+  };
+  const iconButton = (name, label, onclick, danger) => named(element('button', { onclick }), name, label, danger);
+  const iconLink = (name, label, href) => named(link(href), name, label);
+
+  let anchor = () => {};
+
+  // An app whose CSP blocks same-origin images still gets a badge it can see.
+
+  const icon = () => {
+    const image = element('img', { src: '/_parcela/badge.png', alt: '', draggable: false });
+    image.addEventListener('error', () => image.replaceWith(element('span', { className: 'wordmark', textContent: 'parcela' })));
+    return image;
+  };
+
   const mount = () => {
     if (document.getElementById('parcela-switcher')) return;
     const host = element('div', { id: 'parcela-switcher' });
     const shadow = host.attachShadow({ mode: 'open' });
-    const count = element('span', { className: 'muted', hidden: true });
-    const badge = element('button', { className: 'badge' }, 'parcela', count);
+    const count = element('span', { className: 'count', hidden: true });
+    const badge = element('button', { className: 'badge', title: 'Parcela' }, icon(), element('span', { className: 'hidden-label', textContent: 'Parcela' }), count);
     badge.setAttribute('aria-expanded', 'false');
     badge.setAttribute('aria-controls', 'parcela-panel');
 
-    const views = { environments: environments(), opened: opened(count), logs: logs() };
-    const labels = { environments: 'Environments', opened: 'Opened', logs: 'Logs' };
+    const tray = shared ? null : opened(count);
+    const views = shared ? { environments: environments(tray) } : { environments: environments(tray), logs: logs() };
+    const labels = { environments: ['layers', 'Environments'], logs: ['terminal', 'Logs'] };
     const tabs = element('div', { className: 'tabs', role: 'tablist' });
     let current = localStorage.getItem(TAB) in views ? localStorage.getItem(TAB) : 'environments';
     const select = name => {
       current = name;
       localStorage.setItem(TAB, name);
+      panel.classList.toggle('tall', name === 'logs');
       for (const [key, view] of Object.entries(views)) {
         view.element.hidden = key !== name;
         if (key !== name) view.hidden?.();
@@ -123,26 +197,34 @@
       views[name].shown();
     };
     for (const name of Object.keys(views)) {
-      const button = element('button', { role: 'tab', textContent: labels[name], onclick: () => select(name) });
+      const button = element('button', { role: 'tab', onclick: () => select(name) }, glyph(labels[name][0]), labels[name][1]);
       button.dataset.tab = name;
       tabs.append(button);
     }
-    const close = element('button', { className: 'close', textContent: '×', title: 'Close', onclick: () => hide() });
-    close.setAttribute('aria-label', 'Close Parcela');
-    const grow = element('button', { className: 'close', textContent: '⤢', title: 'Expand', onclick: () => {
-      panel.classList.toggle('large');
-      localStorage.setItem(LARGE, String(panel.classList.contains('large')));
-    } });
-    grow.setAttribute('aria-label', 'Expand Parcela');
-    const away = element('button', { className: 'close', textContent: '↗', title: 'Open in a new tab', onclick: () => {
-      window.open(`/_parcela/#${current}${views.logs.chosen() ? `:${encodeURIComponent(views.logs.chosen())}` : ''}`, '_blank', 'noopener');
+    const close = iconButton('close', 'Close', () => hide());
+    const large = localStorage.getItem(LARGE) === 'true';
+    const grow = iconButton(large ? 'collapse' : 'expand', large ? 'Shrink' : 'Expand', () => {
+      const now = panel.classList.toggle('large');
+      localStorage.setItem(LARGE, String(now));
+      named(grow, now ? 'collapse' : 'expand', now ? 'Shrink' : 'Expand');
+      anchor(panel);
+    });
+    const away = iconButton('external', 'Open in a new tab', () => {
+      window.open(`/_parcela/#${current}${views.logs?.chosen() ? `:${encodeURIComponent(views.logs.chosen())}` : ''}`, '_blank', 'noopener');
       hide();
-    } });
-    away.setAttribute('aria-label', 'Open Parcela in a new tab');
-    const panel = element('section', { id: 'parcela-panel', className: `panel${page ? ' page' : localStorage.getItem(LARGE) === 'true' ? ' large' : ''}`, hidden: true, tabIndex: -1 },
-      element('div', { className: 'bar' }, tabs, ...(page ? [] : [grow, away, close])), ...Object.values(views).map(view => view.element));
+    });
+    const manage = location.hostname.endsWith('.localhost') && dashboard.startsWith('https://')
+      ? iconLink('grid', 'All environments', `${dashboard}/`)
+      : null;
+    const panel = element('section', { id: 'parcela-panel', className: `panel${page ? ' page' : large ? ' large' : ''}`, hidden: true, tabIndex: -1 },
+      element('div', { className: 'bar' },
+        Object.keys(views).length > 1 ? tabs : element('span', { className: 'title', textContent: 'Environments' }),
+        manage, ...(page ? [] : [grow, away, close])),
+      ...Object.values(views).map(view => view.element));
+    // Its height follows what it lists, so a panel above the badge has to move as that changes.
+    new ResizeObserver(() => { if (expanded()) anchor(panel); }).observe(panel);
     panel.setAttribute('aria-label', 'Parcela');
-    views.environments.onLogs = key => { views.logs.choose(key); select('logs'); };
+    views.environments.onLogs = key => { views.logs?.choose(key); select('logs'); };
 
     const expanded = () => badge.getAttribute('aria-expanded') === 'true';
     const hide = () => {
@@ -150,13 +232,129 @@
       badge.setAttribute('aria-expanded', 'false');
       Object.values(views).forEach(view => view.hidden?.());
     };
+    // Where the badge rests: an edge of the window, and how far along it, from 0 to 1.
+    const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
+    const resting = () => {
+      try {
+        const { edge, at } = JSON.parse(localStorage.getItem(POSITION));
+        if (EDGES.includes(edge) && at >= 0 && at <= 1) return { edge, at };
+      } catch {}
+      return { edge: 'top', at: 1 };
+    };
+    let position = resting();
+    const css = ({ edge, at }) => {
+      // Flush with the edge, and with the next edge at either end: only free corners are rounded.
+      const free = (edges, end) => (edges.includes(edge) || at === end ? 0 : RADIUS);
+      const radius = edge === 'top' || edge === 'bottom'
+        ? [free(['top'], 0), free(['top'], 1), free(['bottom'], 1), free(['bottom'], 0)]
+        : [free(['left'], 0), free(['right'], 0), free(['right'], 1), free(['left'], 1)];
+      const along = edge === 'top' || edge === 'bottom'
+        ? `left:${at * 100}%;transform:translateX(${-at * 100}%)`
+        : `top:${at * 100}%;transform:translateY(${-at * 100}%)`;
+      return `${edge}:0;${along};border-radius:${radius.join('px ')}px`;
+    };
+    // The count sits on a corner of the badge that is away from the window's edges.
+    const settle = ({ edge, at }) => {
+      const horizontal = edge === 'top' || edge === 'bottom';
+      host.dataset.countX = edge === 'right' || (horizontal && at >= 0.5) ? 'left' : 'right';
+      host.dataset.countY = edge === 'top' || (!horizontal && at < 0.5) ? 'bottom' : 'top';
+    };
+    const place = next => {
+      position = next;
+      badge.style.cssText = css(next);
+      settle(next);
+      localStorage.setItem(POSITION, JSON.stringify(next));
+      if (expanded()) anchor(panel);
+    };
+    // Beside the badge, kept inside the window. An expanded panel fills the window instead.
+    anchor = target => {
+      if (target.classList.contains('large')) { target.style.inset = ''; return; }
+      const from = badge.getBoundingClientRect();
+      const [width, height] = [target.offsetWidth, target.offsetHeight];
+      const left = { left: from.right + GAP, right: from.left - GAP - width }[position.edge] ?? from.left + from.width / 2 - width / 2;
+      const top = { top: from.bottom + GAP, bottom: from.top - GAP - height }[position.edge] ?? from.top + from.height / 2 - height / 2;
+      target.style.inset = `${clamp(top, MARGIN, innerHeight - height - MARGIN)}px auto auto ${clamp(left, MARGIN, innerWidth - width - MARGIN)}px`;
+    };
+    badge.style.cssText = css(position);
+    settle(position);
+    addEventListener('resize', () => {
+      if (expanded()) anchor(panel);
+      if (tray && !tray.toast.hidden) anchor(tray.toast);
+    });
+
+    // A small movement is still a click. Past that the badge follows the pointer, and lands on the
+    // nearest edge at the point it was dropped; the guide shows where.
+    const guide = element('div', { className: 'guide', hidden: true });
+    const destination = event => {
+      const distances = { top: event.clientY, right: innerWidth - event.clientX, bottom: innerHeight - event.clientY, left: event.clientX };
+      const edge = EDGES.reduce((nearest, next) => (distances[next] < distances[nearest] ? next : nearest));
+      const { width, height } = badge.getBoundingClientRect();
+      const horizontal = edge === 'top' || edge === 'bottom';
+      const size = horizontal ? width : height;
+      const room = (horizontal ? innerWidth : innerHeight) - size;
+      const offset = (horizontal ? event.clientX : event.clientY) - size / 2;
+      if (offset < CORNER_PULL) return { edge, at: 0 };
+      if (offset > room - CORNER_PULL) return { edge, at: 1 };
+      return { edge, at: Math.round(offset / room * 1000) / 1000 };
+    };
+    let press = null;
+    let dragged = false;
+    const release = () => {
+      badge.classList.remove('dragging');
+      badge.style.cssText = css(position);
+      guide.hidden = true;
+      press = null;
+    };
+    badge.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      press = { x: event.clientX, y: event.clientY, moving: false };
+      dragged = false;
+      badge.setPointerCapture(event.pointerId);
+    });
+    badge.addEventListener('pointermove', event => {
+      if (!press) return;
+      if (!press.moving && Math.hypot(event.clientX - press.x, event.clientY - press.y) < 6) return;
+      if (!press.moving) {
+        press.moving = dragged = true;
+        hide();
+        badge.classList.add('dragging');
+        guide.hidden = false;
+      }
+      guide.style.cssText = css(destination(event));
+      const { width, height } = badge.getBoundingClientRect();
+      const left = clamp(event.clientX - width / 2, 0, innerWidth - width);
+      const top = clamp(event.clientY - height / 2, 0, innerHeight - height);
+      badge.style.cssText = `inset:${top}px auto auto ${left}px`;
+    });
+    badge.addEventListener('pointerup', event => {
+      if (press?.moving) place(destination(event));
+      release();
+    });
+    badge.addEventListener('pointercancel', release);
+    // Arrow keys walk along an edge and round its ends, or cross straight to the opposite edge.
+    badge.addEventListener('keydown', event => {
+      const direction = { ArrowUp: 'top', ArrowRight: 'right', ArrowDown: 'bottom', ArrowLeft: 'left' }[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      const { edge, at } = position;
+      const horizontal = edge === 'top' || edge === 'bottom';
+      const alongEdge = horizontal === (direction === 'left' || direction === 'right');
+      if (!alongEdge) { place({ edge: direction, at }); return; }
+      const forward = direction === 'right' || direction === 'bottom';
+      const next = Math.round((at + (forward ? 0.1 : -0.1)) * 10) / 10;
+      if (next >= 0 && next <= 1) place({ edge, at: next });
+      else place({ edge: direction, at: edge === 'top' || edge === 'left' ? 0 : 1 });
+    });
     badge.addEventListener('click', () => {
+      if (dragged) { dragged = false; return; }
       if (expanded()) { hide(); return; }
-      views.opened.toast.hidden = true;
+      if (tray) tray.toast.hidden = true;
       badge.setAttribute('aria-expanded', 'true');
       panel.hidden = false;
+      anchor(panel);
       panel.focus();
-      select(current);
+      // New items appear on Environments, so that is where the count leads.
+      select(count.hidden ? current : 'environments');
     });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && expanded()) { hide(); badge.focus(); }
@@ -174,11 +372,11 @@
     } catch {
       style = [element('style', { textContent: STYLE })];
     }
-    shadow.append(...style, ...(page ? [] : [badge]), panel, ...(page ? [] : [views.opened.toast]));
+    shadow.append(...style, ...(page ? [] : [guide, badge]), panel, ...(page || !tray ? [] : [tray.toast]));
     document.body.append(host);
     if (page) {
       const [tab, key] = location.hash.slice(1).split(':');
-      if (key) views.logs.choose(decodeURIComponent(key));
+      if (key) views.logs?.choose(decodeURIComponent(key));
       panel.hidden = false;
       select(tab in views ? tab : current);
       return;
@@ -193,10 +391,11 @@
     const seen = stored(sessionStorage, SEEN);
     const cleared = stored(localStorage, CLEARED);
     const items = element('ol', { className: 'opened' });
-    const clear = element('button', { className: 'action', textContent: 'Clear all' });
-    const element_ = element('div', { className: 'view', hidden: true },
-      element('div', { className: 'toolbar' }, element('span', { className: 'grow' }), clear),
-      element('div', { className: 'scroll' }, items));
+    const clear = iconButton('trash', 'Clear all', () => forget(visible().map(open => open.id)));
+    // Only there when the app has opened something.
+    const element_ = element('div', { className: 'tray', hidden: true },
+      element('header', {}, element('h3', { textContent: 'Opened by your app' }), clear),
+      items);
     const toast = element('div', { className: 'toast', hidden: true, role: 'status' });
     let since = null;
     let latest = { now: 0, opens: [] };
@@ -208,22 +407,19 @@
       const opens = visible();
       const unseen = opens.filter(open => !seen.has(open.id) && open.at_unix_ms >= since).length;
       count.hidden = unseen === 0;
-      count.textContent = `×${unseen}`;
-      clear.disabled = opens.length === 0;
+      count.textContent = String(unseen);
+      element_.hidden = opens.length === 0;
       items.replaceChildren(...opens.map(open => {
-        const remove = element('button', { className: 'remove', textContent: '×', onclick: () => forget([open.id]) });
-        remove.setAttribute('aria-label', `Remove ${open.label}`);
+        const remove = iconButton('close', `Remove ${open.label}`, () => forget([open.id]));
         return element('li', {},
           link(open.href,
             element('span', { className: 'label', textContent: open.label, title: open.label }),
             element('span', { className: 'when', textContent: ago(latest.now, open.at_unix_ms) })),
           remove);
       }));
-      if (opens.length === 0) items.replaceChildren(element('p', { className: 'empty', textContent: 'Nothing yet. When your app opens a page or file in a browser, such as a mail preview, it shows up here.' }));
     };
     const remember = ids => { ids.forEach(id => seen.add(id)); store(sessionStorage, SEEN, seen); render(); };
     const forget = ids => { ids.forEach(id => cleared.add(id)); store(localStorage, CLEARED, cleared); render(); };
-    clear.addEventListener('click', () => forget(visible().map(open => open.id)));
 
     const announce = open => {
       const action = link(open.href, 'Open');
@@ -233,6 +429,7 @@
         element('span', {}, element('small', { textContent: 'Your app opened' }), element('strong', { textContent: open.label, title: open.label })),
         action);
       toast.hidden = false;
+      anchor(toast);
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => { toast.hidden = true; }, TOAST_MS);
     };
@@ -262,17 +459,21 @@
     };
   };
 
-  const environments = () => {
+  // Behind a front proxy, a sibling answers on the scheme and port this page came through.
+  const sameEntry = url => {
+    if (!shared) return url;
+    const target = new URL(url);
+    target.protocol = location.protocol;
+    target.port = location.port;
+    return target.href;
+  };
+
+  const environments = tray => {
     const list = element('div', { className: 'scroll' });
     const view = {
-      element: element('div', { className: 'view', hidden: true },
-        location.hostname.endsWith('.localhost') && dashboard.startsWith('https://')
-          ? element('div', { className: 'toolbar' }, element('span', { className: 'grow' }), link(`${dashboard}/_parcela/`, 'Manage all ↗'))
-          : null,
-        list),
+      element: element('div', { className: 'view', hidden: true }, tray?.element, list),
       onLogs: null,
     };
-    view.element.querySelector('.toolbar a')?.classList.add('action');
     let timer = null;
     let failures = {};
 
@@ -292,17 +493,16 @@
       const status = running ? `${environment.action.name === 'stop' ? 'stopping' : 'starting'}…`
         : failures[environment.key] || (environment.action?.state === 'failed' ? `${environment.action.name} failed: ${environment.action.message || 'see logs'}` : environment.state);
       const dot = running || (!ready && !stopped) ? 'busy' : environment.action?.state === 'failed' ? 'failed' : ready ? 'ready' : '';
-      const button = (text, onclick) => element('button', { className: 'action', textContent: text, disabled: running, onclick });
+      const button = (name, label, onclick, danger) => Object.assign(iconButton(name, label, onclick, danger), { disabled: running });
       const buttons = [];
-      if (ready && environment.url && !environment.current) buttons.push(link(environment.url, 'Open'));
+      if (ready && environment.url && !environment.current) buttons.push(iconLink('external', 'Open', sameEntry(environment.url)));
       // Pages act only on registered environments they may manage: an app page its own, the
       // dashboard's page every one. `parcela up` in a checkout registers it.
       if (environment.key && environment.manageable) {
-        if (stopped) buttons.push(button('Start', () => act(environment, 'start')));
-        else buttons.push(button('Restart', () => act(environment, 'restart')), button('Stop', () => act(environment, 'stop')));
-        if (environment.processes.length) buttons.push(button('Logs', () => view.onLogs?.(environment.key)));
+        if (stopped) buttons.push(button('start', 'Start', () => act(environment, 'start')));
+        else buttons.push(button('restart', 'Restart', () => act(environment, 'restart')), button('stop', 'Stop', () => act(environment, 'stop'), true));
+        if (environment.processes.length) buttons.push(button('terminal', 'Logs', () => view.onLogs?.(environment.key)));
       }
-      buttons.filter(node => node.tagName === 'A').forEach(node => { node.className = 'action'; });
       return element('li', { className: `environment${environment.current ? ' current' : ''}` },
         element('span', { className: `dot ${dot}` }),
         element('span', { className: 'who' },
@@ -327,12 +527,12 @@
         list.replaceChildren(element('p', { className: 'empty', textContent: 'Could not reach Parcela.' }));
       }
     };
-    view.shown = () => { refresh(); clearInterval(timer); timer = setInterval(refresh, 2000); };
-    view.hidden = () => clearInterval(timer);
+    view.shown = () => { tray?.shown(); refresh(); clearInterval(timer); timer = setInterval(refresh, 2000); };
+    view.hidden = () => { tray?.hidden(); clearInterval(timer); };
     return view;
   };
 
-  const PALETTE = { 30: '#15171b', 31: '#b4432f', 32: '#2f7d48', 33: '#a8681a', 34: '#3b6fd8', 35: '#8c45b8', 36: '#1f7f91', 37: '#6b6e75' };
+  const PALETTE = { 30: '#9a9ca3', 31: '#ef7f68', 32: '#6fc58a', 33: '#dda35a', 34: '#7ba7f0', 35: '#c792ea', 36: '#5fc3d6', 37: '#d6d6d2' };
   const HIGHLIGHT = /(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)|(\[\d+:[^\]]*\])|\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b|(?:\b(?:status[=:]\s?"?|Completed\s|HTTP\/[\d.]+"?\s)([1-5]\d\d)\b)|(\d+(?:\.\d+)?\s?ms\b)|\b(ERROR|FATAL|Error|Exception|Traceback|panicked|failed|WARN(?:ING)?)\b/g;
   const STATUS = code => ({ 2: 'ok', 3: 'redirect', 4: 'client', 5: 'server' })[code[0]] || '';
   const severity = line => /\b(ERROR|FATAL|Exception|Traceback|panicked)\b|^\S+ \S+ [EF] /.test(line) ? 'error' : /\bWARN(ING)?\b|^\S+ \S+ W /.test(line) ? 'warn' : '';
@@ -390,7 +590,7 @@
   const logs = () => {
     const picker = element('select', { ariaLabel: 'Environment' });
     const filter = element('input', { className: 'filter', type: 'search', placeholder: 'Filter lines', ariaLabel: 'Filter log lines' });
-    const wrap = element('button', { className: 'action toggle', textContent: 'Wrap' });
+    const wrap = iconButton('wrap', 'Wrap lines');
     wrap.setAttribute('aria-pressed', 'false');
     const chips = element('div', { className: 'chips' });
     const output = element('pre', { tabIndex: 0 });

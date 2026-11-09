@@ -10,6 +10,7 @@ pub mod discovery;
 pub mod frontdoor;
 pub mod host;
 pub mod http;
+pub mod inject;
 pub mod inventory;
 pub mod lifecycle;
 pub mod logs;

@@ -7,8 +7,10 @@ on:
       - 'docs/**'
       - '.agents/skills/parcela/SKILL.md'
       - 'examples/docs-demo/**'
-      - 'assets/brand/logo.svg'
       - 'assets/brand/logo.png'
+      - 'scripts/dashboard/**'
+      - 'src/dashboard/index.html'
+      - 'src/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
@@ -17,8 +19,10 @@ on:
       - 'docs/**'
       - '.agents/skills/parcela/SKILL.md'
       - 'examples/docs-demo/**'
-      - 'assets/brand/logo.svg'
       - 'assets/brand/logo.png'
+      - 'scripts/dashboard/**'
+      - 'src/dashboard/index.html'
+      - 'src/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

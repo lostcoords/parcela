@@ -277,7 +277,7 @@ fn dashboard_hostname_cannot_be_adopted_by_an_application() {
     let f = Fixture::new();
     let path = f.root.join("collision");
     fs::create_dir(&path).unwrap();
-    fs::write(path.join("parcela.yaml"), "version: 1\nproject: parcela-ui\nservices: {web: {command: unused, http: {healthcheck: /}}}\n").unwrap();
+    fs::write(path.join("parcela.yaml"), "version: 1\nproject: parcela-dashboard\nservices: {web: {command: unused, http: {healthcheck: /}}}\n").unwrap();
     let manifest = Manifest::load(&path.join("parcela.yaml")).unwrap();
     let mut registry = Registry::open(&f.state, true).unwrap().unwrap();
     let error = registry

@@ -25,8 +25,8 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 5;
-/// Paths on every loopback app host that Parcela answers for that environment instead of the app.
+pub const PROTOCOL: u32 = 8;
+/// Paths on app hosts that Parcela answers for that environment instead of the app.
 pub const ENVIRONMENT_PATHS: &str = "/_parcela/*";
 
 /// The running proxy: its ownership token, the front door it serves and the release that started
@@ -329,6 +329,10 @@ pub fn configuration(registry: &Registry, router: &Router) -> Result<Value> {
 fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -> Result<Value> {
     let state = registry.state_path();
     let dashboard = format!("unix/{}", crate::sockets::dashboard(state)?.display());
+    let injector = format!("unix/{}", crate::sockets::injector(state)?.display());
+    // An unreadable host file never takes routes down; the CLI reports it.
+    let badge = router.protocol >= 6
+        && crate::host::Host::current().map_or(true, |host| host.badge != Some(false));
     let workspaces = registry.list(None)?;
     let mut routes = Vec::new();
     let mut hosts = std::collections::BTreeSet::new();
@@ -385,8 +389,9 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                 "handler":"reverse_proxy", "upstreams":[{"dial":address.to_string()}],
                 "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Generation":[session.generation.to_string()]}}}
             }]);
-            // Only loopback names reach Parcela's own paths; on LAN and domain names they are the
-            // app's. Caddy always sets `X-Parcela-Access`, which the dashboard requires.
+            // Loopback names reach all of Parcela's own paths, domain names a read-only part of them
+            // while the badge is on, and on LAN names they are the app's. Caddy always sets
+            // `X-Parcela-Access`, which the dashboard requires.
             let environment = (router.protocol >= 5).then(|| json!([{
                 "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
                 "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Hostname":[endpoint.hostname], "X-Parcela-Access":["local"]}}}
@@ -402,6 +407,20 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
             if let Some(environment) = environment {
                 routes.push(json!({"match":[{"host":matched, "path":[ENVIRONMENT_PATHS], "file":leased}], "handle":environment, "terminal": true}));
             }
+            // Only top-level page loads take this detour: assets, API calls, WebSockets and frames
+            // reach the app directly, and clients that send no fetch metadata see it untouched.
+            let page_load = |matched: &[String]| {
+                json!({"match":[{"host":matched, "method":["GET"], "header":{"Sec-Fetch-Dest":["document"]}, "file":leased}],
+                    "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":injector}],
+                        "headers":{"request":{"set":{
+                            "X-Parcela-Environment":[session.environment_id],
+                            "X-Parcela-Generation":[session.generation.to_string()],
+                            crate::inject::UPSTREAM_HEADER:[address.to_string()]}}}}],
+                    "terminal": true})
+            };
+            if badge {
+                routes.push(page_load(&matched));
+            }
             routes.push(json!({"@id": format!("run-{}-{}", session.token, endpoint.service), "match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
             if let Some(ip) = lan_address.filter(|ip| shared && crate::share::present(*ip)) {
                 let host = crate::share::local_host(&endpoint.hostname);
@@ -416,7 +435,32 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                     matched.push(format!("*.{host}"));
                 }
                 domain_listen.insert(format!("127.0.0.1:{}", domain.port));
+                if badge {
+                    domain_routes.push(json!({"match":[{"host":matched, "path":[ENVIRONMENT_PATHS], "file":leased}],
+                        "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                            "headers":{"request":{"set":{
+                                "X-Parcela-Environment":[session.environment_id],
+                                "X-Parcela-Hostname":[host],
+                                "X-Parcela-Access":["shared"]}}}}],
+                        "terminal": true}));
+                    domain_routes.push(page_load(&matched));
+                }
                 domain_routes.push(json!({"match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
+            }
+        }
+    }
+    // Past the leased routes, so these answer only while nothing is serving the name: a page load
+    // gets a page that can start the environment, and everything else the plain 503 below.
+    if router.protocol >= 7 {
+        for workspace in &workspaces {
+            for host in registry.hosts(&workspace.id)?.into_values() {
+                let handle = json!({
+                    "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                    "headers":{"request":{"set":{"X-Parcela-Environment":[workspace.id], "X-Parcela-Hostname":[host], "X-Parcela-Access":["local"]}}}
+                });
+                routes.push(json!({"match":[{"host":[host], "path":[ENVIRONMENT_PATHS]}], "handle":[handle], "terminal":true}));
+                routes.push(json!({"match":[{"host":[host], "method":["GET"], "header":{"Sec-Fetch-Dest":["document"]}}],
+                    "handle":[{"handler":"rewrite", "uri":"/_parcela/unavailable"}, handle], "terminal":true}));
             }
         }
     }
@@ -506,6 +550,7 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
     };
     let config = configuration(registry, &router)?;
     let _dashboard = crate::dashboard::Server::start(state, front_door)?;
+    let _injector = crate::inject::Server::start(state)?;
     let config_path = directory.join("caddy.json");
     private::write_json(&config_path, &config)?;
     private::directory(&directory.join("data"))?;

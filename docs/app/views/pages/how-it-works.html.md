@@ -41,12 +41,12 @@ Settings for this machine (domains, LAN, ports, proxy, trust) live in `~/.config
 
 ```diagram
   checkout          service    hostname
-  ────────────────  ─────────  ─────────────────────────
+  ────────────────  ─────────  ───────────────────────────
   shop  (main)      web        shop.localhost
   shop  (main)      api        api-shop.localhost
   shop-signup       web        signup-shop.localhost
   shop-signup       api        api-signup-shop.localhost
-  (none)            dashboard  parcela-ui.localhost
+  (none)            dashboard  parcela-dashboard.localhost
 ```
 
 Names stay one label deep under the project, so `*.<domain>` covers every environment when sharing under a domain. `.localhost` resolves to loopback on its own, so no DNS or `/etc/hosts` changes are needed. `shop-signup` is a jj workspace or Git worktree named `signup`; `api` has `subdomain: api`.

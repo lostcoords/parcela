@@ -8,7 +8,7 @@ import subprocess
 
 from live.common import FIXTURES, ROOT, Live, free_port, wait_for
 
-HOST = 'parcela-ui.localhost'
+HOST = 'parcela-dashboard.localhost'
 
 
 def run(caddy, **_):
@@ -49,7 +49,9 @@ services:
         assert all(len(env['services']) == 2 and len(env['processes']) == 2 for env in data['environments']), data
         assert not any(key in json.dumps(data) for key in ['recorded_session', 'router_token', 'environment_id', 'command', 'source']), data
         assert fetch()[0] == 200
-        assert b'Your environments' in fetch()[2]
+        assert b'id="environments"' in fetch()[2]
+        assert fetch('/workspace')[0] == 404
+        assert b'frame-src' not in fetch()[1]
         assert fetch('/widget.js')[0] == 200
         assert fetch('/api/status', 'Origin: https://evil.example\r\n')[0] == 403
         assert fetch('/api/status', 'Sec-Fetch-Site: cross-site\r\n')[0] == 403

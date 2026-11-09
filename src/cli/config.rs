@@ -113,7 +113,7 @@ fn default(key: &str) -> String {
         "sharing.domain_port" => "1480",
         "sharing.lan" | "sharing.tailscale" => "false",
         "sharing.lan_ip" => "detected",
-        "telemetry" | "updates" | "trust" => "true",
+        "telemetry" | "updates" | "trust" | "badge" => "true",
         "worktrees.directory" => "beside the repository",
         "ports.backend" => {
             return format!(

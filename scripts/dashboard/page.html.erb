@@ -1,0 +1,31 @@
+<%= lc_container(class: "py-8") do %>
+  <%= lc_stack(gap: :section) do %>
+    <%= lc_inline(as: :header, class: "flex-wrap items-center justify-between gap-4") do %>
+      <%= lc_inline(class: "items-center gap-3") do %>
+        <img src="/_parcela/badge.png" alt="" width="30" height="27">
+        <%= lc_heading "Environments", level: 1, trim: true %>
+        <span id="summary"></span>
+      <% end %>
+      <div class="w-full sm:w-72"><%= lc_input type: :search, id: "filter", placeholder: "Filter", autocomplete: "off", "aria-label": "Filter environments" %></div>
+    <% end %>
+    <%= lc_text "Connecting to Parcela…", size: :small, tone: :muted, id: "health", role: "status", "aria-live": "polite" %>
+    <div id="environments" class="grid gap-section"></div>
+  <% end %>
+<% end %>
+
+<template id="project"><%= lc_list_section("Project") { lc_list_group(tag: :ul) } %></template>
+<template id="row">
+  <%= lc_list_row "Name", subtitle: "URL", tag: :li do %>
+    <div class="flex shrink-0 items-center gap-1" data-slot="controls"></div>
+  <% end %>
+</template>
+<template id="problem"><span class="text-small text-destructive [overflow-wrap:anywhere]"></span></template>
+<template id="empty"><%= lc_text "", tone: :muted %></template>
+<% { neutral: "neutral", success: "success", warning: "warning", destructive: "destructive" }.each do |tone, name| %>
+  <template id="badge-<%= name %>"><%= lc_badge "state", tone: tone %></template>
+<% end %>
+<template id="open"><%= lc_icon_button_link_to "Open", "#", icon: "arrow-top-right-on-square", size: :sm, shape: :square, target: "_blank", rel: "noopener" %></template>
+<template id="logs"><%= lc_icon_button_link_to "Logs", "#", icon: "command-line", size: :sm, shape: :square %></template>
+<template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square %></template>
+<template id="restart"><%= lc_icon_button "Restart", icon: "arrow-path", size: :sm, shape: :square %></template>
+<template id="stop"><%= lc_icon_button "Stop", icon: "stop", size: :sm, shape: :square %></template>

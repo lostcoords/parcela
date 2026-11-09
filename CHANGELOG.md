@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The `parcela` badge and debug menu now appear on `.localhost` and domain pages without a script tag. The proxy adds the script to top-level page loads, reusing the page's CSP nonce and never relaxing its policy. Assets, API calls, WebSockets, frames and `curl` reach the app unchanged. `parcela config set badge false` turns it off.
+- The badge is now a small icon. Drag it to any edge of the window, or use the arrow keys while it has focus.
+- A stopped environment's URL shows a page with its state and a Start button, and reloads once the app answers, instead of plain text. Requests that are not page loads still get a plain `503`.
+- The panel is dark, its controls are icons, and what your app opened appears above the environments only when there is something to show, instead of in its own tab.
+- On domain names the menu is read-only: this environment's state and links to the project's other running environments, with no actions, logs or opened files. While `badge` is on, `/_parcela/` on a domain name no longer reaches the app.
+
+### Changed
+
+- The dashboard is now at `parcela-dashboard.localhost`, which is reserved in place of `parcela-ui.localhost`.
+- The dashboard is rebuilt: dark, one list grouped by project, with Open, Logs, Start, Restart and Stop on each environment. Its CSS is served only on its own origin.
+
+### Removed
+
+- The dashboard's iframe workspace. Apps open at their own URLs.
+
+### Fixed
+
+- The dashboard no longer marks an environment without a URL as "You are here".
+
+- On macOS the dashboard cut `/_parcela/widget.js` and other large responses off at the socket buffer, so the debug menu never loaded.
+
 ## 0.8.0 - 2026-11-07
 
 ### Added

@@ -5,6 +5,8 @@ use std::{
     net::TcpListener,
     path::{Path, PathBuf},
     process::{Command, Output},
+    thread,
+    time::{Duration, Instant},
 };
 use tempfile::TempDir;
 
@@ -623,7 +625,7 @@ fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_u
             .args(["--resolve", &format!("notes.localhost:{https}:127.0.0.1")])
             .args([
                 "--resolve",
-                &format!("parcela-ui.localhost:{https}:127.0.0.1"),
+                &format!("parcela-dashboard.localhost:{https}:127.0.0.1"),
             ]);
         for header in headers {
             curl.args(["--header", header]);
@@ -693,7 +695,8 @@ fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_u
         "{menu}"
     );
 
-    // LAN and domain names never reach Parcela's paths: the app answers them, here with `sent`.
+    // A domain name is read-only: no opened files, logs or actions, even when a client claims
+    // loopback access, because Caddy replaces that header.
     assert!(
         shared("GET", "/", &[]).ends_with("sent"),
         "the run is shared"
@@ -709,12 +712,18 @@ fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_u
     for path in [
         "/_parcela/opens".to_owned(),
         file.clone(),
-        "/_parcela/environments".to_owned(),
         format!("/_parcela/logs?environment={environment}"),
     ] {
         let response = shared("GET", &path, &["X-Parcela-Access: local"]);
-        assert!(response.ends_with("sent"), "{path}: {response}");
+        assert!(response.starts_with("HTTP/1.1 403"), "{path}: {response}");
     }
+    let listed = shared(
+        "GET",
+        "/_parcela/environments",
+        &["X-Parcela-Access: local"],
+    );
+    assert!(listed.starts_with("HTTP/1.1 200"), "{listed}");
+    assert!(!listed.contains(&environment), "ids stay local: {listed}");
     let refused = shared(
         "POST",
         &restart,
@@ -724,11 +733,11 @@ fn urls_a_process_hands_to_browser_are_offered_on_loopback_names_and_pages_act_u
             "X-Parcela-Access: local",
         ],
     );
-    assert!(!refused.contains("accepted"), "{refused}");
+    assert!(refused.starts_with("HTTP/1.1 403"), "{refused}");
 
     let spoofed = local(
         "GET",
-        &format!("https://parcela-ui.localhost:{https}/_parcela/opens"),
+        &format!("https://parcela-dashboard.localhost:{https}/_parcela/opens"),
         &[
             &format!("X-Parcela-Environment: {environment}"),
             "X-Parcela-Hostname: notes.localhost",
@@ -1096,4 +1105,248 @@ fn trust_requires_both_input_and_error_terminals_before_any_state_effects() {
         );
         assert!(!proxy.state.join("proxy/data/pki").exists());
     }
+}
+
+#[test]
+fn page_loads_get_the_badge_and_nothing_else_is_touched() {
+    if caddy().is_none() {
+        return;
+    }
+    let proxy = Proxy::new();
+    let checkout = proxy._t.path().canonicalize().unwrap().join("pages");
+    fs::create_dir(&checkout).unwrap();
+    let https = free_port();
+    let domain_port = free_port();
+    let config = proxy._t.path().join("host.yaml");
+    fs::write(
+        checkout.join("app.py"),
+        "import http.server, sys\n\
+         class H(http.server.BaseHTTPRequestHandler):\n\
+         \x20   def do_GET(self):\n\
+         \x20       html = self.path != '/data'\n\
+         \x20       body = b'<!doctype html><head><title>x</title></head><body>hi</body>' if html else b'{}'\n\
+         \x20       self.send_response(200)\n\
+         \x20       self.send_header('Content-Type', 'text/html' if html else 'application/json')\n\
+         \x20       self.send_header('Content-Length', str(len(body)))\n\
+         \x20       self.send_header('ETag', '\"v1\"')\n\
+         \x20       self.send_header('Content-Security-Policy', \"script-src 'self' 'nonce-abc'\")\n\
+         \x20       self.send_header('X-Saw-Encoding', self.headers.get('Accept-Encoding', 'none'))\n\
+         \x20       self.send_header('X-Saw-Upstream', self.headers.get('X-Parcela-Upstream', 'none'))\n\
+         \x20       self.end_headers(); self.wfile.write(body)\n\
+         http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()\n",
+    )
+    .unwrap();
+    fs::write(
+        checkout.join("parcela.yaml"),
+        "version: 1\nproject: pages\nservices: {web: {command: python3 app.py $PORT, http: {healthcheck: /}}}\n",
+    )
+    .unwrap();
+    let environments = Environments {
+        state: &proxy.state,
+        paths: vec![checkout.clone()],
+    };
+    let up = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--path")
+        .arg(&checkout)
+        .arg("--state-dir")
+        .arg(&proxy.state)
+        .env("PARCELA_CONFIG", &config)
+        .env("PARCELA_HTTPS_PORT", https.to_string())
+        .env("PARCELA_DOMAIN", "dev.example.com")
+        .env("PARCELA_DOMAIN_PORT", domain_port.to_string())
+        .args(["--json", "up", "--detach"])
+        .output()
+        .unwrap();
+    assert!(up.status.success(), "{}", stderr(&up));
+    let get = |path: &str, headers: &[&str]| {
+        let mut curl = Command::new("curl");
+        curl.args(["--silent", "--insecure", "--max-time", "5", "--include"])
+            .args(["--resolve", &format!("pages.localhost:{https}:127.0.0.1")]);
+        for header in headers {
+            curl.args(["--header", header]);
+        }
+        let output = curl
+            .arg(format!("https://pages.localhost:{https}{path}"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).to_ascii_lowercase()
+    };
+    const PAGE: &str = "Sec-Fetch-Dest: document";
+    const TAG: &str =
+        "<title>x</title><script defer src=\"/_parcela/widget.js\" nonce=\"abc\"></script></head>";
+
+    let page = get("/", &[PAGE, "Accept-Encoding: gzip"]);
+    assert!(page.contains(TAG), "{page}");
+    assert!(!page.contains("etag:"), "{page}");
+    assert!(page.contains("x-saw-encoding: identity"), "{page}");
+    assert!(
+        page.contains("x-saw-upstream: none"),
+        "the app never sees where Caddy dialled: {page}"
+    );
+    assert!(page.starts_with("http/2 200"), "{page}");
+
+    // A client cannot aim the injector anywhere else: Caddy replaces the header.
+    let spoofed = get("/", &[PAGE, "X-Parcela-Upstream: 127.0.0.1:1"]);
+    assert!(spoofed.contains(TAG), "{spoofed}");
+
+    for (name, response) in [
+        ("no fetch metadata", get("/", &[])),
+        ("a frame", get("/", &["Sec-Fetch-Dest: iframe"])),
+        ("a fetch", get("/", &["Sec-Fetch-Dest: empty"])),
+    ] {
+        assert!(!response.contains("widget.js"), "{name}: {response}");
+        assert!(response.contains("etag:"), "{name}: {response}");
+        assert!(
+            !response.contains("x-saw-encoding: identity"),
+            "{name}: {response}"
+        );
+    }
+    let data = get("/data", &[PAGE]);
+    assert!(
+        data.ends_with("\r\n\r\n{}") && data.contains("etag:"),
+        "{data}"
+    );
+    let script = get("/_parcela/widget.js", &["Sec-Fetch-Dest: script"]);
+    assert!(
+        script.starts_with("http/2 200") && script.trim_end().ends_with("})();"),
+        "the tag's script loads whole from the app's own name: {} bytes",
+        script.len()
+    );
+
+    assert!(
+        get("/_parcela/badge.png", &[]).contains("content-type: image/png"),
+        "the badge's icon loads from the app's own name"
+    );
+
+    // Domain names get the badge too, over the same rules.
+    let shared = |path: &str, headers: &[&str]| {
+        let mut curl = Command::new("curl");
+        curl.args(["--silent", "--max-time", "5", "--include"])
+            .args(["--header", "Host: pages.dev.example.com"]);
+        for header in headers {
+            curl.args(["--header", header]);
+        }
+        let output = curl
+            .arg(format!("http://127.0.0.1:{domain_port}{path}"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).to_ascii_lowercase()
+    };
+    let page = shared("/", &[PAGE]);
+    assert!(
+        page.starts_with("http/1.1 200") && page.contains(TAG),
+        "{page}"
+    );
+    assert!(!shared("/", &[]).contains("widget.js"));
+    assert!(shared("/_parcela/badge.png", &[]).contains("content-type: image/png"));
+    let script = shared("/_parcela/widget.js", &[]);
+    assert!(
+        script.trim_end().ends_with("})();"),
+        "{} bytes",
+        script.len()
+    );
+
+    // `badge: false` takes effect on a running proxy.
+    fs::write(&config, "badge: false\n").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while get("/", &[PAGE]).contains("widget.js") {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "badge: false did not reach the proxy"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(
+        !shared("/", &[PAGE]).contains("widget.js"),
+        "the off switch covers domain names"
+    );
+    assert!(
+        shared("/_parcela/widget.js", &[]).contains("<!doctype html>"),
+        "with the badge off, a domain name's `/_parcela/` is the app's again"
+    );
+    let off = get("/", &[PAGE]);
+    assert!(
+        off.contains("etag:") && !off.contains("x-saw-encoding: identity"),
+        "{off}"
+    );
+    drop(environments);
+}
+
+#[test]
+fn a_stopped_name_offers_a_page_to_page_loads_and_a_plain_503_to_everything_else() {
+    if caddy().is_none() {
+        return;
+    }
+    let proxy = Proxy::new();
+    let checkout = proxy._t.path().canonicalize().unwrap().join("idle");
+    fs::create_dir(&checkout).unwrap();
+    let https = free_port();
+    fs::write(
+        checkout.join("parcela.yaml"),
+        "version: 1\nproject: idle\nservices: {web: {command: python3 -m http.server $PORT, http: {healthcheck: /}}}\n",
+    )
+    .unwrap();
+    let _environments = Environments {
+        state: &proxy.state,
+        paths: vec![checkout.clone()],
+    };
+    let parcela = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .arg("--path")
+            .arg(&checkout)
+            .arg("--state-dir")
+            .arg(&proxy.state)
+            .env("PARCELA_CONFIG", proxy._t.path().join("host.yaml"))
+            .env("PARCELA_HTTPS_PORT", https.to_string())
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let up = parcela(&["--json", "up", "--detach"]);
+    assert!(up.status.success(), "{}", stderr(&up));
+    let down = parcela(&["down"]);
+    assert!(down.status.success(), "{}", stderr(&down));
+    let curl = |path: &str, extra: &[&str]| {
+        let output = Command::new("curl")
+            .args(["-sk", "-w", "\n%{http_code}", "--resolve"])
+            .arg(format!("idle.localhost:{https}:127.0.0.1"))
+            .arg(format!("https://idle.localhost:{https}{path}"))
+            .args(extra)
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let document = ["-H", "Sec-Fetch-Dest: document"];
+
+    let page = curl("/deep/path?x=1", &document);
+    assert!(page.ends_with("\n503"), "{page}");
+    assert!(page.contains("/_parcela/unavailable.js"), "{page}");
+    let plain = curl("/data.json", &[]);
+    assert_eq!(plain, "Parcela environment unavailable\n\n503");
+    let posted = curl("/form", &["-X", "POST", "-H", "Sec-Fetch-Dest: document"]);
+    assert_eq!(posted, "Parcela environment unavailable\n\n503");
+    assert!(curl("/_parcela/unavailable.js", &[]).ends_with("\n200"));
+
+    // The inventory is a cached snapshot, so it catches up with `down` shortly after.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let listed = loop {
+        let listed = curl("/_parcela/environments", &[]);
+        if listed.contains("\"state\":\"stopped\"") || Instant::now() > deadline {
+            break listed;
+        }
+        thread::sleep(Duration::from_millis(200));
+    };
+    assert!(listed.contains("\"state\":\"stopped\""), "{listed}");
+    assert!(listed.contains("\"current\":true"), "{listed}");
+    // A client's own claim to another environment is replaced by the route's.
+    let claimed = curl(
+        "/_parcela/environments",
+        &["-H", "X-Parcela-Environment: other"],
+    );
+    assert!(claimed.contains("\"current\":true"), "{claimed}");
+    // Nothing started by itself, and an action still needs its header and origin.
+    let refused = curl("/_parcela/environments/x/start", &["-X", "POST"]);
+    assert!(refused.ends_with("\n403"), "{refused}");
+    let status = parcela(&["--json", "status"]);
+    assert!(String::from_utf8_lossy(&status.stdout).contains("stopped"));
 }

@@ -20,7 +20,7 @@ use std::{
 
 mod environment;
 
-pub const HOST: &str = "parcela-ui.localhost";
+pub const HOST: &str = "parcela-dashboard.localhost";
 
 #[derive(Default, Serialize)]
 struct Snapshot {
@@ -94,22 +94,8 @@ pub(crate) struct Server {
 impl Server {
     pub(crate) fn start(state: &Path, front_door: FrontDoor) -> Result<Self> {
         let socket = sockets::dashboard(state)?;
-        sockets::prepare(&socket)?;
-        let evidence = state.join("proxy/dashboard-socket.json");
-        if socket.exists() {
-            let old: private::Identity = private::read_json(&evidence)
-                .context("dashboard socket has no ownership evidence; preserving it")?;
-            ensure!(
-                UnixStream::connect(&socket).is_err(),
-                "dashboard socket is still in use; preserving it"
-            );
-            old.remove_socket(&socket)?;
-        }
-        let listener = UnixListener::bind(&socket)?;
-        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
+        let (listener, identity) = listen(&socket, &state.join("proxy/dashboard-socket.json"))?;
         listener.set_nonblocking(true)?;
-        let identity = private::Identity::read(&socket)?;
-        private::write_json(&evidence, &identity)?;
         let stopped = Arc::new(AtomicBool::new(false));
         let snapshot = Arc::new(Mutex::new(Snapshot::default()));
         let state = state.to_owned();
@@ -172,6 +158,9 @@ impl Server {
                 while !serving.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
+                            // BSD sockets inherit the listener's non-blocking mode, which would
+                            // cut any response off at the socket buffer.
+                            let _ = stream.set_nonblocking(false);
                             let _ =
                                 serve(&mut stream, &served_state, front_door, &snapshot, &actions);
                         }
@@ -203,6 +192,30 @@ impl Drop for Server {
         }
         let _ = self.identity.remove_socket(&self.socket);
     }
+}
+
+/// Binds a private socket for Caddy, replacing only a dead one this proxy's evidence names.
+pub(crate) fn listen(socket: &Path, evidence: &Path) -> Result<(UnixListener, private::Identity)> {
+    sockets::prepare(socket)?;
+    if socket.exists() {
+        let old: private::Identity = private::read_json(evidence).with_context(|| {
+            format!(
+                "{} has no ownership evidence; preserving it",
+                socket.display()
+            )
+        })?;
+        ensure!(
+            UnixStream::connect(socket).is_err(),
+            "{} is still in use; preserving it",
+            socket.display()
+        );
+        old.remove_socket(socket)?;
+    }
+    let listener = UnixListener::bind(socket)?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
+    let identity = private::Identity::read(socket)?;
+    private::write_json(evidence, &identity)?;
+    Ok((listener, identity))
 }
 
 fn serve(
@@ -268,7 +281,7 @@ fn serve(
     let path = target.split('?').next().unwrap_or_default();
     let public_asset = path == "/widget.js";
     let foreign = origin.is_some_and(|origin| origin != front_door.url(HOST));
-    let mut policy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src https://*.localhost:*; frame-ancestors https://*.localhost:*; base-uri 'none'; form-action 'none'";
+    let mut policy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
     let (status, mime, body) = if let (Some(environment), Some(hostname), Some(path)) =
         (environment, hostname, target.strip_prefix("/_parcela/"))
     {
@@ -280,6 +293,7 @@ fn serve(
                 origin,
                 acting,
                 local: access == Some("local"),
+                shared: access == Some("shared"),
                 environment,
                 hostname,
             },
@@ -306,6 +320,7 @@ fn serve(
                 origin,
                 acting,
                 local: true,
+                shared: false,
                 environment: "",
                 hostname: HOST,
             },
@@ -332,20 +347,25 @@ fn serve(
         )
     } else {
         match path {
-            "/" | "/workspace" => (
+            "/" => (
                 200,
                 "text/html; charset=utf-8",
                 include_bytes!("dashboard/index.html").to_vec(),
             ),
+            "/logs" => {
+                let page = environment::page();
+                policy = page.policy.unwrap_or(policy);
+                (page.status, page.mime, page.body)
+            }
             "/app.js" => (
                 200,
                 "text/javascript; charset=utf-8",
                 include_bytes!("dashboard/app.js").to_vec(),
             ),
-            "/style.css" => (
+            "/ui.css" => (
                 200,
                 "text/css; charset=utf-8",
-                include_bytes!("dashboard/style.css").to_vec(),
+                include_bytes!("dashboard/ui.css").to_vec(),
             ),
             "/widget.js" => (
                 200,
@@ -436,21 +456,36 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_page_frames_nothing_and_cannot_be_framed() {
+        let page = response("GET / HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\n\r\n");
+        assert!(page.starts_with("HTTP/1.1 200"));
+        assert!(page.contains("frame-ancestors 'none'"));
+        assert!(!page.contains("frame-src"));
+        assert!(!page.contains("<iframe"));
+        for (path, status) in [("/ui.css", 200), ("/logs", 200), ("/workspace", 404)] {
+            let reply = response(&format!(
+                "GET {path} HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\n\r\n"
+            ));
+            assert!(reply.starts_with(&format!("HTTP/1.1 {status}")), "{path}");
+        }
+    }
+
+    #[test]
     fn dashboard_enforces_host_origin_and_read_only_methods() {
         assert!(
             response("GET /api/status HTTP/1.1\r\nHost: evil.example\r\n\r\n")
                 .starts_with("HTTP/1.1 403")
         );
-        assert!(response("GET /api/status HTTP/1.1\r\nHost: parcela-ui.localhost:1443\r\nOrigin: https://evil.example\r\n\r\n").starts_with("HTTP/1.1 403"));
+        assert!(response("GET /api/status HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\nOrigin: https://evil.example\r\n\r\n").starts_with("HTTP/1.1 403"));
         assert!(
-            response("POST /api/status HTTP/1.1\r\nHost: parcela-ui.localhost:1443\r\n\r\n")
+            response("POST /api/status HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\n\r\n")
                 .starts_with("HTTP/1.1 405")
         );
         let status = response(
-            "GET /api/status HTTP/1.1\r\nHost: parcela-ui.localhost:1443\r\nOrigin: https://parcela-ui.localhost:1443\r\n\r\n",
+            "GET /api/status HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\nOrigin: https://parcela-dashboard.localhost:1443\r\n\r\n",
         );
         assert!(status.starts_with("HTTP/1.1 200"));
         assert!(!status.contains("Access-Control-Allow-Origin"));
-        assert!(response("GET /widget.js HTTP/1.1\r\nHost: parcela-ui.localhost:1443\r\nOrigin: https://demo.localhost:1443\r\n\r\n").starts_with("HTTP/1.1 200"));
+        assert!(response("GET /widget.js HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\nOrigin: https://demo.localhost:1443\r\n\r\n").starts_with("HTTP/1.1 200"));
     }
 }
