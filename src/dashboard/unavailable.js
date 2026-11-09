@@ -54,7 +54,7 @@
     $('logs').hidden = !environment.processes.length;
 
     const running = environment.action?.state === 'running';
-    const stopped = environment.state === 'stopped' || environment.state === 'unregistered';
+    const stopped = environment.state === 'stopped' || environment.state === 'not started';
     const adrift = environment.state === 'interrupted' || environment.state === 'unknown';
     const name = stopped || adrift ? 'start' : 'restart';
     $('action').hidden = !environment.manageable;

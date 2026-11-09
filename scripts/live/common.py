@@ -133,11 +133,11 @@ class Live:
         assert (workspace['role'], workspace['label']) == (role, label), workspace
         return workspace
 
-    def fetch(self, host, path='/ready', headers='', host_header=None, timeout=3):
+    def fetch(self, host, path='/ready', headers='', host_header=None, timeout=3, method='GET'):
         """One HTTPS request through the proxy, trusting only this state's CA. Returns (status, head, body)."""
         context = ssl.create_default_context(cafile=str(self.state / 'proxy/data/pki/authorities/local/root.crt'))
         with context.wrap_socket(socket.create_connection(('127.0.0.1', self.https), timeout=timeout), server_hostname=host) as sock:
-            sock.sendall(f'GET {path} HTTP/1.1\r\nHost: {host_header or host}\r\nConnection: close\r\n{headers}\r\n'.encode())
+            sock.sendall(f'{method} {path} HTTP/1.1\r\nHost: {host_header or host}\r\nConnection: close\r\n{headers}\r\n'.encode())
             data = b''
             while part := sock.recv(65536):
                 data += part

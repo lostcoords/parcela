@@ -4,6 +4,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 
 from live.common import FIXTURES, ROOT, Live, free_port, wait_for
@@ -74,11 +75,46 @@ services:
         if module:
             browser = subprocess.run(['node', str(ROOT / 'scripts/live/dashboard-browser.cjs'), module, origin,
                                       str(live.state / 'proxy/data/pki/authorities/local/root.crt')],
-                                     capture_output=True, text=True, timeout=90)
+                                     capture_output=True, text=True, timeout=180)
             assert browser.returncode == 0, browser.stdout + browser.stderr
             cases.append(json.loads(browser.stdout))
+        def review():
+            return next(env for env in snapshot()['environments'] if env['name'] == 'review')
+
+        def act(name):
+            return live.fetch(HOST, f"/_parcela/environments/{review()['id']}/{name}", method='POST', host_header=f'{HOST}:{live.https}',
+                              headers=f'Origin: {origin}\r\nX-Parcela-Action: 1\r\nContent-Length: 0\r\n')[0]
+
+        def pids():
+            return {process['name']: process['pid'] for process in review()['processes']}
+
+        def action():
+            listed = json.loads(fetch('/_parcela/environments')[2])['environments']
+            return next(row for row in listed if row['key'] == review()['id']).get('action') or {}
+
+        # A dead supervisor leaves its services running: Start takes the same ones back.
+        running = pids()
+        assert all(running.values()), running
+        owner = next(row for row in live.json(preview, 'status')['workspaces'] if row['current'])['live']['owner_pid']
+        os.kill(owner, signal.SIGKILL)
+        wait_for(lambda: review()['state'] == 'interrupted')
+        assert act('start') == 202
+        wait_for(lambda: review()['state'] == 'ready' and pids() == running)
+        cases.append('start_takes_back_an_interrupted_run')
+        # A start that fails says why, and a good manifest starts again.
         live.cli(preview, 'down')
-        wait_for(lambda: any(env['name'] == 'review' and env['state'] == 'stopped' for env in snapshot()['environments']))
+        wait_for(lambda: review()['state'] == 'stopped')
+        good = (preview / 'parcela.yaml').read_text()
+        (preview / 'parcela.yaml').write_text('version: 1\nproject: dashboard-demo\nservices: {web: {command: exit 3, http: {healthcheck: /}}}\n')
+        assert act('start') == 202
+        wait_for(lambda: action().get('state') == 'failed')
+        assert action()['name'] == 'start' and action()['message'], action()
+        (preview / 'parcela.yaml').write_text(good)
+        assert act('start') == 202
+        wait_for(lambda: review()['state'] == 'ready')
+        cases.append('failed_start_is_reported_and_can_be_retried')
+        live.cli(preview, 'down')
+        wait_for(lambda: review()['state'] == 'stopped')
         cases.append('status_updates_after_down')
         live.cli(live.root, 'proxy', 'stop')
         assert not fetch_socket_exists(live)

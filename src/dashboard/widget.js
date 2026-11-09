@@ -491,7 +491,7 @@
     const row = environment => {
       const running = environment.action?.state === 'running';
       const ready = environment.state === 'ready';
-      const stopped = environment.state === 'stopped' || environment.state === 'unregistered';
+      const stopped = environment.state === 'stopped' || environment.state === 'not started';
       const status = running ? `${environment.action.name === 'stop' ? 'stopping' : 'starting'}…`
         : failures[environment.key] || (environment.action?.state === 'failed' ? `${environment.action.name} failed: ${environment.action.message || 'see logs'}` : environment.state);
       const dot = running || (!ready && !stopped) ? 'busy' : environment.action?.state === 'failed' ? 'failed' : ready ? 'ready' : '';

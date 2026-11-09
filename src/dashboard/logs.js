@@ -5,7 +5,7 @@
   const CODES = new RegExp(`${ESCAPE}\\[([0-9;:]*)([A-Za-z])`);
   const ALL_CODES = new RegExp(`${ESCAPE}\\[[0-9;:]*[A-Za-z]`, 'g');
   const PALETTE = { 30: '#9a9ca3', 31: '#ef7f68', 32: '#6fc58a', 33: '#dda35a', 34: '#7ba7f0', 35: '#c792ea', 36: '#5fc3d6', 37: '#d6d6d2' };
-  const TONES = { ready: 'success', stopped: 'neutral', unregistered: 'neutral', unhealthy: 'destructive' };
+  const TONES = { ready: 'success', stopped: 'neutral', 'not started': 'neutral', unhealthy: 'destructive' };
   const environment = new URLSearchParams(location.search).get('environment');
   let process = null;
   let lines = [];

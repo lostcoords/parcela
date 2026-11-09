@@ -2,7 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const STALE_MS = 15000;
-  const TONES = { ready: 'success', stopped: 'neutral', unregistered: 'neutral', failed: 'destructive', unhealthy: 'destructive' };
+  const TONES = { ready: 'success', stopped: 'neutral', 'not started': 'neutral', failed: 'destructive', unhealthy: 'destructive' };
   const NOTES = {
     interrupted: 'Parcela lost track of this run. Start takes it back.',
     unknown: 'Parcela can’t reach this run. Start takes it back.',
@@ -29,7 +29,7 @@
   };
 
   const acting = environment => environment.action?.state === 'running';
-  const resting = environment => environment.state === 'stopped' || environment.state === 'unregistered';
+  const resting = environment => environment.state === 'stopped' || environment.state === 'not started';
   // The reason, without the path to a log the Logs button already opens.
   const failure = environment => refused[environment.id]
     || (environment.action?.state === 'failed'
@@ -99,7 +99,7 @@
     node.dataset.environment = environment.id || `${environment.project}/${environment.name}`;
     node.querySelector('[data-slot=list-title]').textContent = environment.name;
     const processes = environment.processes.length;
-    const subtitle = [environment.url?.replace(/^https:\/\//, ''), processes ? `${processes} process${processes === 1 ? '' : 'es'}` : null].filter(Boolean).join(' · ');
+    const subtitle = [environment.url?.replace(/^https:\/\//, ''), processes ? `${processes} process${processes === 1 ? '' : 'es'}` : null, environment.state === 'not started' ? 'run parcela up there to register it' : null].filter(Boolean).join(' · ');
     const line = node.querySelector('[data-slot=list-subtitle]');
     if (subtitle) line.textContent = subtitle;
     else line.remove();
