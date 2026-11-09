@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-const PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Parcela</title></head><body style=\"margin:0;background:#17181b\"><script src=\"/_parcela/widget.js\" data-page></script></body></html>";
+const PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Parcela</title></head><body style=\"margin:0;background:color-mix(in oklab,#12354e 24%,oklch(21% 0 0))\"><script src=\"/_parcela/widget.js\" data-page></script></body></html>";
 
 const BADGE: &[u8] = include_bytes!("badge.png");
 const POLICY: &str = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -164,7 +164,7 @@ pub(super) fn respond(
     }
 }
 
-pub(super) fn page() -> Response {
+fn page() -> Response {
     Response {
         policy: Some(POLICY),
         ..Response::new(200, "text/html; charset=utf-8", PAGE.as_bytes().to_vec())

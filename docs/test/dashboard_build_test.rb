@@ -5,16 +5,17 @@ class DashboardBuildTest < ActiveSupport::TestCase
   ROOT = Rails.root.join("..")
   STALE = "Run scripts/build-dashboard"
 
-  test "the committed page matches its source" do
+  test "the committed pages match their sources" do
     Dir.mktmpdir do |dir|
-      output = File.join(dir, "index.html")
       begin
-        ENV["DASHBOARD_HTML"] = output
+        ENV["DASHBOARD_OUT"] = dir
         load ROOT.join("scripts/dashboard/render.rb").to_s
       ensure
-        ENV.delete("DASHBOARD_HTML")
+        ENV.delete("DASHBOARD_OUT")
       end
-      assert_equal ROOT.join("src/dashboard/index.html").read, File.read(output), STALE
+      %w[index.html logs.html].each do |file|
+        assert_equal ROOT.join("src/dashboard", file).read, File.read(File.join(dir, file)), STALE
+      end
     end
   end
 

@@ -13,7 +13,8 @@
 ### Changed
 
 - The dashboard is now at `parcela-dashboard.localhost`, which is reserved in place of `parcela-ui.localhost`.
-- The dashboard is rebuilt: dark, one list grouped by project, with Open, Logs, Start, Restart and Stop on each environment. Its CSS is served only on its own origin.
+- The dashboard is rebuilt: dark, in the site's colours, one list grouped by project with running environments first and stopped ones collapsed, and Open, Logs, Start, Restart and Stop on each. It has its own logs page. Its CSS is served only on its own origin.
+- An environment whose supervisor died now shows `interrupted` if it left processes running, with Start to take them back, and `stopped` if it left nothing. `unknown` remains for a supervisor that cannot be reached for another reason.
 
 ### Removed
 
@@ -22,6 +23,7 @@
 ### Fixed
 
 - The dashboard no longer marks an environment without a URL as "You are here".
+- `proxy.log` no longer grows without limit: Caddy logs warnings and errors only, and the proxy cuts the file to its last 1 MB once it passes 16 MB.
 
 - On macOS the dashboard cut `/_parcela/widget.js` and other large responses off at the socket buffer, so the debug menu never loaded.
 

@@ -135,6 +135,7 @@ Overview JSON uses the same envelope as `ls`: `{runtime_verified, workspaces, un
 | `unhealthy` | A live health check fails. |
 | `stopping` | Shutdown is in progress. |
 | `stopped` | The environment is stopped. |
+| `interrupted` | The supervisor died and left processes running. `parcela up` takes them back. A dead supervisor that left nothing running shows as `stopped`. |
 | `unknown` | The supervisor cannot be contacted reliably. |
 
 Process states are `pending`, `running`, `stopping`, `restarting`, `completed`, `exited`, and `skipped`. `completed` means exit code 0. `skipped` means a dependency stopped before the process could start. The JSON response includes a `diagnostic` field for failures.
@@ -155,7 +156,7 @@ parcela ui
 
 Prints the local dashboard URL, `https://parcela-dashboard.localhost:1443` with the default proxy port. JSON output is `{url}`. The proxy must already be running; this command starts nothing and opens no browser. After upgrading, the next regular command refreshes an older running proxy automatically. The hostname `parcela-dashboard.localhost` is reserved for the dashboard.
 
-The dashboard groups registered environments by project and discovers unregistered worktrees of known projects. Each row shows its URL, state and process count, with Open, Logs, Start, Restart and Stop where they apply. The filter narrows the list. Status refreshes in the background; a failed connection or an old timestamp shows a warning. Apps open at their own URLs, never in a frame.
+The dashboard groups registered environments by project and discovers unregistered worktrees of known projects. Running environments come first, with those that need attention on top and stopped ones collapsed. Each row shows its URL, state and process count, with Open, Logs, Start, Restart and Stop where they apply; an environment with several services opens each by name. The filter narrows the list and opens the stopped ones. Logs open at `/logs`. Status refreshes in the background; a failed connection or an old timestamp shows a warning. Apps open at their own URLs, never in a frame.
 
 Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture/) for what a tagged response changes.
 

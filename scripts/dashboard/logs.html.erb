@@ -1,0 +1,18 @@
+<div class="mx-auto flex h-dvh max-w-6xl flex-col gap-4 px-4 py-6">
+  <header class="flex flex-wrap items-center gap-3">
+    <%= lc_icon_button_link_to "All environments", "/", icon: "arrow-left", size: :sm, shape: :square %>
+    <%= lc_heading "Logs", level: 1, trim: true, id: "title", class: "min-w-0 [overflow-wrap:anywhere]" %>
+    <span id="state"></span>
+  </header>
+  <div class="flex flex-wrap items-center gap-2">
+    <div id="processes" class="flex min-w-0 flex-1 flex-wrap gap-1"></div>
+    <div class="w-full sm:w-72"><%= lc_input type: :search, id: "filter", placeholder: "Filter lines", autocomplete: "off", "aria-label": "Filter log lines" %></div>
+    <%= lc_icon_button "Wrap lines", icon: "bars-3-bottom-left", size: :sm, shape: :square, id: "wrap", "aria-pressed": "false", class: "aria-pressed:bg-accent aria-pressed:text-foreground" %>
+  </div>
+  <pre id="output" tabindex="0" class="min-h-0 flex-1 overflow-auto rounded-2xl bg-card p-4 font-mono text-small leading-relaxed" aria-live="off"></pre>
+</div>
+
+<template id="process"><%= lc_button "process", variant: :ghost, size: :sm, class: "aria-pressed:bg-accent aria-pressed:text-foreground" %></template>
+<% %w[neutral success warning destructive].each do |tone| %>
+  <template id="badge-<%= tone %>"><%= lc_badge "state", tone: tone.to_sym %></template>
+<% end %>

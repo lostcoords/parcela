@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parcela</title>
+<link rel="icon" href="/_parcela/badge.png">
+<link rel="stylesheet" href="/ui.css">
+<script src="/logs.js" defer></script>
+</head>
+<body class="bg-background text-foreground">
+<div class="mx-auto flex h-dvh max-w-6xl flex-col gap-4 px-4 py-6">
+  <header class="flex flex-wrap items-center gap-3">
+    <a class="lc-press inline-grid place-items-center shrink-0 border-0 bg-transparent text-muted-foreground cursor-pointer no-underline transition-[background-color,color,transform,scale] duration-(--lc-motion-quick) ease-(--lc-ease-out) not-disabled:hover:text-(--lc-button-ink,var(--foreground)) not-disabled:hover:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] not-disabled:active:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] disabled:cursor-not-allowed disabled:shadow-none disabled:[--lc-button-bg:color-mix(in_oklab,var(--foreground)_10%,transparent)] disabled:text-[color-mix(in_oklab,var(--foreground)_38%,transparent)] [&amp;_svg]:block [&amp;_svg]:shrink-0 rounded-xl lc-squircle size-control-sm [&amp;_svg]:size-4" aria-label="All environments" data-slot="icon-button" data-size="sm" href="/"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" class="lc-icon" data-slot="icon" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></a>
+    <h1 class="lc-heading m-0 text-foreground text-heading lc-trim min-w-0 [overflow-wrap:anywhere]" id="title">Logs</h1>
+    <span id="state"></span>
+  </header>
+  <div class="flex flex-wrap items-center gap-2">
+    <div id="processes" class="flex min-w-0 flex-1 flex-wrap gap-1"></div>
+    <div class="w-full sm:w-72"><input type="search" class="w-full max-w-full min-w-0 px-3 font-sans text-base bg-(--lc-field-bg,var(--input)) text-foreground placeholder:text-muted-foreground border border-transparent rounded-xl lc-squircle outline-none transition-[border-color,box-shadow] duration-(--lc-motion-quick) ease-(--lc-ease-out) focus:shadow-[0_0_0_calc(var(--spacing)*0.5)_var(--ring,color-mix(in_oklab,var(--primary)_50%,transparent))] aria-invalid:border-destructive aria-invalid:shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_16%,transparent)] h-control-md" data-slot="input" id="filter" placeholder="Filter lines" autocomplete="off" aria-label="Filter log lines"></div>
+    <button type="button" class="lc-press inline-grid place-items-center shrink-0 border-0 bg-transparent text-muted-foreground cursor-pointer no-underline transition-[background-color,color,transform,scale] duration-(--lc-motion-quick) ease-(--lc-ease-out) not-disabled:hover:text-(--lc-button-ink,var(--foreground)) not-disabled:hover:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] not-disabled:active:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] disabled:cursor-not-allowed disabled:shadow-none disabled:[--lc-button-bg:color-mix(in_oklab,var(--foreground)_10%,transparent)] disabled:text-[color-mix(in_oklab,var(--foreground)_38%,transparent)] [&amp;_svg]:block [&amp;_svg]:shrink-0 rounded-xl lc-squircle size-control-sm [&amp;_svg]:size-4 aria-pressed:bg-accent aria-pressed:text-foreground" aria-label="Wrap lines" aria-pressed="false" data-slot="icon-button" data-size="sm" id="wrap"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" class="lc-icon" data-slot="icon" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/></svg></button>
+  </div>
+  <pre id="output" tabindex="0" class="min-h-0 flex-1 overflow-auto rounded-2xl bg-card p-4 font-mono text-small leading-relaxed" aria-live="off"></pre>
+</div>
+
+<template id="process"><button type="button" class="inline-flex items-center justify-center gap-related rounded-pill font-sans whitespace-nowrap no-underline cursor-pointer transition-[background-color,border-color,color,box-shadow,transform,translate,scale,filter] duration-(--lc-motion-control) ease-(--lc-ease-out) motion-safe:not-disabled:hover:-translate-y-px motion-safe:not-disabled:active:translate-y-px active:shadow-none disabled:cursor-not-allowed disabled:shadow-none disabled:[--lc-button-bg:color-mix(in_oklab,var(--foreground)_10%,transparent)] disabled:text-[color-mix(in_oklab,var(--foreground)_38%,transparent)] [&amp;_svg]:block [&amp;_svg:not([class*=&#39;size-&#39;])]:size-[1.1em] [&amp;_svg]:shrink-0 h-control-sm px-3 has-[&gt;[data-icon=inline-start]]:ps-2.5 has-[&gt;[data-icon=inline-end]]:pe-2.5 text-label border border-transparent bg-transparent text-muted-foreground not-disabled:hover:text-(--lc-button-ink,var(--foreground)) not-disabled:hover:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] not-disabled:active:bg-[color-mix(in_oklab,var(--lc-button-bg,var(--secondary))_94%,var(--lc-button-ink,var(--foreground)))] aria-pressed:bg-accent aria-pressed:text-foreground" data-slot="button" data-variant="ghost" data-size="sm">process</button></template>
+  <template id="badge-neutral"><span class="inline-flex items-center gap-tight rounded-lg lc-squircle px-2 py-0.5 font-sans text-caption font-medium whitespace-nowrap bg-tile text-muted-foreground" data-slot="badge" data-tone="neutral">state</span></template>
+  <template id="badge-success"><span class="inline-flex items-center gap-tight rounded-lg lc-squircle px-2 py-0.5 font-sans text-caption font-medium whitespace-nowrap bg-success-soft text-success" data-slot="badge" data-tone="success">state</span></template>
+  <template id="badge-warning"><span class="inline-flex items-center gap-tight rounded-lg lc-squircle px-2 py-0.5 font-sans text-caption font-medium whitespace-nowrap bg-warning-soft text-warning" data-slot="badge" data-tone="warning">state</span></template>
+  <template id="badge-destructive"><span class="inline-flex items-center gap-tight rounded-lg lc-squircle px-2 py-0.5 font-sans text-caption font-medium whitespace-nowrap bg-destructive-soft text-destructive" data-slot="badge" data-tone="destructive">state</span></template>
+</body>
+</html>

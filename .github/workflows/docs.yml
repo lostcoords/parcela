@@ -10,6 +10,8 @@ on:
       - 'assets/brand/logo.png'
       - 'scripts/dashboard/**'
       - 'src/dashboard/index.html'
+      - 'src/dashboard/logs.html'
+      - 'src/dashboard/logs.js'
       - 'src/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   push:
@@ -22,6 +24,8 @@ on:
       - 'assets/brand/logo.png'
       - 'scripts/dashboard/**'
       - 'src/dashboard/index.html'
+      - 'src/dashboard/logs.html'
+      - 'src/dashboard/logs.js'
       - 'src/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   workflow_dispatch:

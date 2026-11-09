@@ -22,7 +22,7 @@
   const CORNER_PULL = 24;
 
   const STYLE = `
-    :host{all:initial;color-scheme:dark;--surface:#17181b;--raised:#26272b;--hover:#313237;--selected:#3a3b41;--well:#101114;--line:#ffffff1a;--text:#ecece8;--muted:#9a9ca3;--ready:#58b878;--busy:#dda35a;--failed:#ef7f68;font:13px/1.4 system-ui,-apple-system,sans-serif;color:var(--text)}
+    :host{all:initial;color-scheme:dark;--surface:color-mix(in oklab,#12354e 24%,oklch(21% 0 0));--raised:color-mix(in oklab,#12354e 28%,oklch(25% 0 0));--hover:color-mix(in oklab,#12354e 30%,oklch(29% 0 0));--selected:color-mix(in oklab,#12354e 32%,oklch(33% 0 0));--well:color-mix(in oklab,#12354e 20%,oklch(17% 0 0));--line:#ffffff1a;--text:color-mix(in oklab,#bb7125 10%,oklch(92% 0 0));--muted:#9a9ca3;--ready:#58b878;--busy:#dda35a;--failed:#ef7f68;font:13px/1.4 system-ui,-apple-system,sans-serif;color:var(--text)}
     *{box-sizing:border-box}
     button,select{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
     button:focus-visible,a:focus-visible,select:focus-visible,section:focus-visible{outline:2px solid var(--text);outline-offset:2px}
@@ -486,6 +486,8 @@
       }
       refresh();
     };
+    // Parcela lost its supervisor: Start takes back whatever is still running.
+    const adrift = environment => environment.state === 'interrupted' || environment.state === 'unknown';
     const row = environment => {
       const running = environment.action?.state === 'running';
       const ready = environment.state === 'ready';
@@ -500,6 +502,7 @@
       // dashboard's page every one. `parcela up` in a checkout registers it.
       if (environment.key && environment.manageable) {
         if (stopped) buttons.push(button('start', 'Start', () => act(environment, 'start')));
+        else if (adrift(environment)) buttons.push(button('start', 'Start', () => act(environment, 'start')), button('stop', 'Stop', () => act(environment, 'stop'), true));
         else buttons.push(button('restart', 'Restart', () => act(environment, 'restart')), button('stop', 'Stop', () => act(environment, 'stop'), true));
         if (environment.processes.length) buttons.push(button('terminal', 'Logs', () => view.onLogs?.(environment.key)));
       }

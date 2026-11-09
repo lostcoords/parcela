@@ -10,22 +10,31 @@
     <% end %>
     <%= lc_text "Connecting to Parcela…", size: :small, tone: :muted, id: "health", role: "status", "aria-live": "polite" %>
     <div id="environments" class="grid gap-section"></div>
+    <details id="stopped" class="group" hidden>
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded text-small font-semibold text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <span class="transition-transform group-open:rotate-90"><%= lc_icon "chevron-right", options: { class: "size-4" } %></span>
+        <span id="stopped-count"></span>
+      </summary>
+      <div id="stopped-list" class="mt-6 grid gap-section"></div>
+    </details>
   <% end %>
 <% end %>
 
 <template id="project"><%= lc_list_section("Project") { lc_list_group(tag: :ul) } %></template>
 <template id="row">
-  <%= lc_list_row "Name", subtitle: "URL", tag: :li do %>
-    <div class="flex shrink-0 items-center gap-1" data-slot="controls"></div>
+  <%= lc_list_row "Name", subtitle: "URL", tag: :li, class: "max-sm:flex-wrap max-sm:[&>[data-slot=list-text]]:basis-full" do %>
+    <div class="flex shrink-0 flex-wrap items-center justify-end gap-1 max-sm:justify-start" data-slot="controls"></div>
   <% end %>
 </template>
 <template id="problem"><span class="text-small text-destructive [overflow-wrap:anywhere]"></span></template>
+<template id="note"><span class="text-small text-warning"></span></template>
 <template id="empty"><%= lc_text "", tone: :muted %></template>
-<% { neutral: "neutral", success: "success", warning: "warning", destructive: "destructive" }.each do |tone, name| %>
-  <template id="badge-<%= name %>"><%= lc_badge "state", tone: tone %></template>
+<% %w[neutral success warning destructive].each do |tone| %>
+  <template id="badge-<%= tone %>"><%= lc_badge "state", tone: tone.to_sym %></template>
 <% end %>
 <template id="open"><%= lc_icon_button_link_to "Open", "#", icon: "arrow-top-right-on-square", size: :sm, shape: :square, target: "_blank", rel: "noopener" %></template>
+<template id="open-service"><%= lc_button_link_to("#", variant: :outline, size: :sm, target: "_blank", rel: "noopener", class: "text-small") { tag.span("service", data: { slot: "service" }) } %></template>
 <template id="logs"><%= lc_icon_button_link_to "Logs", "#", icon: "command-line", size: :sm, shape: :square %></template>
-<template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square %></template>
+<template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square, class: "text-(--parcela-brand)" %></template>
 <template id="restart"><%= lc_icon_button "Restart", icon: "arrow-path", size: :sm, shape: :square %></template>
 <template id="stop"><%= lc_icon_button "Stop", icon: "stop", size: :sm, shape: :square %></template>

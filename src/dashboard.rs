@@ -352,11 +352,16 @@ fn serve(
                 "text/html; charset=utf-8",
                 include_bytes!("dashboard/index.html").to_vec(),
             ),
-            "/logs" => {
-                let page = environment::page();
-                policy = page.policy.unwrap_or(policy);
-                (page.status, page.mime, page.body)
-            }
+            "/logs" => (
+                200,
+                "text/html; charset=utf-8",
+                include_bytes!("dashboard/logs.html").to_vec(),
+            ),
+            "/logs.js" => (
+                200,
+                "text/javascript; charset=utf-8",
+                include_bytes!("dashboard/logs.js").to_vec(),
+            ),
             "/app.js" => (
                 200,
                 "text/javascript; charset=utf-8",
@@ -462,7 +467,12 @@ mod tests {
         assert!(page.contains("frame-ancestors 'none'"));
         assert!(!page.contains("frame-src"));
         assert!(!page.contains("<iframe"));
-        for (path, status) in [("/ui.css", 200), ("/logs", 200), ("/workspace", 404)] {
+        for (path, status) in [
+            ("/ui.css", 200),
+            ("/logs", 200),
+            ("/logs.js", 200),
+            ("/workspace", 404),
+        ] {
             let reply = response(&format!(
                 "GET {path} HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\n\r\n"
             ));

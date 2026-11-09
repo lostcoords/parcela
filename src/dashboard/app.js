@@ -2,12 +2,18 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const STALE_MS = 15000;
-  const TONES = { ready: 'success', stopped: 'neutral', unregistered: 'neutral', failed: 'destructive' };
+  const TONES = { ready: 'success', stopped: 'neutral', unregistered: 'neutral', failed: 'destructive', unhealthy: 'destructive' };
+  const NOTES = {
+    interrupted: 'Parcela lost track of this run. Start takes it back.',
+    unknown: 'Parcela can’t reach this run. Start takes it back.',
+  };
   let environments = [];
   let checked = null;
   let problem = null;
   let drawn = null;
   const refused = {};
+  const remembered = () => { try { return localStorage.getItem('parcela:stopped') === 'open'; } catch { return false; } };
+  let showStopped = remembered();
 
   const clone = id => $(id).content.firstElementChild.cloneNode(true);
   const badge = (text, tone) => {
@@ -21,11 +27,24 @@
     node.dataset.control = action;
     return node;
   };
-  const opener = (url, label) => {
-    const node = named(clone('open'), label, `open:${url}`);
-    node.href = url;
-    return node;
+
+  const acting = environment => environment.action?.state === 'running';
+  const resting = environment => environment.state === 'stopped' || environment.state === 'unregistered';
+  // The reason, without the path to a log the Logs button already opens.
+  const failure = environment => refused[environment.id]
+    || (environment.action?.state === 'failed'
+      ? `${environment.action.name} failed: ${(environment.action.message || 'see logs').replace(/^parcela: /, '').replace(/;?\s*full log: \S+/, '')}`
+      : null);
+  const quiet = environment => resting(environment) && !acting(environment) && !failure(environment);
+  // What needs a person first, then what is changing, then what is running.
+  const rank = environment => {
+    if (failure(environment) || NOTES[environment.state] || environment.state === 'unhealthy') return 0;
+    if (acting(environment) || environment.state !== 'ready') return 1;
+    return 2;
   };
+  const compare = (a, b) => rank(a) - rank(b)
+    || Number(b.name === 'primary') - Number(a.name === 'primary')
+    || a.name.localeCompare(b.name);
 
   const act = async (environment, name) => {
     refused[environment.id] = null;
@@ -38,36 +57,42 @@
     refresh();
   };
 
+  const openers = environment => {
+    if (environment.state !== 'ready') return [];
+    const several = environment.services.length > 1;
+    return environment.services.map(service => {
+      const label = several ? `Open ${service.name}` : 'Open';
+      const node = named(clone(several ? 'open-service' : 'open'), label, `open:${service.name}`);
+      node.href = service.url;
+      if (several) node.querySelector('[data-slot=service]').textContent = service.name;
+      return node;
+    });
+  };
+
   const controls = environment => {
-    const running = environment.action?.state === 'running';
-    const ready = environment.state === 'ready';
-    const stopped = environment.state === 'stopped' || environment.state === 'unregistered';
-    const nodes = ready ? environment.services.map(service => opener(service.url, environment.services.length > 1 ? `Open ${service.name}` : 'Open')) : [];
-    if (environment.id && environment.manageable) {
-      const button = (name, label) => {
-        const node = named(clone(name), label, name);
-        node.disabled = running;
-        node.addEventListener('click', () => act(environment, name));
-        return node;
-      };
-      if (environment.processes.length) {
-        const logs = named(clone('logs'), 'Logs', 'logs');
-        logs.href = `/logs#logs:${encodeURIComponent(environment.id)}`;
-        nodes.push(logs);
-      }
-      if (stopped) nodes.push(button('start', 'Start'));
-      else nodes.push(button('restart', 'Restart'), button('stop', 'Stop'));
+    const nodes = openers(environment);
+    if (!environment.id || !environment.manageable) return nodes;
+    const button = (name, label) => {
+      const node = named(clone(name), label, name);
+      node.disabled = acting(environment);
+      node.addEventListener('click', () => act(environment, name));
+      return node;
+    };
+    if (environment.processes.length || failure(environment)) {
+      const logs = named(clone('logs'), 'Logs', 'logs');
+      logs.href = `/logs?environment=${encodeURIComponent(environment.id)}`;
+      nodes.push(logs);
     }
+    if (resting(environment)) nodes.push(button('start', 'Start'));
+    else if (NOTES[environment.state]) nodes.push(button('start', 'Start'), button('stop', 'Stop'));
+    else nodes.push(button('restart', 'Restart'), button('stop', 'Stop'));
     return nodes;
   };
 
   const status = environment => {
-    if (environment.action?.state === 'running') return badge(environment.action.name === 'stop' ? 'stopping' : 'starting', 'warning');
+    if (acting(environment)) return badge(environment.action.name === 'stop' ? 'stopping' : 'starting', 'warning');
     return badge(environment.state, TONES[environment.state] || 'warning');
   };
-
-  const failure = environment => refused[environment.id]
-    || (environment.action?.state === 'failed' ? `${environment.action.name} failed: ${environment.action.message || 'see logs'}` : null);
 
   const row = environment => {
     const node = clone('row');
@@ -79,20 +104,28 @@
     if (subtitle) line.textContent = subtitle;
     else line.remove();
     const message = failure(environment);
-    if (message) {
-      const text = clone('problem');
-      text.textContent = message;
+    const note = acting(environment) ? null : NOTES[environment.state];
+    if (message || note) {
+      const text = clone(message ? 'problem' : 'note');
+      text.textContent = message || note;
       node.querySelector('[data-slot=list-text]').append(text);
     }
     node.querySelector('[data-slot=controls]').append(status(environment), ...controls(environment));
     return node;
   };
 
-  const project = (name, members) => {
-    const node = clone('project');
-    node.querySelector('h2').textContent = name;
-    node.querySelector('ul').append(...members.map(row));
-    return node;
+  const projects = rows => {
+    const grouped = new Map();
+    for (const environment of [...rows].sort((a, b) => rank(a) - rank(b) || a.project.localeCompare(b.project))) {
+      if (!grouped.has(environment.project)) grouped.set(environment.project, []);
+      grouped.get(environment.project).push(environment);
+    }
+    return [...grouped].map(([name, members]) => {
+      const node = clone('project');
+      node.querySelector('h2').textContent = name;
+      node.querySelector('ul').append(...members.sort(compare).map(row));
+      return node;
+    });
   };
 
   const draw = () => {
@@ -103,20 +136,22 @@
     drawn = signature;
     const focused = document.activeElement?.closest?.('[data-slot=list-row]')?.dataset.environment;
     const control = document.activeElement?.dataset?.control;
-    const projects = new Map();
-    for (const environment of [...rows].sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name))) {
-      if (!projects.has(environment.project)) projects.set(environment.project, []);
-      projects.get(environment.project).push(environment);
-    }
-    const nodes = [...projects].map(([name, members]) => project(name, members));
-    if (!nodes.length && checked) {
+    const active = rows.filter(environment => !quiet(environment));
+    const stopped = rows.filter(quiet);
+    const nodes = projects(active);
+    if (!rows.length && checked) {
       const empty = clone('empty');
       empty.textContent = term ? 'No environments match.' : 'No environments yet. Run `parcela up` in a project.';
       nodes.push(empty);
     }
     $('environments').replaceChildren(...nodes);
+    $('environments').hidden = !nodes.length;
+    $('stopped').hidden = !stopped.length;
+    $('stopped-count').textContent = `${stopped.length} stopped`;
+    $('stopped-list').replaceChildren(...projects(stopped));
+    $('stopped').open = Boolean(term) || !active.length || showStopped;
     if (focused && control) {
-      for (const node of $('environments').querySelectorAll('[data-slot=list-row]')) {
+      for (const node of document.querySelectorAll('[data-slot=list-row]')) {
         if (node.dataset.environment === focused) node.querySelector(`[data-control="${CSS.escape(control)}"]`)?.focus();
       }
     }
@@ -152,6 +187,10 @@
   };
 
   $('filter').addEventListener('input', draw);
+  $('stopped').querySelector('summary').addEventListener('click', () => {
+    showStopped = !$('stopped').open;
+    try { localStorage.setItem('parcela:stopped', showStopped ? 'open' : 'closed'); } catch { /* A convenience only. */ }
+  });
   refresh();
   setInterval(refresh, 2000);
 })();

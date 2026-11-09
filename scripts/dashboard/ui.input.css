@@ -1,8 +1,38 @@
-/* Dark, from lostcoords-ui's core only, for parcela-dashboard.localhost. App pages never load it. */
+/* lostcoords-ui's core in the site's dark theme, for parcela-dashboard.localhost. App pages never
+   load it. */
 @layer theme, base, layout, components, modules, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @source "../../src/dashboard/index.html";
+@source "../../src/dashboard/logs.html";
+@source "../../src/dashboard/logs.js";
 @import "../../docs/app/assets/builds/tailwind/lostcoords_ui/base.css";
 @import "../../docs/app/assets/builds/tailwind/lostcoords_ui/core.css";
+
+/* Sanzo Wada's combination No. 279, as on the site: Dark Tyrian Blue tints the surfaces and Raw
+   Sienna is the accent. */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --parcela-ink: #12354e;
+  --parcela-brand: #bb7125;
+  --background: color-mix(in oklab, var(--parcela-ink) 20%, oklch(17% 0 0));
+  --foreground: color-mix(in oklab, var(--parcela-brand) 10%, oklch(92% 0 0));
+  --card: color-mix(in oklab, var(--parcela-ink) 24%, oklch(21% 0 0));
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --secondary: var(--card);
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in oklab, var(--parcela-ink) 26%, oklch(23% 0 0));
+  --muted-foreground: color-mix(in oklab, var(--foreground) 76%, var(--background));
+  --accent: color-mix(in oklab, var(--parcela-ink) 28%, oklch(25% 0 0));
+  --accent-foreground: var(--foreground);
+  --destructive: #ff8a8d;
+  --border: color-mix(in oklab, var(--foreground) 14%, transparent);
+  --input: var(--border);
+  --ring: var(--parcela-brand);
+}
