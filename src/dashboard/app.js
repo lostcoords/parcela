@@ -22,11 +22,17 @@
     return node;
   };
   const named = (node, label, action) => {
-    node.title = label;
     node.setAttribute('aria-label', label);
     node.dataset.control = action;
     return node;
   };
+  // An icon button comes inside its tooltip; this finds the control in it.
+  const control = (id, label, action) => {
+    const tooltip = clone(id);
+    named(tooltip.querySelector('a, button'), label, action);
+    return tooltip;
+  };
+  const inner = node => node.matches('a, button') ? node : node.querySelector('a, button');
 
   const acting = environment => environment.action?.state === 'running';
   const resting = environment => environment.state === 'stopped' || environment.state === 'not started';
@@ -62,25 +68,29 @@
     const several = environment.services.length > 1;
     return environment.services.map(service => {
       const label = several ? `Open ${service.name}` : 'Open';
-      const node = named(clone(several ? 'open-service' : 'open'), label, `open:${service.name}`);
-      node.href = service.url;
+      const node = several ? named(clone('open-service'), label, `open:${service.name}`) : control('open', label, `open:${service.name}`);
+      inner(node).href = service.url;
       if (several) node.querySelector('[data-slot=service]').textContent = service.name;
       return node;
     });
   };
 
+  const logsAt = environment => environment.id && environment.manageable && (environment.processes.length || failure(environment))
+    ? `/logs?environment=${encodeURIComponent(environment.id)}`
+    : null;
+
   const controls = environment => {
     const nodes = openers(environment);
     if (!environment.id || !environment.manageable) return nodes;
     const button = (name, label) => {
-      const node = named(clone(name), label, name);
-      node.disabled = acting(environment);
-      node.addEventListener('click', () => act(environment, name));
+      const node = control(name, label, name);
+      inner(node).disabled = acting(environment);
+      inner(node).addEventListener('click', () => act(environment, name));
       return node;
     };
-    if (environment.processes.length || failure(environment)) {
-      const logs = named(clone('logs'), 'Logs', 'logs');
-      logs.href = `/logs?environment=${encodeURIComponent(environment.id)}`;
+    if (logsAt(environment)) {
+      const logs = control('logs', 'Logs', 'logs');
+      inner(logs).href = logsAt(environment);
       nodes.push(logs);
     }
     if (resting(environment)) nodes.push(button('start', 'Start'));
@@ -95,9 +105,13 @@
   };
 
   const row = environment => {
-    const node = clone('row');
+    // A row with logs links its name there, and a click anywhere else in the row follows it.
+    const href = logsAt(environment);
+    const node = clone(href ? 'row-linked' : 'row');
     node.dataset.environment = environment.id || `${environment.project}/${environment.name}`;
-    node.querySelector('[data-slot=list-title]').textContent = environment.name;
+    const title = node.querySelector('[data-slot=list-link]') || node.querySelector('[data-slot=list-title]');
+    title.textContent = environment.name;
+    if (href) title.href = href;
     const processes = environment.processes.length;
     const subtitle = [environment.url?.replace(/^https:\/\//, ''), processes ? `${processes} process${processes === 1 ? '' : 'es'}` : null, environment.state === 'not started' ? 'run parcela up there to register it' : null].filter(Boolean).join(' · ');
     const line = node.querySelector('[data-slot=list-subtitle]');

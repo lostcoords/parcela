@@ -21,20 +21,22 @@
 <% end %>
 
 <template id="project"><%= lc_list_section("Project") { lc_list_group(tag: :ul) } %></template>
-<template id="row">
-  <%= lc_list_row "Name", subtitle: "URL", tag: :li, class: "max-sm:flex-wrap max-sm:[&>[data-slot=list-text]]:basis-full" do %>
-    <div class="flex shrink-0 flex-wrap items-center justify-end gap-1 max-sm:justify-start" data-slot="controls"></div>
-  <% end %>
-</template>
+<% [ [ "row", nil ], [ "row-linked", "#" ] ].each do |id, href| %>
+  <template id="<%= id %>">
+    <%= lc_list_row "Name", subtitle: "URL", href: href, tag: :li, class: "max-sm:flex-wrap max-sm:[&>[data-slot=list-text]]:basis-full" do %>
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-1 max-sm:justify-start" data-slot="controls"></div>
+    <% end %>
+  </template>
+<% end %>
 <template id="problem"><span class="text-small text-destructive [overflow-wrap:anywhere]"></span></template>
 <template id="note"><span class="text-small text-warning"></span></template>
 <template id="empty"><%= lc_text "", tone: :muted %></template>
 <% %w[neutral success warning destructive].each do |tone| %>
   <template id="badge-<%= tone %>"><%= lc_badge "state", tone: tone.to_sym %></template>
 <% end %>
-<template id="open"><%= lc_icon_button_link_to "Open", "#", icon: "arrow-top-right-on-square", size: :sm, shape: :square, target: "_blank", rel: "noopener" %></template>
+<template id="open"><%= lc_icon_button_link_to "Open", "#", icon: "arrow-top-right-on-square", size: :sm, shape: :square, target: "_blank", rel: "noopener", tooltip: true %></template>
 <template id="open-service"><%= lc_button_link_to("#", variant: :outline, size: :sm, target: "_blank", rel: "noopener", class: "text-small") { tag.span("service", data: { slot: "service" }) } %></template>
-<template id="logs"><%= lc_icon_button_link_to "Logs", "#", icon: "command-line", size: :sm, shape: :square %></template>
-<template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square, class: "text-(--parcela-brand)" %></template>
-<template id="restart"><%= lc_icon_button "Restart", icon: "arrow-path", size: :sm, shape: :square %></template>
-<template id="stop"><%= lc_icon_button "Stop", icon: "stop", size: :sm, shape: :square %></template>
+<template id="logs"><%= lc_icon_button_link_to "Logs", "#", icon: "command-line", size: :sm, shape: :square, tooltip: true %></template>
+<template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square, class: "text-(--parcela-brand)", tooltip: true %></template>
+<template id="restart"><%= lc_icon_button "Restart", icon: "arrow-path", size: :sm, shape: :square, tooltip: true %></template>
+<template id="stop"><%= lc_icon_button "Stop", icon: "stop", size: :sm, shape: :square, tooltip: true %></template>

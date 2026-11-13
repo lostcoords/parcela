@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Dashboard: icon buttons show their name on hover and keyboard focus, a row links to its logs, and the tab icon matches the site's. Built on lostcoords-ui 0.9.3.
+
 ## 0.9.0 - 2026-11-10
 
 ### Added

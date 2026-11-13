@@ -367,6 +367,11 @@ fn serve(
                 "text/javascript; charset=utf-8",
                 include_bytes!("dashboard/app.js").to_vec(),
             ),
+            "/icon.png" => (
+                200,
+                "image/png",
+                include_bytes!("dashboard/icon.png").to_vec(),
+            ),
             "/ui.css" => (
                 200,
                 "text/css; charset=utf-8",

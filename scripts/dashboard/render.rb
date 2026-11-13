@@ -11,7 +11,7 @@ output = ENV.fetch("DASHBOARD_OUT", "#{root}/src/dashboard")
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Parcela</title>
-    <link rel="icon" href="/_parcela/badge.png">
+    <link rel="icon" href="/icon.png">
     <link rel="stylesheet" href="/ui.css">
     <script src="/#{script}" defer></script>
     </head>
