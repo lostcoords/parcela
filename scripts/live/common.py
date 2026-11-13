@@ -136,13 +136,18 @@ class Live:
     def fetch(self, host, path='/ready', headers='', host_header=None, timeout=3, method='GET'):
         """One HTTPS request through the proxy, trusting only this state's CA. Returns (status, head, body)."""
         context = ssl.create_default_context(cafile=str(self.state / 'proxy/data/pki/authorities/local/root.crt'))
-        with context.wrap_socket(socket.create_connection(('127.0.0.1', self.https), timeout=timeout), server_hostname=host) as sock:
-            sock.sendall(f'{method} {path} HTTP/1.1\r\nHost: {host_header or host}\r\nConnection: close\r\n{headers}\r\n'.encode())
-            data = b''
-            while part := sock.recv(65536):
-                data += part
-                if path == '/ws':
-                    break
+        # Caddy closes a just-accepted connection unanswered while it reloads routes. Browsers resend a
+        # GET then, so this does too, once; any answer at all is taken as it is.
+        for attempt in range(2 if method == 'GET' else 1):
+            with context.wrap_socket(socket.create_connection(('127.0.0.1', self.https), timeout=timeout), server_hostname=host) as sock:
+                sock.sendall(f'{method} {path} HTTP/1.1\r\nHost: {host_header or host}\r\nConnection: close\r\n{headers}\r\n'.encode())
+                data = b''
+                while part := sock.recv(65536):
+                    data += part
+                    if path == '/ws':
+                        break
+            if data:
+                break
         head, _, body = data.partition(b'\r\n\r\n')
         if not head.startswith(b'HTTP/1.1 '):
             raise ValueError(f'no HTTP response from {host}: {data[:80]!r}')
