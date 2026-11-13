@@ -178,6 +178,11 @@ pub fn capture(
     limit: usize,
 ) -> Result<std::process::Output> {
     use std::{io::Read, os::fd::AsRawFd};
+    let program = std::path::Path::new(command.get_program())
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     command
         .process_group(0)
         .stdin(Stdio::null())
@@ -228,7 +233,9 @@ pub fn capture(
         }
         ensure!(
             Instant::now() < deadline,
-            "backend control command timed out"
+            "{} did not finish within {}s",
+            program,
+            timeout.as_secs()
         );
         std::thread::sleep(Duration::from_millis(10));
     };
@@ -275,12 +282,16 @@ impl Listeners {
         if ports.is_empty() {
             return Ok(Self(Vec::new()));
         }
-        let output = Command::new(lsof())
-            .arg("-nP")
-            .args(&ports)
-            .args(["-sTCP:LISTEN", "-Fptn"])
-            .output()
-            .context("lsof is required to verify TCP listener ownership")?;
+        // Bounded, so an `lsof` stuck on a network mount never stalls the owner.
+        let output = capture(
+            Command::new(lsof())
+                .arg("-nP")
+                .args(&ports)
+                .args(["-sTCP:LISTEN", "-Fptn"]),
+            Duration::from_secs(10),
+            4 << 20,
+        )
+        .context("lsof is required to verify TCP listener ownership")?;
         // lsof exits 1 when any -i selection matched nothing, even while printing
         // the ports that did match: an idle port is not an inspection failure.
         ensure!(
@@ -570,7 +581,7 @@ pub fn tree(roots: &[Identity]) -> Result<Vec<Identity>> {
 fn parents() -> Result<Vec<(u32, u32)>> {
     let output = capture(
         Command::new("ps").args(["-A", "-o", "pid=,ppid="]),
-        Duration::from_secs(2),
+        Duration::from_secs(5),
         1_000_000,
     )?;
     ensure!(

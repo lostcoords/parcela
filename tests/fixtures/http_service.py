@@ -4,10 +4,13 @@ import json
 import os
 import socketserver
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/ready' and os.path.exists(os.path.join(os.environ['PARCELA_RUNTIME_DIR'], 'slow')):
+            time.sleep(.45)
         if self.path == '/ready' and any(os.path.exists(os.path.join(os.environ['PARCELA_RUNTIME_DIR'], name)) for name in ['unhealthy', f'unhealthy-{sys.argv[1]}' if len(sys.argv) > 1 else 'unhealthy']):
             self.send_response(503)
             self.send_header('Content-Length', '0')

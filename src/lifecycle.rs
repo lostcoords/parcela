@@ -201,7 +201,16 @@ pub fn down(registry: &Registry, workspace: &Workspace) -> Result<Value> {
                         .to_owned()
                 })
                 .unwrap_or_else(|| "a process did not exit".into());
-            anyhow::bail!("shutdown incomplete: {reason}; run parcela down again");
+            // The owner records this just before it exits; once it has, `down` can retry at once.
+            let released = Instant::now() + Duration::from_secs(5);
+            while private::Lock::try_acquire(&path.join("owner.lock"))?.is_none()
+                && Instant::now() < released
+            {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            anyhow::bail!(
+                "shutdown incomplete: {reason}; fix it if needed, then run parcela down again"
+            );
         }
         if current.status == SessionStatus::Stopped
             && let Ok(_released) = private::Lock::acquire(&path.join("owner.lock"))
@@ -365,21 +374,6 @@ fn progress(live: &Value) -> String {
     } else {
         format!(" · {}", running.join(", "))
     }
-}
-
-pub fn service_request(
-    registry: &Registry,
-    workspace: &Workspace,
-    action: Action,
-) -> Result<Value> {
-    let session = registry
-        .session(&workspace.id)?
-        .context("environment is not running")?;
-    ensure!(
-        session.status != SessionStatus::Stopped && session.kind == "up",
-        "environment is not running"
-    );
-    control::request(&registry.runtime_path(workspace), &session, action)
 }
 
 pub fn current_session(registry: &Registry, expected: &Session) -> Result<Session> {

@@ -344,8 +344,10 @@ pub fn run(
         false,
         ready.clone(),
     );
+    let health = Health::start(&record);
     let result = Owner {
         registry,
+        health,
         workspace: &workspace,
         path: &path,
         record,
@@ -447,12 +449,118 @@ fn stdout_is(path: &std::path::Path) -> bool {
         .is_ok_and(|out| out.dev() == file.dev() && out.ino() == file.ino())
 }
 
-/// A process log is copied to `<name>.log.1` and emptied past this size.
 /// How often a ready run re-checks its process tree and listeners.
 const READY_CHECK: Duration = Duration::from_secs(2);
+/// A process log is copied to `<name>.log.1` and emptied past this size.
 const LOG_LIMIT: u64 = 16 * 1024 * 1024;
 /// How long the running loop keeps going while it cannot inspect its processes and listeners.
 const INSPECTION_GRACE: Duration = Duration::from_secs(30);
+/// While someone keeps asking for this run's status, how often the owner asks each service its
+/// health URL, away from the thread that answers; the dashboard asks every two seconds.
+const HEALTH_CHECK: Duration = Duration::from_secs(2);
+/// An answer older than this is asked again, inline, before a status reply uses it.
+const HEALTH_STALE: Duration = Duration::from_secs(3);
+/// How long after the last status request the checks go on.
+const HEALTH_WANTED: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+struct Checks {
+    results: BTreeMap<u16, (bool, Instant)>,
+    wanted: Option<Instant>,
+}
+
+/// Each endpoint's latest health check, made on its own thread while status requests keep coming.
+/// A reply reads it instead of asking a slow app itself, which made callers with a short budget
+/// give up on the owner. Nobody asking means no checks, so an idle app's log stays quiet.
+struct Health {
+    checks: std::sync::Arc<std::sync::Mutex<Checks>>,
+    stopped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+impl Health {
+    fn start(record: &Record) -> Self {
+        let manifest = &record.manifest;
+        let targets: Vec<(u16, String, String)> = record
+            .session
+            .endpoints(manifest.default_service.as_deref())
+            .into_iter()
+            .filter_map(|endpoint| {
+                let path = manifest
+                    .services
+                    .get(&endpoint.service)?
+                    .readiness_path
+                    .clone();
+                Some((endpoint.backend_port, endpoint.hostname, path))
+            })
+            .collect();
+        let health = Self {
+            checks: Default::default(),
+            stopped: Default::default(),
+        };
+        if targets.is_empty() {
+            return health;
+        }
+        let (checks, stopped) = (health.checks.clone(), health.stopped.clone());
+        let checker = move || {
+            use std::sync::atomic::Ordering::Relaxed;
+            while !stopped.load(Relaxed) {
+                let wanted = checks.lock().is_ok_and(|checks| {
+                    checks.wanted.is_some_and(|at| at.elapsed() < HEALTH_WANTED)
+                });
+                if wanted
+                    && let Ok(listeners) = Listeners::inspect(targets.iter().map(|target| target.0))
+                {
+                    for (port, host, path) in &targets {
+                        let ready = listeners.on(*port).is_ok_and(|held| !held.is_empty())
+                            && listeners
+                                .address(*port)
+                                .and_then(|address| http::readiness(address, host, path))
+                                .unwrap_or(false);
+                        if let Ok(mut checks) = checks.lock() {
+                            checks.results.insert(*port, (ready, Instant::now()));
+                        }
+                    }
+                }
+                let next = Instant::now()
+                    + if wanted {
+                        HEALTH_CHECK
+                    } else {
+                        Duration::from_millis(200)
+                    };
+                while !stopped.load(Relaxed) && Instant::now() < next {
+                    thread::sleep(Duration::from_millis(50));
+                }
+            }
+        };
+        if let Err(error) = thread::Builder::new()
+            .name("parcela-health".into())
+            .spawn(checker)
+        {
+            // Replies then ask the apps themselves.
+            crate::paint::Paint::note(&format!("health checks run inline: {error}"));
+        }
+        health
+    }
+
+    /// Whether `port` answered its health URL recently, and keeps the checks going for a while.
+    /// Only a healthy answer is reused: anything else is asked again by the caller, so a run that
+    /// just became ready or unhealthy is never reported late.
+    fn recently_ready(&self, port: u16) -> bool {
+        let Ok(mut checks) = self.checks.lock() else {
+            return false;
+        };
+        checks.wanted = Some(Instant::now());
+        checks
+            .results
+            .get(&port)
+            .is_some_and(|(ready, at)| *ready && at.elapsed() < HEALTH_STALE)
+    }
+}
+impl Drop for Health {
+    fn drop(&mut self) {
+        self.stopped
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 /// Whether this run still owes the environment its one-time `hooks.setup`.
 fn setup_pending(manifest: &Manifest, runtime: &std::path::Path) -> bool {
@@ -733,6 +841,7 @@ struct Owner<'a> {
     setup: bool,
     /// Set once every service answered; an adopted run that was ready starts set.
     ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    health: Health,
 }
 impl Owner<'_> {
     /// Supervise until a stop request, a signal, the supervisor's exit or a failure, then stop
@@ -766,6 +875,7 @@ impl Owner<'_> {
         let mut proxy_error: Option<String> = None;
         let mut inspection_failing: Option<Instant> = None;
         let mut observed_at: Option<Instant> = None;
+        let mut proxy_seen: Option<String> = None;
         loop {
             if *requested_stop {
                 return Ok(0);
@@ -781,8 +891,16 @@ impl Owner<'_> {
                 *requested_stop = true;
                 return Ok(128 + self.signals.received() as i32);
             }
-            // `ps` and `lsof` run every tick only while starting; a ready run is checked less often.
-            if ready && observed_at.is_some_and(|at| at.elapsed() < READY_CHECK) {
+            // `ps` and `lsof` run every tick only while starting; a ready run is checked less often,
+            // but at once when a new proxy starts, so its routes are back within a tick.
+            let proxy_token = if endpoints.is_empty() {
+                None
+            } else {
+                router::recorded_token(self.registry.state_path())
+            };
+            let new_proxy = proxy_token.is_some() && proxy_token != proxy_seen;
+            proxy_seen = proxy_token;
+            if ready && !new_proxy && observed_at.is_some_and(|at| at.elapsed() < READY_CHECK) {
                 self.idle(Duration::from_millis(200), requested_stop)?;
                 continue;
             }
@@ -801,8 +919,9 @@ impl Owner<'_> {
                     .collect::<Result<BTreeMap<_, _>>>()?;
                 Ok((listeners, observed))
             });
-            // `ps` and `lsof` can miss their deadline on a loaded machine, so a failed check is
-            // retried, and only one that keeps failing stops the environment.
+            // `ps` and `lsof` can miss their deadline on a loaded or throttled machine, so a failed
+            // check is retried. One that keeps failing fails a start, but a run that was ready
+            // keeps its processes: it only loses its routes until the checks work again.
             let (listeners, observed) = match observation {
                 Ok(observation) => {
                     inspection_failing = None;
@@ -811,7 +930,21 @@ impl Owner<'_> {
                 Err(error) => {
                     let since = *inspection_failing.get_or_insert_with(Instant::now);
                     if since.elapsed() >= INSPECTION_GRACE {
-                        return Err(error);
+                        if !became_ready {
+                            return Err(error);
+                        }
+                        if ready {
+                            ready = false;
+                            self.enter(Phase::Starting)?;
+                            if let Ok(router) = router::current(self.registry.state_path()) {
+                                let _ = router::sync(self.registry, &router);
+                            }
+                            crate::paint::Paint::note(&format!(
+                                "cannot check this run's processes ({error:#}); its URLs are off until that works again"
+                            ));
+                        }
+                        // The readiness timeout counts from when the checks work again.
+                        deadline = Instant::now() + Duration::from_secs(timeout);
                     }
                     self.idle(Duration::from_millis(200), requested_stop)?;
                     continue;
@@ -898,7 +1031,14 @@ impl Owner<'_> {
             // The routes come back by themselves once the new proxy runs: its token differs.
             if !endpoints.is_empty() && proxy_checked.elapsed() >= Duration::from_secs(2) {
                 proxy_checked = Instant::now();
-                if router::current(self.registry.state_path()).is_err() {
+                // Not just Caddy: the proxy's own process serves page loads and the dashboard,
+                // and a Caddy that outlived it kept answering while every page failed.
+                // Not just Caddy: the proxy's own process serves page loads and the dashboard,
+                // and a Caddy that outlived it kept answering while every page failed.
+                let state = self.registry.state_path();
+                if router::current(state).is_err()
+                    || crate::proxy::owner(state).is_some_and(|(daemon, _)| !daemon.alive())
+                {
                     match crate::proxy::revive(self.registry.state_path()) {
                         Ok(true) => {
                             proxy_error = None;
@@ -959,7 +1099,19 @@ impl Owner<'_> {
                 continue;
             };
             let response = self.answer(&pending.action, requested_stop);
-            if let Err(error) = pending.reply(&self.record.session, response) {
+            // A caller that stopped waiting, such as an inventory past its budget, is not news.
+            if let Err(error) = pending.reply(&self.record.session, response)
+                && !error.chain().any(|cause| {
+                    cause.downcast_ref::<std::io::Error>().is_some_and(|error| {
+                        matches!(
+                            error.kind(),
+                            std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                        )
+                    }) || cause
+                        .downcast_ref::<serde_json::Error>()
+                        .is_some_and(serde_json::Error::is_io)
+                })
+            {
                 crate::paint::Paint::note(&format!("owner reply failed: {error:#}"));
             }
         }
@@ -990,6 +1142,7 @@ impl Owner<'_> {
                 &self.supervisor.roots(),
                 &self.record.manifest,
                 &self.record.share,
+                &self.health,
             )
             .map(|mut live| {
                 live["services"] = self.supervisor.list()["services"].take();
@@ -1047,6 +1200,7 @@ impl Owner<'_> {
                         &self.supervisor.roots(),
                         &self.record.manifest,
                         &self.record.share,
+                        &self.health,
                     ),
                     Action::Services => Ok(self.supervisor.list()),
                 };
@@ -1067,7 +1221,9 @@ impl Owner<'_> {
         if let Some(failure) = self.supervisor.stop_failure() {
             self.record.diagnostic = Some(failure.clone());
             self.enter(Phase::Interrupted)?;
-            anyhow::bail!("shutdown incomplete: {failure}; run parcela down again");
+            anyhow::bail!(
+                "shutdown incomplete: {failure}; fix it if needed, then run parcela down again"
+            );
         }
         self.record.phase = Phase::Stopped;
         self.record.save(self.path)?;
@@ -1177,8 +1333,10 @@ pub fn recover(
             was_ready.clone(),
         )
     });
+    let health = Health::start(&record);
     let result = Owner {
         registry,
+        health,
         workspace: &resolved,
         path: &path,
         record,
@@ -1254,6 +1412,16 @@ fn finish_stop_commands(
     if !owed {
         return Ok(());
     }
+    // A retry runs each command as parcela.yaml has it now, so fixing a failing one is enough.
+    if let Ok(mut current) = Manifest::load(&workspace.source.join("parcela.yaml"))
+        && crate::compose::resolve(&mut current, &workspace.source).is_ok()
+    {
+        for (name, process) in &mut record.manifest.processes {
+            if let Some(now) = current.processes.get(name) {
+                process.stop.clone_from(&now.stop);
+            }
+        }
+    }
     let mut resolved = workspace.clone();
     resolved.generation = record.session.generation;
     let nodes = recorded_graph(registry, record, &resolved, path)?;
@@ -1279,7 +1447,9 @@ fn finish_stop_commands(
         record.phase = Phase::Interrupted;
         record.save(path)?;
         registry.session_status(&record.session, SessionStatus::Interrupted)?;
-        anyhow::bail!("shutdown incomplete: {failure}; run parcela down again");
+        anyhow::bail!(
+            "shutdown incomplete: {failure}; fix it if needed, then run parcela down again"
+        );
     }
     record.save(path)
 }
@@ -1420,6 +1590,7 @@ fn live_status(
     roots: &[u32],
     manifest: &Manifest,
     share: &Share,
+    health: &Health,
 ) -> Result<serde_json::Value> {
     let current = current_session(registry, session)?;
     let mut endpoints = BTreeMap::new();
@@ -1429,16 +1600,18 @@ fn live_status(
     for endpoint in all {
         let pids = snapshot.owned(endpoint.backend_port, roots)?;
         let http_ready = !pids.is_empty()
-            && snapshot
-                .address(endpoint.backend_port)
-                .and_then(|address| {
-                    http::readiness(
-                        address,
-                        &endpoint.hostname,
-                        &manifest.services[&endpoint.service].readiness_path,
-                    )
-                })
-                .unwrap_or(false);
+            && (health.recently_ready(endpoint.backend_port) || {
+                snapshot
+                    .address(endpoint.backend_port)
+                    .and_then(|address| {
+                        http::readiness(
+                            address,
+                            &endpoint.hostname,
+                            &manifest.services[&endpoint.service].readiness_path,
+                        )
+                    })
+                    .unwrap_or(false)
+            });
         listeners.extend(&pids);
         endpoints.insert(
             endpoint.service.clone(),

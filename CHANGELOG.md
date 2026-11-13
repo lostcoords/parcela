@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A running environment no longer stops when Parcela cannot check its processes for 30 seconds, as on a busy or throttled machine where `ps` keeps missing its deadline. Its URLs are off until the checks work again, then come back with the same processes. A start that cannot be checked still fails. `lsof` now has a deadline too, and a command that times out is named in the message.
+- An app that is slow to answer its health check no longer flickers to `unknown` in the dashboard, `parcela ls` and the badge. The supervisor checks health in the background while someone is looking and answers from the latest check, and the inventory asks every supervisor at once.
+- A service whose `stop` command failed can be stopped again: `parcela down` retries the command as `parcela.yaml` has it now, so fixing it is enough. A retry right after the failure no longer reports `owner still exists`.
+- When the proxy's own process died but Caddy kept running, every app's pages failed with `502` and nothing restarted it. Supervisors now notice within two seconds and start the proxy again, which takes over the running Caddy.
+- After the proxy restarts or is upgraded, routes are back within a fraction of a second instead of about two seconds of `503`s. Environments started by an earlier release still take up to two seconds.
+- The badge script is found in a page with many inline scripts or styles without spending seconds of CPU on it.
+- The supervisor no longer logs `owner reply failed: Broken pipe` when a caller stops waiting for its answer.
+
+### Added
+
+- `parcela doctor` lists problems from the last day's logs: proxy errors and what each environment's supervisor reported, with counts.
+
 ## 0.9.1 - 2026-11-13
 
 ### Changed

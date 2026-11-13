@@ -9,10 +9,7 @@ use crate::{
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::{
-    path::Path,
-    time::{Duration, Instant},
-};
+use std::{path::Path, time::Duration};
 
 #[derive(Serialize)]
 pub struct Inventory {
@@ -21,17 +18,36 @@ pub struct Inventory {
     pub unregistered: Vec<Value>,
 }
 
-/// A read-only inventory. Owner probes share a two-second budget; missed replies stay unknown.
+/// How long one owner has to answer. Owners are asked at once, so a slow one delays only itself.
+const OWNER_BUDGET: Duration = Duration::from_millis(1500);
+
+/// A read-only inventory. Every owner is asked at the same time; missed replies stay unknown.
 pub fn collect(state: &Path, path: Option<&Path>) -> Result<Inventory> {
     let registry = Registry::open(state, false)?;
     let mut rows = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(2);
     if let Some(registry) = &registry {
-        for workspace in registry.list(None)? {
-            let budget = deadline
-                .saturating_duration_since(Instant::now())
-                .min(Duration::from_millis(400));
-            let mut row = lifecycle::inventory_status(registry, &workspace, budget)?;
+        let workspaces = registry.list(None)?;
+        // Each thread reads through its own connection; SQLite connections are not shared.
+        let statuses: Vec<Result<Value>> = std::thread::scope(|scope| {
+            let asks: Vec<_> = workspaces
+                .iter()
+                .map(|workspace| {
+                    scope.spawn(move || {
+                        let registry = Registry::open(state, false)?
+                            .ok_or_else(|| anyhow::anyhow!("registry disappeared"))?;
+                        lifecycle::inventory_status(&registry, workspace, OWNER_BUDGET)
+                    })
+                })
+                .collect();
+            asks.into_iter()
+                .map(|ask| {
+                    ask.join()
+                        .unwrap_or_else(|_| Err(anyhow::anyhow!("inventory probe panicked")))
+                })
+                .collect()
+        });
+        for (workspace, status) in workspaces.iter().zip(statuses) {
+            let mut row = status?;
             let mut urls = serde_json::Map::new();
             for (service, host) in registry.hosts(&workspace.id)? {
                 let url = row["live"]["endpoints"][&service]["public_url"]

@@ -309,3 +309,47 @@ fn invalid_http_to_watcher_restart_preserves_the_running_generation_and_setup() 
         "setup\n"
     );
 }
+
+#[test]
+fn a_failing_hook_stops_the_start_and_says_which_and_how() {
+    let env = Environment::new(
+        "version: 1\nproject: hooks\nreadiness_timeout_seconds: 5\nhooks:\n  prestart:\n    command: echo preparing; exit 3\nservices:\n  build:\n    command: exec sleep 300\n",
+    );
+    let up = env.run(&["up", "--detach"]);
+    assert!(!up.status.success());
+    let stderr = String::from_utf8_lossy(&up.stderr);
+    assert!(stderr.contains("prestart | preparing"), "{stderr}");
+    assert!(
+        stderr.contains("hooks.prestart failed with exit code 3"),
+        "{stderr}"
+    );
+    assert_eq!(env.success(&["status", "--current"])["state"], "stopped");
+}
+
+/// A `stop` command that fails is retried by the next `down`, as parcela.yaml has it then: one
+/// that keeps failing once left the environment impossible to stop or start again.
+#[test]
+fn a_failed_stop_command_is_retried_as_fixed_in_the_configuration() {
+    let config = "version: 1\nproject: stopping\nreadiness_timeout_seconds: 5\nservices:\n  build:\n    command: exec sleep 300\n    stop: echo stopping; exit 4\n";
+    let env = Environment::new(config);
+    env.success(&["up", "--detach"]);
+    for _ in 0..2 {
+        let down = env.run(&["down"]);
+        assert!(!down.status.success());
+        let stderr = String::from_utf8_lossy(&down.stderr);
+        assert!(
+            stderr.contains("services.build.stop failed with exit code 4"),
+            "{stderr}"
+        );
+    }
+    fs::write(
+        env.path().join("parcela.yaml"),
+        config.replace("echo stopping; exit 4", "echo stopped"),
+    )
+    .unwrap();
+    assert_eq!(env.success(&["down"])["state"], "stopped");
+    let status = env.success(&["status", "--current"]);
+    assert_eq!(status["recorded_session"]["status"], "stopped");
+    env.success(&["up", "--detach"]);
+    assert_eq!(env.success(&["down"])["state"], "stopped");
+}

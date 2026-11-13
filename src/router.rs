@@ -57,6 +57,12 @@ fn socket(state: &Path) -> Result<PathBuf> {
     crate::sockets::proxy_admin(state)
 }
 /// The verified running proxy. Fails when none answers on Parcela's private admin socket.
+/// The token in the proxy's record, unverified: a cheap way to notice that a new proxy started.
+pub fn recorded_token(state: &Path) -> Option<String> {
+    let record: Value = private::read_json(&proxy_dir(state).join("router.json")).ok()?;
+    record["token"].as_str().map(str::to_owned)
+}
+
 pub fn current(state: &Path) -> Result<Router> {
     let file = proxy_dir(state).join("router.json");
     let record: Value = private::read_json(&file)
@@ -94,7 +100,9 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
     let _lock = Lock::wait(&proxy_dir(state).join("updates.lock"))?;
     verify(state, router)?;
     let routes = routes(registry, router)?;
-    renew_leases(registry, router, &routes)?;
+    // Withdrawn routes lose their leases before Caddy changes, and new ones gain theirs only once
+    // Caddy serves them, so a published route always answers.
+    renew_leases(registry, router, &routes, false)?;
     let mut config = render(registry, router, &routes, true)?;
     // A LAN or domain listener Caddy could not open never takes the loopback routes down with it.
     if FAILED_SHARE
@@ -105,7 +113,7 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
     }
     let cached: Result<Value> = private::read_json(&proxy_dir(state).join("loaded.json"));
     if cached.is_ok_and(|cached| cached == config) {
-        return Ok(());
+        return renew_leases(registry, router, &routes, true);
     }
     if let Err(error) = load(state, &config) {
         let servers = &config["apps"]["http"]["servers"];
@@ -123,6 +131,7 @@ pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
         load(state, &config)?;
     }
     private::write_json(&proxy_dir(state).join("loaded.json"), &config)?;
+    renew_leases(registry, router, &routes, true)?;
     if let Ok(mut evidence) =
         private::read_json::<ProxyEvidence>(&proxy_dir(state).join("owner.json"))
     {
@@ -274,7 +283,8 @@ fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
     }
     Ok(routes)
 }
-fn renew_leases(registry: &Registry, router: &Router, routes: &[Route]) -> Result<()> {
+/// Drops expired and withdrawn leases, and with `grant` extends those of the active routes.
+fn renew_leases(registry: &Registry, router: &Router, routes: &[Route], grant: bool) -> Result<()> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
@@ -286,7 +296,7 @@ fn renew_leases(registry: &Registry, router: &Router, routes: &[Route]) -> Resul
         let active = routes
             .iter()
             .any(|route| route.session.token == session.token);
-        if active {
+        if active && grant {
             private::directory(&directory)?;
             for tick in now..now + LEASE_MS / 1000 {
                 let file = directory.join(tick.to_string());

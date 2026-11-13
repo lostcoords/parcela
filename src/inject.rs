@@ -464,9 +464,11 @@ fn find_position(body: &mut Body) -> (Vec<u8>, Option<usize>) {
     body.set_limit(deadline);
     let mut page = Vec::new();
     let mut buffer = [0; 16 * 1024];
+    let mut resume = 0;
     let position = loop {
-        if let Some(position) = insertion_point(&page) {
-            break Some(position);
+        match scan(&page, resume) {
+            Ok(position) => break Some(position),
+            Err(next) => resume = next,
         }
         if Instant::now() >= deadline || page.len() >= SCAN_LIMIT {
             break None;
@@ -483,9 +485,12 @@ fn find_position(body: &mut Body) -> (Vec<u8>, Option<usize>) {
     (page, position)
 }
 
-/// The offset of `</head>`, or of `<body` for a page without one. Comments, quoted attribute values
-/// and raw-text elements like `<script>` do not count, so a tag never lands inside them.
-fn insertion_point(html: &[u8]) -> Option<usize> {
+/// The offset of `</head>`, or of `<body` for a page without one, looking from `at`, an offset no
+/// tag or comment straddles. Comments, quoted attribute values and raw-text elements like
+/// `<script>` do not count, so a tag never lands inside them. `Err` holds where to look again once
+/// more of the page arrives, the start of what is still incomplete, so a page that comes in many
+/// reads is still read through only about once.
+fn scan(html: &[u8], mut at: usize) -> Result<usize, usize> {
     const RAW_TEXT: [&[u8]; 9] = [
         b"script",
         b"style",
@@ -497,44 +502,65 @@ fn insertion_point(html: &[u8]) -> Option<usize> {
         b"noembed",
         b"noframes",
     ];
-    let mut at = 0;
     loop {
-        let start = at + html.get(at..)?.iter().position(|byte| *byte == b'<')?;
+        let Some(start) = html
+            .get(at..)
+            .and_then(|rest| rest.iter().position(|byte| *byte == b'<'))
+        else {
+            return Err(html.len());
+        };
+        let start = at + start;
+        // Whatever is cut off here is looked at again, whole, from `start`.
+        macro_rules! whole {
+            ($found:expr) => {
+                match $found {
+                    Some(found) => found,
+                    None => return Err(start),
+                }
+            };
+        }
         let rest = &html[start..];
         if rest.starts_with(b"<!--") {
             // From the second byte, so that `<!-->` and `<!--->` end where browsers end them.
             let end = find(&rest[2..], b"-->").map(|end| end + 3);
             let bang = find(&rest[2..], b"--!>").map(|end| end + 4);
-            at = start + 2 + end.into_iter().chain(bang).min()?;
+            at = start + 2 + whole!(end.into_iter().chain(bang).min());
             continue;
         }
-        if matches!(rest.get(1)?, b'!' | b'?') {
-            at = start + find(rest, b">")? + 1;
+        if matches!(whole!(rest.get(1)), b'!' | b'?') {
+            at = start + whole!(find(rest, b">")) + 1;
             continue;
         }
         let closing = rest[1] == b'/';
         let name_start = start + 1 + usize::from(closing);
-        if !html.get(name_start)?.is_ascii_alphabetic() {
+        if !whole!(html.get(name_start)).is_ascii_alphabetic() {
             at = start + 1;
             continue;
         }
-        let name_length = html[name_start..]
-            .iter()
-            .position(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'-' | b':'))?;
+        let name_length = whole!(
+            html[name_start..]
+                .iter()
+                .position(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'-' | b':'))
+        );
         let name = html[name_start..name_start + name_length].to_ascii_lowercase();
-        let end = name_start + name_length + tag_end(&html[name_start + name_length..])?;
+        let end = name_start + name_length + whole!(tag_end(&html[name_start + name_length..]));
         match (closing, name.as_slice()) {
             // Before `<base>`, which would otherwise send the tag's URL to another host.
-            (true, b"head") | (false, b"body" | b"base") => return Some(start),
+            (true, b"head") | (false, b"body" | b"base") => return Ok(start),
             (false, name) if RAW_TEXT.contains(&name) => {
                 let mut closer = b"</".to_vec();
                 closer.extend_from_slice(name);
-                let lowered = html[end + 1..].to_ascii_lowercase();
+                let content = &html[end + 1..];
                 let mut from = 0;
                 // `</scripty>` does not close a script.
                 at = loop {
-                    let found = from + find(&lowered[from..], &closer)?;
-                    match lowered.get(found + closer.len())? {
+                    let found = from
+                        + whole!(
+                            content[from..]
+                                .windows(closer.len())
+                                .position(|part| part.eq_ignore_ascii_case(&closer))
+                        );
+                    match whole!(content.get(found + closer.len())) {
                         b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' => {
                             break end + 1 + found;
                         }
@@ -700,6 +726,10 @@ impl Read for Body {
 mod tests {
     use super::*;
     use std::net::TcpListener;
+
+    fn insertion_point(html: &[u8]) -> Option<usize> {
+        scan(html, 0).ok()
+    }
 
     fn lines(text: &str) -> Vec<Vec<u8>> {
         text.split("\r\n")
@@ -924,6 +954,200 @@ mod tests {
     }
 
     const TAG: &str = "<script defer src=\"/_parcela/widget.js\"></script>";
+
+    const MARKUP: [&[u8]; 34] = [
+        b"<",
+        b">",
+        b"</",
+        b"<!--",
+        b"-->",
+        b"--!>",
+        b"<!",
+        b"<?",
+        b"<!doctype html>",
+        b"<head>",
+        b"</head>",
+        b"</HEAD >",
+        b"<body",
+        b"<BODY>",
+        b" ",
+        b"\"",
+        b"'",
+        b"=",
+        b"<script>",
+        b"</script>",
+        b"</scripty>",
+        b"<style>",
+        b"</style",
+        b"<title>",
+        b"</title>",
+        b"<base href=x>",
+        b"<meta a='>'>",
+        b"x",
+        b"\n",
+        b"<b",
+        b"<-",
+        b"\0",
+        "é".as_bytes(),
+        b"<textarea>",
+    ];
+
+    /// The injector looks again after every read, so the place must not depend on how the page
+    /// arrived: once a prefix has one, the whole page has the same one.
+    #[test]
+    fn where_the_tag_goes_does_not_depend_on_how_the_page_arrives() {
+        crate::fuzz::rounds(2000, |rng| {
+            let html = rng.text(&MARKUP, 40);
+            let whole = insertion_point(&html);
+            if let Some(at) = whole {
+                assert_eq!(html[at], b'<', "{:?}", String::from_utf8_lossy(&html));
+            }
+            for end in 0..html.len() {
+                if let Some(at) = insertion_point(&html[..end]) {
+                    assert_eq!(Some(at), whole, "{:?}", String::from_utf8_lossy(&html));
+                }
+            }
+            // Resuming where an earlier, shorter read stopped finds the same place.
+            let mut resume = 0;
+            let mut resumed = None;
+            let mut cuts: Vec<usize> = (0..rng.below(5))
+                .map(|_| rng.below(html.len() + 1))
+                .collect();
+            cuts.sort_unstable();
+            for end in cuts.into_iter().chain([html.len()]) {
+                match scan(&html[..end], resume) {
+                    Ok(at) => {
+                        resumed = Some(at);
+                        break;
+                    }
+                    Err(next) => resume = next,
+                }
+            }
+            assert_eq!(resumed, whole, "{:?}", String::from_utf8_lossy(&html));
+        });
+    }
+
+    /// The search runs again after every read, so its cost must not grow with the square of the
+    /// page: a head of many small scripts once took seconds of CPU per load.
+    #[test]
+    fn a_page_of_many_scripts_is_searched_quickly() {
+        let mut page = b"<html><head>".to_vec();
+        while page.len() < SCAN_LIMIT - 1000 {
+            page.extend_from_slice(b"<script>var a = 1;</script><style>p{}</style>");
+        }
+        page.extend_from_slice(b"</head><body></body>");
+        let started = Instant::now();
+        let mut resume = 0;
+        let mut found = None;
+        for end in (0..page.len()).step_by(16 * 1024).chain([page.len()]) {
+            match scan(&page[..end], resume) {
+                Ok(at) => {
+                    found = Some(at);
+                    break;
+                }
+                Err(next) => resume = next,
+            }
+        }
+        assert_eq!(found, Some(page.len() - 20));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    /// Whatever the app answers, the body that reaches the browser is the app's, plus at most
+    /// one tag where `scan` says, and only on a whole HTML page.
+    #[test]
+    fn a_response_only_ever_gains_the_tag() {
+        crate::fuzz::rounds(300, |rng| {
+            let status = *rng.pick(&[200u16, 204, 206, 301, 304, 404, 500]);
+            let mut head = format!("HTTP/1.1 {status} X\r\n");
+            let html = rng.below(4) != 0;
+            if let Some(kind) = [
+                Some("text/html"),
+                Some("Text/HTML; charset=utf-8"),
+                Some("application/json"),
+                None,
+            ][if html { rng.below(2) } else { 2 + rng.below(2) }]
+            {
+                head.push_str(&format!("Content-Type: {kind}\r\n"));
+            }
+            let encoded = rng.below(6) == 0;
+            if encoded {
+                head.push_str("Content-Encoding: gzip\r\n");
+            }
+            let mut body = rng.text(&MARKUP, 60);
+            if rng.below(3) == 0 {
+                body.extend(std::iter::repeat_n(b'x', rng.below(70_000)));
+            }
+            let framing = rng.below(3);
+            let mut wire = Vec::new();
+            match framing {
+                0 => head.push_str(&format!("Content-Length: {}\r\n", body.len())),
+                1 => {
+                    head.push_str("Transfer-Encoding: chunked\r\n");
+                    let mut rest = &body[..];
+                    while !rest.is_empty() {
+                        let size = (1 + rng.below(5000)).min(rest.len());
+                        wire.extend_from_slice(format!("{size:x}\r\n").as_bytes());
+                        wire.extend_from_slice(&rest[..size]);
+                        wire.extend_from_slice(b"\r\n");
+                        rest = &rest[size..];
+                    }
+                    wire.extend_from_slice(b"0\r\n\r\n");
+                }
+                _ => (),
+            }
+            if framing != 1 {
+                wire = body.clone();
+            }
+            let mut response = format!("{head}\r\n").into_bytes();
+            response.extend_from_slice(&wire);
+            let splits: Vec<usize> = (0..rng.below(6))
+                .map(|_| rng.below(response.len() + 1))
+                .collect();
+
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let app = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut from = 0;
+                let mut cuts = splits;
+                cuts.sort_unstable();
+                for cut in cuts.into_iter().chain([response.len()]) {
+                    if cut > from {
+                        let _ = stream.write_all(&response[from..cut]);
+                        let _ = stream.flush();
+                        from = cut;
+                    }
+                }
+            });
+            let mut output = Vec::new();
+            respond(
+                BufReader::new(Upstream::new(TcpStream::connect(address).unwrap(), None).unwrap()),
+                &mut output,
+            )
+            .unwrap();
+            app.join().unwrap();
+
+            let split = find(&output, b"\r\n\r\n").expect("a head") + 4;
+            let (_, got) = output.split_at(split);
+            let empty = matches!(status, 204 | 304);
+            let page = html && !encoded && !matches!(status, 204 | 206 | 304 | 301);
+            let mut expected = if empty { Vec::new() } else { body.clone() };
+            let place = insertion_point(&body)
+                .or_else(|| (body.contains(&b'<') && !body.contains(&0)).then_some(body.len()));
+            if let (true, Some(at)) = (page && !empty, place.filter(|at| *at <= SCAN_LIMIT)) {
+                expected.splice(at..at, TAG.bytes());
+            }
+            assert_eq!(
+                String::from_utf8_lossy(got),
+                String::from_utf8_lossy(&expected),
+                "status {status}, framing {framing}, html {html}, encoded {encoded}"
+            );
+        });
+    }
 
     #[test]
     fn adds_the_tag_and_drops_what_described_the_old_bytes() {
