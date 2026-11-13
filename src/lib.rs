@@ -8,6 +8,8 @@ pub mod control;
 pub mod dashboard;
 pub mod discovery;
 pub mod frontdoor;
+#[cfg(test)]
+mod fuzz;
 pub mod host;
 pub mod http;
 pub mod inject;

@@ -986,6 +986,64 @@ mod tests {
     const MANIFEST: &str =
         "version: 1\nproject: notes\nservices: {web: {command: serve, http: {healthcheck: /}}}\n";
 
+    /// A project's file is whatever a cloned repository holds, so it may be hostile.
+    #[test]
+    fn an_alias_bomb_is_refused_quickly() {
+        let mut bomb =
+            String::from("version: 1\nx-a0: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\n");
+        for level in 1..10 {
+            let previous = format!("*a{}", level - 1);
+            bomb.push_str(&format!(
+                "x-a{level}: &a{level} [{}]\n",
+                vec![previous; 9].join(", ")
+            ));
+        }
+        bomb.push_str("project: *a9\n");
+        let started = std::time::Instant::now();
+        assert!(Manifest::parse(&bomb).is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[test]
+    fn any_file_parses_or_fails_without_panicking() {
+        const YAML: [&[u8]; 30] = [
+            b"version: 1\n",
+            b"project: notes\n",
+            b"services:\n",
+            b"  web:\n",
+            b"    command: serve\n",
+            b"    http: {healthcheck: /}\n",
+            b"    depends_on: [db]\n",
+            b"  db: {command: x, ready: {tcp: true}}\n",
+            b"hooks: {setup: {command: x}}\n",
+            b"env: {A: \"$PORT\"}\n",
+            b"default_service: web\n",
+            b"  ",
+            b"- ",
+            b": ",
+            b"{",
+            b"}",
+            b"[",
+            b"]",
+            b"&a ",
+            b"*a",
+            b"<<: ",
+            b"!!str ",
+            b"'",
+            b"\"",
+            b"\n",
+            b"#",
+            b"~",
+            b"-1",
+            b"99999999999999999999",
+            b"\t",
+        ];
+        crate::fuzz::rounds(2000, |rng| {
+            let text = rng.text(&YAML, 30);
+            let _ = Manifest::parse(&String::from_utf8_lossy(&text));
+        });
+    }
+
     #[test]
     fn project_sharing_is_ignored_so_old_files_still_load() {
         let manifest = Manifest::parse(&format!(

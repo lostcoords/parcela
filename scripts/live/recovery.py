@@ -350,16 +350,19 @@ def guardian_death(f):
     f.start_proxy()
     owner = f.start(app)
     original = f.session(app)
+    daemon = proxy_evidence(f)['daemon']['pid']
     f.proxy.kill()
     f.proxy.wait(timeout=5)
-    wait_for(lambda: f.probe(app)[0] == 503, timeout=10)
+    # The app's owner notices the proxy's own process is gone and starts it again, which takes
+    # over the Caddy still running. It used to stay down until someone started it.
+    wait_for(lambda: proxy_evidence(f)['daemon']['pid'] != daemon, [owner], timeout=20)
+    wait_for(lambda: f.probe(app)[0] == 200, [owner])
     assert owner.poll() is None and listening(app['port'])
     status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
-    assert status['state'] == 'unhealthy' and not status['live']['route_published']
-    f.start_proxy()
-    wait_for(lambda: f.probe(app)[0] == 200)
+    assert status['state'] == 'ready' and status['live']['route_published'], status
     assert f.session(app)['token'] == original['token']
-    return {'lease_expired_without_guardian': True, 'existing_caddy_recovered': True, 'application_preserved': True}
+    assert f.cli(f.root, 'proxy', 'stop').returncode == 0
+    return {'guardian_restarted_by_owner': True, 'existing_caddy_recovered': True, 'application_preserved': True}
 
 def interrupted_stop(f):
     app = f.app('interrupted', delay=3)
@@ -988,6 +991,131 @@ def worker_exit_after_readiness(f):
     return {'worker_exit_reported': True, 'http_environment_stays_ready': True, 'https_code': 200}
 
 
+def unverifiable_ready_run_keeps_processes(f):
+    """A ready run whose `ps` keeps failing, as on a throttled machine, keeps its processes and
+    only loses its route until the checks work again. It used to stop after 30 seconds."""
+    tools = f.root / 'broken-tools'
+    tools.mkdir()
+    flag = f.root / 'ps-broken'
+    (tools / 'ps').write_text(f'''#!/bin/sh
+[ -e {str(flag)!r} ] && exit 1
+exec {shutil.which('ps')!r} "$@"
+''')
+    (tools / 'ps').chmod(0o700)
+    app = f.app('throttled')
+    f.start_proxy()
+    owner = f.spawn(app['path'], 'up', '--backend-port', str(app['port']), '--readiness-timeout', '10',
+                    env={**os.environ, 'PATH': f"{tools}{os.pathsep}{os.environ['PATH']}"})
+    wait_for(lambda: f.probe(app)[0] == 200)
+    pid = json.loads(f.probe(app)[1])['pid']
+    flag.touch()
+    wait_for(lambda: f.probe(app)[0] == 503, [owner], timeout=45)
+    assert owner.poll() is None and listening(app['port']), 'the run kept its processes'
+    flag.unlink()
+    wait_for(lambda: f.probe(app)[0] == 200, [owner], timeout=20)
+    assert json.loads(f.probe(app)[1])['pid'] == pid
+    return {'route_withdrawn_while_unverifiable': True, 'same_process_after': pid}
+
+def caddies(f):
+    """Caddy processes serving this fixture's state, by their config path."""
+    listing = subprocess.run(['ps', '-A', '-o', 'pid=,command='], capture_output=True, text=True, check=True).stdout
+    config = str(f.state / 'proxy/caddy.json')
+    return [int(line.split()[0]) for line in listing.splitlines() if config in line and 'caddy' in line]
+
+def proxy_evidence(f):
+    return json.loads((f.state / 'proxy/owner.json').read_text())
+
+def proxy_owner_killed_caddy_survives(f):
+    """The proxy's owner dies without stopping Caddy: an app owner restarts the proxy, which adopts
+    the Caddy still serving instead of starting a second one."""
+    app = f.app('adopt')
+    f.start_proxy()
+    owner = f.start(app)
+    pid = json.loads(f.probe(app)[1])['pid']
+    evidence = proxy_evidence(f)
+    caddy = evidence['child']['pid']
+    os.kill(evidence['daemon']['pid'], signal.SIGKILL)
+    wait_for(lambda: proxy_evidence(f)['daemon']['pid'] != evidence['daemon']['pid'], [owner], timeout=20)
+    wait_for(lambda: f.probe(app)[0] == 200, [owner])
+    doc = 'Sec-Fetch-Dest: document\r\nAccept: text/html\r\n'
+    wait_for(lambda: f.fetch(app['host'], '/', headers=doc)[0] == 200, [owner])
+    assert json.loads(f.probe(app)[1])['pid'] == pid, 'the app was never restarted'
+    assert caddies(f) == [caddy], f'one Caddy, the same one: {caddies(f)} vs {caddy}'
+    assert f.cli(f.root, 'proxy', 'stop').returncode == 0, 'the owner started the proxy again in the background'
+    return {'caddy_adopted': caddy, 'app_untouched': pid}
+
+def caddy_killed(f):
+    """Caddy dies under a live proxy owner: the proxy comes back on its own, apps untouched."""
+    app = f.app('caddy')
+    f.start_proxy()
+    owner = f.start(app)
+    pid = json.loads(f.probe(app)[1])['pid']
+    caddy = proxy_evidence(f)['child']['pid']
+    os.kill(caddy, signal.SIGKILL)
+    wait_for(lambda: f.probe(app)[0] == 200 and caddies(f) and caddies(f) != [caddy], [owner], timeout=30)
+    assert json.loads(f.probe(app)[1])['pid'] == pid
+    assert len(caddies(f)) == 1, caddies(f)
+    assert f.cli(f.root, 'proxy', 'stop').returncode == 0, 'the owner started the proxy again in the background'
+    return {'proxy_back': True, 'app_untouched': pid}
+
+def frozen_owner_and_caddy(f):
+    """A laptop's sleep, or a debugger, freezes processes and resumes them later. Neither an app's
+    owner nor Caddy being frozen for a while restarts, duplicates or loses anything."""
+    app = f.app('frozen')
+    f.start_proxy()
+    owner = f.start(app)
+    pid = json.loads(f.probe(app)[1])['pid']
+    session = f.session(app)
+    os.kill(owner.pid, signal.SIGSTOP)
+    try:
+        assert f.probe(app)[0] == 200, 'routes do not need the owner'
+        time.sleep(4)
+    finally:
+        os.kill(owner.pid, signal.SIGCONT)
+    caddy = proxy_evidence(f)['child']['pid']
+    os.kill(caddy, signal.SIGSTOP)
+    try:
+        time.sleep(6)
+    finally:
+        os.kill(caddy, signal.SIGCONT)
+    wait_for(lambda: f.probe(app)[0] == 200, [owner], timeout=20)
+    status = json.loads(f.cli(app['path'], 'status', '--current').stdout)
+    assert status['state'] == 'ready', status
+    assert json.loads(f.probe(app)[1])['pid'] == pid
+    assert f.session(app)['generation'] == session['generation']
+    assert caddies(f) == [caddy], caddies(f)
+    return {'same_generation': session['generation'], 'same_caddy': caddy}
+
+def random_crashes(f):
+    """Kills `up`'s owner and `down` at random moments, over and over. Every time, the next `up`
+    starts it and the next `down` leaves nothing behind."""
+    import random
+    seed = int(os.environ.get('PARCELA_CHAOS_SEED') or random.randrange(1 << 30))
+    rng = random.Random(seed)
+    app = f.app('chaos')
+    f.start_proxy()
+    events = []
+    for _ in range(int(os.environ.get('PARCELA_CHAOS_ROUNDS', '6'))):
+        owner = f.spawn(app['path'], 'up', '--backend-port', str(app['port']), '--readiness-timeout', '10')
+        delay = rng.uniform(0, 2.5)
+        time.sleep(delay)
+        owner.kill()
+        owner.wait(timeout=5)
+        started = f.cli(app['path'], 'up', '--detach', '--backend-port', str(app['port']), '--readiness-timeout', '15')
+        assert started.returncode == 0, f'seed {seed}, owner killed after {delay:.2f}s: {started.stderr}'
+        wait_for(lambda: f.probe(app)[0] == 200, timeout=15)
+        stopping = subprocess.Popen(f.argv(app['path'], 'down'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cut = rng.uniform(0, 0.6)
+        time.sleep(cut)
+        stopping.kill()
+        stopping.wait(timeout=5)
+        stopped = f.cli(app['path'], 'down', timeout=40)
+        assert stopped.returncode == 0, f'seed {seed}, down killed after {cut:.2f}s: {stopped.stderr}'
+        wait_for(lambda: not listening(app['port']), timeout=10)
+        assert f.session(app)['status'] == 'stopped', f'seed {seed}'
+        events.append((round(delay, 2), round(cut, 2)))
+    return {'seed': seed, 'owner_and_down_kills': events}
+
 def _dead(pid):
     try:
         os.kill(pid, 0)
@@ -1002,7 +1130,9 @@ CASES = [owner_crash, graceful_stop, duplicate_stop, restart_preflight, proxy_ou
          occupied_replacement_port, invalid_replacement_port, restart_owned_port, leased_replacement_port, detached_recover_running,
          detached_recover_stopping, detached_recover_quiescent, recovered_owner_initialization,
          crashed_tree_down, crashed_tree_up, rebooted_device_down, stop_command_after_crash,
-         concurrent_up_same_checkout, detached_configuration_changes, concurrent_restart, worker_exit_after_readiness]
+         concurrent_up_same_checkout, detached_configuration_changes, concurrent_restart, worker_exit_after_readiness,
+         unverifiable_ready_run_keeps_processes, proxy_owner_killed_caddy_survives, caddy_killed, frozen_owner_and_caddy,
+         random_crashes]
 
 
 def run(caddy, cases=None):

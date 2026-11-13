@@ -25,6 +25,10 @@ jobs:
     timeout-minutes: 90
     env:
       ROUNDS: ${{ inputs.rounds || '3' }}
+      # The randomized parser tests in src/fuzz.rs, far longer than on every push.
+      PARCELA_FUZZ_ROUNDS: '20000'
+      PARCELA_CHAOS_ROUNDS: '20'
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,7 +40,7 @@ jobs:
       - name: Rounds
         run: |
           live=""
-          if [ "$RUNNER_OS" = macOS ]; then live="core service-sets ports recovery"; fi
+          if [ "$RUNNER_OS" = macOS ]; then live="core service-sets ports recovery upgrades"; fi
           failed=0
           for round in $(seq "$ROUNDS"); do
             if ! cargo test --locked > "test-$round.log" 2>&1; then

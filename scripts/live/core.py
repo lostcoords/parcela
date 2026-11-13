@@ -91,8 +91,16 @@ def run(caddy, **_):
         assert cli(compose_path, 'url').stdout.strip() == status['recorded_session']['public_url']
         runtime = live.state / 'environments' / compose_id
         (runtime / 'data' / 'retain.txt').write_text('preserve application data')
+        # An app that is healthy but slow to say so is still ready everywhere, every time.
+        (runtime / 'slow').touch()
+        for _ in range(4):
+            rows = live.json(live.root, 'ls')['workspaces']
+            assert {row['workspace']['label']: row['state'] for row in rows}['compose'] == 'ready', rows
+        (runtime / 'slow').unlink()
+        assert not any('owner reply failed' in log.read_text() for log in live.root.glob('child-*.log'))
         (runtime / 'unhealthy').touch()
-        unhealthy = live.json(compose_path, 'status', '--current')
+        # A healthy answer is reused for a few seconds, so the change shows up shortly after.
+        unhealthy = wait_for(lambda: (status := live.json(compose_path, 'status', '--current'))['state'] == 'unhealthy' and status, timeout=8)
         assert unhealthy['state'] == 'unhealthy' and unhealthy['recorded_session']['status'] == 'ready'
         assert unhealthy['live_health_verified'] and not unhealthy['live']['http_ready']
         (runtime / 'unhealthy').unlink()

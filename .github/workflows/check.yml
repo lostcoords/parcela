@@ -25,7 +25,10 @@ jobs:
       - name: Live suites against real Caddy
         # docs-example runs the docs' `python3 -m http.server`, which waits on a reverse DNS
         # lookup that intermittently takes 35s on GitHub's macOS runners.
-        run: scripts/check-live ${{ matrix.os == 'macos-latest' && 'core service-sets ports recovery' || '' }}
+        run: scripts/check-live ${{ matrix.os == 'macos-latest' && 'core service-sets ports recovery upgrades' || '' }}
+        env:
+          # The upgrades suite lists earlier releases through the GitHub API.
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Logs from the failed live fixtures
         if: failure()
         run: |

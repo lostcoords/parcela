@@ -118,6 +118,10 @@ def run(caddy, **_):
         assert len({endpoint['backend_port'] for endpoint in endpoints}) == 2
         current = status(primary)
         assert current['live']['state'] == 'ready' and set(current['live']['endpoints']) == {'frontend', 'backend'}, current
+        shown = live.human(primary, 'status', '--current')
+        assert all(word in shown for word in ['frontend', 'backend', 'ready', f'https://api-sets.localhost:{live.https}']), shown
+        shown = live.human(live.root, 'proxy', 'status')
+        assert str(live.https) in shown, shown
         assert all(endpoint['http_ready'] and endpoint['listener_owned'] for endpoint in current['live']['endpoints'].values()), current
         assert {entry['name']: entry['state'] for entry in current['processes']} == {'frontend': 'running', 'backend': 'running', 'worker': 'running'}
         assert cli(primary, 'url', 'backend').stdout.strip() == f'https://api-sets.localhost:{live.https}'
@@ -138,8 +142,9 @@ def run(caddy, **_):
         cases.append('secondary-host-cannot-be-another-worktree-base')
         unhealthy = runtime / 'unhealthy-backend'
         unhealthy.touch()
-        current = status(primary)['live']
-        assert current['state'] == 'unhealthy' and not current['endpoints']['backend']['http_ready'], current
+        # A healthy answer is reused for a few seconds, so the change shows up shortly after.
+        current = wait_for(lambda: (live_status := status(primary)['live'])['state'] == 'unhealthy' and live_status, timeout=8)
+        assert not current['endpoints']['backend']['http_ready'], current
         assert current['endpoints']['frontend']['http_ready'], current
         unhealthy.unlink()
         cases.append('per-endpoint-health')
@@ -218,11 +223,13 @@ hooks:
         live.ports.extend(endpoint['backend_port'] for endpoint in added['session']['endpoints'])
         assert request('api-hooks-sets.localhost')['id'] == workspaces[hooks]['id'], 'restart reserves an added service'
         (hooks / 'parcela.yaml').write_text(HOOKS)
-        cli(hooks, 'restart', '--detach')
+        shown = live.human(hooks, 'restart', '--detach')
+        assert 'hooks-sets.localhost' in shown, shown
         assert set(json.loads(cli(hooks, 'status').stdout)['live']['endpoints']) == {'web'}, 'restart drops a removed service'
         assert (runtime / 'data' / 'setup-runs').read_text() == 'x', 'restart skips setup'
         assert cli(hooks, 'logs', 'prestart').stdout.strip().endswith('migrated 1')
-        assert cli(hooks, 'down').returncode == 0
+        shown = live.human(hooks, 'down')
+        assert 'stopped' in shown.lower(), shown
         (hooks / 'parcela.yaml').write_text(HOOKS.replace('echo seeded', 'echo broken; exit 7'))
         failed = cli(hooks, 'up', '--detach', '--setup', check=False)
         assert failed.returncode != 0 and 'hooks.setup failed with exit code 7; its output is above' in failed.stderr, failed.stderr
@@ -230,4 +237,7 @@ hooks:
         assert (runtime / 'data' / 'teardown').read_text() == 'dropped hooks\n', 'rm runs hooks.teardown'
         workspaces.pop(hooks)
         cases.append('setup-runs-once-prestart-every-up-a-failed-setup-stops-up-and-rm-runs-teardown')
+        shown = live.human(live.root, 'proxy', 'stop')
+        assert 'stopped' in shown.lower(), shown
+        cases.append('human-output-for-status-restart-down-and-the-proxy')
         return {'https_port': live.https, 'cases': cases}
