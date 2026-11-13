@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Dashboard: built on lostcoords-ui 0.10.0.
+- Updated rusqlite to 0.42, serde-saphyr to 2, sha2 to 0.11, signal-hook to 0.4 and the other dependencies to their latest releases. Snapshot checksums are unchanged.
+
 ## 0.9.2 - 2026-11-13
 
 ### Fixed

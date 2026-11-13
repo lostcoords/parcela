@@ -353,7 +353,7 @@ fn copy_file(source: &Path, destination: &Path, sqlite: bool) -> Result<(String,
         size += count as u64;
     }
     output.sync_all()?;
-    Ok((format!("{:x}", digest.finalize()), size))
+    Ok((hex(&digest.finalize()), size))
 }
 fn hash(path: &Path) -> Result<(String, u64)> {
     let mut input = reader(path)?;
@@ -368,7 +368,7 @@ fn hash(path: &Path) -> Result<(String, u64)> {
         digest.update(&buffer[..count]);
         size += count as u64;
     }
-    Ok((format!("{:x}", digest.finalize()), size))
+    Ok((hex(&digest.finalize()), size))
 }
 fn backup(source: &Path, destination: &Path) -> Result<()> {
     for suffix in ["-wal", "-shm", "-journal"] {
@@ -445,4 +445,27 @@ fn publish(source: &Path, destination: &Path) -> Result<()> {
     );
     File::open(destination.parent().context("destination needs a parent")?)?.sync_all()?;
     Ok(())
+}
+/// Lowercase hex, as `sha256sum` prints a digest.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut text, byte| {
+            let _ = write!(text, "{byte:02x}");
+            text
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn a_digest_reads_as_sha256sum_prints_it() {
+        assert_eq!(
+            super::hex(&Sha256::digest(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }
