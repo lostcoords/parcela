@@ -221,6 +221,101 @@ fn running(path: &Path, state: &Path) -> bool {
     .unwrap_or(false)
 }
 
+/// Something that went wrong in the last day, from the proxy's or an environment's log. Reported,
+/// but `up` can still work, so it never makes the setup not ready.
+#[derive(Serialize)]
+struct Problem {
+    source: String,
+    detail: String,
+    count: usize,
+    log: String,
+}
+
+/// How far back from the end of each log to look, and how old a log may be to count.
+const LOG_TAIL: u64 = 1024 * 1024;
+const RECENT: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+fn tail(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let modified = file.metadata().ok()?.modified().ok()?;
+    if modified.elapsed().unwrap_or_default() > RECENT {
+        return None;
+    }
+    let length = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(LOG_TAIL)))
+        .ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Counts each distinct problem once, in the order first seen.
+fn tally(problems: &mut Vec<Problem>, source: &str, detail: String, log: &Path) {
+    match problems
+        .iter_mut()
+        .find(|problem| problem.source == source && problem.detail == detail)
+    {
+        Some(problem) => problem.count += 1,
+        None => problems.push(Problem {
+            source: source.to_owned(),
+            detail,
+            count: 1,
+            log: log.display().to_string(),
+        }),
+    }
+}
+
+fn recent_problems(state: &Path) -> Vec<Problem> {
+    let mut problems = Vec::new();
+    let proxy_log = state.join("proxy/proxy.log");
+    if let Some(text) = tail(&proxy_log) {
+        let since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .saturating_sub(RECENT)
+            .as_secs_f64();
+        for entry in text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        {
+            let error = entry["error"].as_str().unwrap_or_default();
+            // Withdrawing a route Caddy had already dropped.
+            if entry["level"] != "error"
+                || entry["ts"].as_f64().is_none_or(|ts| ts < since)
+                || error.starts_with("unknown object ID")
+            {
+                continue;
+            }
+            let mut detail = entry["msg"].as_str().unwrap_or("error").to_owned();
+            if !error.is_empty() {
+                detail = format!("{detail}: {}", error.chars().take(160).collect::<String>());
+            }
+            tally(&mut problems, "proxy", detail, &proxy_log);
+        }
+    }
+    let Ok(Some(registry)) = parcela::registry::Registry::open(state, false) else {
+        return problems;
+    };
+    for workspace in registry.list(None).unwrap_or_default() {
+        let log = registry.runtime_path(&workspace).join("log/owner.log");
+        let Some(text) = tail(&log) else {
+            continue;
+        };
+        let source = parcela::config::fit_label(
+            &format!("{}/{}", workspace.project_id, workspace.label),
+            48,
+        );
+        for note in text
+            .lines()
+            .filter_map(|line| line.strip_prefix("parcela: "))
+        {
+            tally(&mut problems, &source, note.trim().to_owned(), &log);
+        }
+    }
+    problems
+}
+
 pub struct Probes<'a> {
     pub path: &'a Path,
     pub state: &'a Path,
@@ -259,6 +354,7 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
         proxy(probes.state)
     });
     let ready = checks.iter().all(|check| check.ok);
+    let problems = recent_problems(probes.state);
     let notes = if headless {
         vec!["No HTTP services; no proxy or certificate trust is needed.".to_owned()]
     } else {
@@ -277,7 +373,7 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
             }
         });
     out.emit(
-        &serde_json::json!({"ready": ready, "checks": checks, "notes": notes}),
+        &serde_json::json!({"ready": ready, "checks": checks, "notes": notes, "recent_problems": problems}),
         |style| {
             let width = checks
                 .iter()
@@ -292,6 +388,23 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
             }
             for note in &notes {
                 text.push_str(&format!("{}\n", style.dim(&format!("· {note}"))));
+            }
+            if !problems.is_empty() {
+                text.push_str("\nIn the logs of the last day:\n");
+                for problem in &problems {
+                    let count = if problem.count > 1 {
+                        format!(" ({}×)", problem.count)
+                    } else {
+                        String::new()
+                    };
+                    text.push_str(&format!(
+                        "{} {}: {}{count}\n  {}\n",
+                        style.bad(),
+                        problem.source,
+                        problem.detail,
+                        style.dim(&problem.log)
+                    ));
+                }
             }
             text.push_str(&format!("\nNext step: {}\n", style.bold(&next)));
             text

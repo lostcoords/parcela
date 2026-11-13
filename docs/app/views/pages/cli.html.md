@@ -227,7 +227,9 @@ parcela doctor
 
 Checks Caddy, `lsof`, `ps`, configuration, the state directory, and the proxy without changing them. Each failure includes a fix. Exit code 1 means at least one check failed. Watcher-only projects skip Caddy and `lsof`, but check compatibility with any live shared proxy. HTTP protocol differences are warnings, as for `up`; watcher-only starts refuse an incompatible proxy. Browser trust and application readiness are not checked.
 
-JSON has the shape `{ready, checks: [{name, ok, detail, fix}], notes}`.
+It also lists problems from the last day's logs, without failing on them: errors from the proxy's log and what each environment's supervisor reported, such as a process that exited, with how often each happened and the log to read.
+
+JSON has the shape `{ready, checks: [{name, ok, detail, fix}], notes, recent_problems: [{source, detail, count, log}]}`.
 
 ## rm
 
