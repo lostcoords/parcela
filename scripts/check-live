@@ -3,10 +3,12 @@
 
 Each fixture gets its own /tmp root, state directory, test CA and ports in 30000-32767.
 Nothing is installed or trusted. A passing fixture removes its root; a failing one keeps it.
+With --jobs, suites run at once in separate processes, each on its own slice of those ports.
 """
 import argparse
 import importlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,6 +27,9 @@ def main():
     parser.add_argument('--caddy', default=shutil.which('caddy'), help='Caddy binary (default: caddy on PATH)')
     parser.add_argument('--output', type=Path, help='report directory (default: a new temporary directory)')
     parser.add_argument('--case', action='append', help='run only this recovery case; repeatable')
+    parser.add_argument('--jobs', '-j', type=int, default=1, help='suites to run at once (default: 1)')
+    parser.add_argument('--no-build', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--report', help=argparse.SUPPRESS)
     args = parser.parse_args()
     unknown = set(args.suites) - set(SUITES)
     if unknown:
@@ -33,10 +38,14 @@ def main():
         parser.error('caddy must be on PATH or passed with --caddy')
     output = args.output or Path(tempfile.mkdtemp(prefix='pcl-live-reports-'))
     output.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['cargo', 'build', '--locked'], cwd=ROOT, check=True)
+    if not args.no_build:
+        subprocess.run(['cargo', 'build', '--locked'], cwd=ROOT, check=True)
+    suites = list(dict.fromkeys(args.suites or SUITES))
+    if args.jobs > 1 and len(suites) > 1:
+        sys.exit(parallel(args, suites, output))
 
     failed = []
-    for suite in args.suites or SUITES:
+    for suite in suites:
         print(f'{suite}: running', flush=True)
         started = time.monotonic()
         try:
@@ -46,7 +55,7 @@ def main():
             record = {'ok': False, 'error': traceback.format_exc()}
             failed.append(suite)
         record['seconds'] = round(time.monotonic() - started, 1)
-        report = output / f'{suite}.json'
+        report = output / f'{args.report or suite}.json'
         report.write_text(json.dumps({'suite': suite, **record}, indent=2) + '\n')
         print(f"{suite}: {'ok' if record['ok'] else 'FAILED'} in {record['seconds']}s, report {report}", flush=True)
         if not record['ok']:
@@ -54,6 +63,53 @@ def main():
             print('\n'.join('  | ' + line for line in record['error'].splitlines()[-25:]), flush=True)
     print(f'failed: {", ".join(failed)}' if failed else 'all live suites passed')
     sys.exit(1 if failed else 0)
+
+
+def parallel(args, suites, output):
+    """Run each suite as its own check-live process, at most args.jobs at once. Each process gets
+    a disjoint slice of the test ports, so two suites never race for one port."""
+    # The recovery suite is most of the run, so its cases are split across the jobs too.
+    jobs = []
+    for suite in suites:
+        if suite == 'recovery' and not args.case:
+            names = [case.__name__ for case in importlib.import_module('live.recovery').CASES]
+            shards = min(args.jobs, len(names))
+            jobs += [(f'recovery-{n + 1}', suite, names[n::shards]) for n in range(shards)] if shards > 1 else [(suite, suite, [])]
+        else:
+            jobs.append((suite, suite, args.case or []))
+    # Longest first, so the slowest work never starts last.
+    order = ['recovery', 'upgrades', 'compose', 'service-sets', 'dashboard', 'updates']
+    jobs.sort(key=lambda job: order.index(job[1]) if job[1] in order else len(order))
+    first, last = 30000, 32767
+    width = (last - first + 1) // len(jobs)
+    pending = list(enumerate(jobs))
+    running = {}
+    failed = []
+    while pending or running:
+        while pending and len(running) < args.jobs:
+            index, (name, suite, cases) = pending.pop(0)
+            env = dict(os.environ, PARCELA_LIVE_PORTS=f'{first + index * width}-{first + (index + 1) * width - 1}')
+            command = [sys.executable, __file__, '--no-build', '--caddy', args.caddy, '--output', str(output), '--report', name, suite]
+            for case in cases:
+                command += ['--case', case]
+            log = (output / f'{name}.log').open('w')
+            running[name] = (subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT), log)
+            print(f'{name}: running', flush=True)
+        for name, (process, log) in list(running.items()):
+            if process.poll() is None:
+                continue
+            log.close()
+            del running[name]
+            text = (output / f'{name}.log').read_text()
+            suite = name.split('-')[0] if name.startswith('recovery-') else name
+            lines = [line for line in text.splitlines() if line.startswith(f'{suite}: ') and 'running' not in line]
+            print(f'{name}: ' + lines[-1].split(': ', 1)[1] if lines else f'{name}: exited {process.returncode}', flush=True)
+            if process.returncode:
+                failed.append(name)
+                print('\n'.join('  | ' + line for line in text.splitlines()[-25:]), flush=True)
+        time.sleep(0.2)
+    print(f'failed: {", ".join(failed)}' if failed else 'all live suites passed')
+    return 1 if failed else 0
 
 
 if __name__ == '__main__':

@@ -37,6 +37,8 @@ The `recovery` suite kills, freezes and starves Parcela's own processes: owners,
 
 Each fixture uses a disposable directory, isolated state, an untrusted test CA, and explicit ports from 30000 through 32767. The runner builds once and writes a JSON report per suite. `--output DIR` retains reports at a chosen path. `--caddy PATH` selects Caddy.
 
+`--jobs N` runs suites at once, each in its own process with its own slice of those ports, and splits the `recovery` cases across the jobs, since that suite is most of the run. `scripts/check-live --jobs 8` takes about a minute on a laptop instead of about six. Each recovery case's report records its seconds. The live suites use `target/debug/parcela`, or the one under `CARGO_TARGET_DIR`, so a build into another target directory leaves a running suite alone.
+
 Do not change system trust or take over occupied listeners. Tests with a terminal must set `PARCELA_NO_TRUST=1`. Live sharing tests need disposable environments and must verify that shutdown removes mDNS names and Tailscale serve entries. Follow [AGENTS.md](https://github.com/lostcoords/parcela/blob/main/AGENTS.md) for the full project constraints.
 
 ## Write documentation

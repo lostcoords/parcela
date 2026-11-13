@@ -1142,12 +1142,14 @@ def run(caddy, cases=None):
     records = []
     for case in selected:
         record = {'case': case.__name__}
+        started = time.monotonic()
         try:
             with Fixture(caddy) as fixture:
                 record['fixture'] = str(fixture.root)
                 record['evidence'] = case(fixture)
         except Exception:
             record['error'] = traceback.format_exc()
+        record['seconds'] = round(time.monotonic() - started, 1)
         records.append(record)
         detail = f" ({record['error'].strip().splitlines()[-1]})" if 'error' in record else ''
         print(f"  recovery {case.__name__}: {'FAIL' if 'error' in record else 'ok'}{detail}", flush=True)

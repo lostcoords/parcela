@@ -13,12 +13,14 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-BINARY = ROOT / 'target/debug/parcela'
+BINARY = Path(os.environ.get('CARGO_TARGET_DIR') or ROOT / 'target') / 'debug/parcela'
 FIXTURES = ROOT / 'tests/fixtures'
 SERVICE = FIXTURES / 'http_service.py'
 
 # Below the Linux (32768+) and macOS (49152+) ephemeral ranges and above Parcela's 20000-29999 leases.
-TEST_PORTS = range(30000, 32768)
+# `check-live --jobs` gives each suite its own slice, as PARCELA_LIVE_PORTS=FIRST-LAST.
+TEST_PORTS = range(*(lambda first, last: (int(first), int(last) + 1))(
+    *os.environ.get('PARCELA_LIVE_PORTS', '30000-32767').split('-')))
 _handed_out = set()
 
 
@@ -33,7 +35,7 @@ def free_port():
                 continue
         _handed_out.add(port)
         return port
-    raise RuntimeError('no free test port in 30000-32767')
+    raise RuntimeError(f'no free test port in {TEST_PORTS.start}-{TEST_PORTS.stop - 1}')
 
 
 def listening(port):
