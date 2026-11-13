@@ -143,10 +143,22 @@ def run(caddy, **_):
         assert live.json(compose_path, 'status', '--current')['state'] == 'stopped'
         assert not control_socket(runtime).exists()
         assert request('auth-live.localhost')['id'] == auth_id
+        # Renaming the project while it runs: up names the way out, and each step of it works.
+        (auth_path / 'parcela.yaml').write_text(MANIFEST.replace('project: live', 'project: renamed'))
+        renamed = cli(auth_path, 'up', '--detach', check=False)
+        assert renamed.returncode == 1 and 'stop it with `parcela down`, forget the old one with `parcela rm`' in renamed.stderr, renamed.stderr
+        assert live.json(auth_path, 'status', '--current')['workspace']['id'] == auth_id
+        cli(auth_path, 'down', timeout=60)
+        wait_for(lambda: preview.poll() is not None, timeout=15)
+        cli(auth_path, 'rm', timeout=60)
+        started = live.json(auth_path, 'up', '--detach', '--name', 'auth')
+        live.ports.extend(endpoint['backend_port'] for endpoint in started['session']['endpoints'])
+        assert request('auth-renamed.localhost')['id'] != auth_id
+        cli(auth_path, 'down', timeout=60)
         return {'https_port': live.https, 'verified': [
             'owned Caddy TLS/CA without trust', 'two simultaneous routes', 'literal argv', 'forwarded scheme/host spoof rejection',
             'SSE', 'WebSocket upgrade', 'unknown host rejection', 'duplicate ownership', 'SIGTERM', 'exit status', 'foreign port safety',
             'supervised web+worker graph', 'independent teardown', 'owner-mediated down/stop', 'detached startup/readiness',
             'restart generation', 'unhealthy probe separate from recorded ready', 'stale command rejection',
             'live/aggregate status and UUID targeting', 'service/log inspection', 'data retention',
-            'foreign control socket refusal', 'failed detached startup cleanup']}
+            'foreign control socket refusal', 'failed detached startup cleanup', 'rename while running: down, rm, up']}

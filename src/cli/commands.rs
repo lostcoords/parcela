@@ -46,8 +46,8 @@ pub(super) fn target_workspace(
     match id {
         Some(id) => by_id(registry, id),
         None => {
-            let (source, manifest) = project(path)?;
-            registry.current(&source, &manifest)
+            let (source, _) = project(path)?;
+            registry.registered(&source)
         }
     }
 }
@@ -136,9 +136,9 @@ pub fn bare(global: Global) -> Result<i32> {
     let out = Output::detect(global.json);
     let hint = match project(&global.path) {
         Err(_) => "No parcela.yaml here. Create one with `parcela init`, then run `parcela up`.",
-        Ok((source, manifest)) => {
+        Ok((source, _)) => {
             let registered = Registry::open(&state_dir(global.state_dir.clone())?, false)?
-                .is_some_and(|registry| registry.current(&source, &manifest).is_ok());
+                .is_some_and(|registry| registry.registered(&source).is_ok());
             if registered {
                 return run(Cli::new(global, Command::Status { current: true }));
             }

@@ -397,27 +397,40 @@ impl Registry {
             .collect::<rusqlite::Result<_>>()?)
     }
 
-    pub fn current(&self, source: &Path, manifest: &Manifest) -> Result<Workspace> {
+    /// The environment registered for `source`, whatever `parcela.yaml` now says, for commands
+    /// that act on what was recorded, like `down`, `rm`, `status` and `logs`.
+    pub fn registered(&self, source: &Path) -> Result<Workspace> {
         let source = source.canonicalize()?;
         let source = source.to_str().context("non-UTF-8 paths are unsupported")?;
-        let workspace = self
-            .connection
+        self.connection
             .query_row(
                 &format!("SELECT {COLUMNS} FROM workspaces WHERE source = ?1"),
                 [source],
                 read_workspace,
             )
-            .optional()?;
-        let Some(workspace) = workspace else {
-            bail!(NOT_STARTED);
-        };
+            .optional()?
+            .context(NOT_STARTED)
+    }
+
+    /// The environment registered for `source`, refused when `parcela.yaml` now names it
+    /// differently: starting it would move its URLs.
+    pub fn current(&self, source: &Path, manifest: &Manifest) -> Result<Workspace> {
+        let workspace = self.registered(source)?;
         let hostname = manifest.hostname(workspace.role == Role::Primary, &workspace.label)?;
-        ensure!(
-            workspace.project_id == manifest.project.id && workspace.hostname == hostname,
-            "parcela.yaml now gives this checkout {hostname}, but it was started as {}; forget the old one with `parcela -w {} rm`, then run `parcela up`",
-            workspace.hostname,
-            workspace.id
-        );
+        if workspace.project_id != manifest.project.id || workspace.hostname != hostname {
+            let running = self
+                .session(&workspace.id)?
+                .is_some_and(|session| session.status != SessionStatus::Stopped);
+            bail!(
+                "parcela.yaml now gives this checkout {hostname}, but it was started as {}; {}forget the old one with `parcela rm`, then run `parcela up`",
+                workspace.hostname,
+                if running {
+                    "stop it with `parcela down`, "
+                } else {
+                    ""
+                }
+            );
+        }
         Ok(workspace)
     }
 

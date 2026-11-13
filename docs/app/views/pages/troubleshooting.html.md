@@ -81,7 +81,13 @@ Another checkout owns that name. Start this one with another name: `parcela up -
 
 ## A checkout keeps its old name
 
-Parcela remembers a checkout's name after the first `up`. To rename it, run `parcela down`, `parcela rm`, then `parcela up --name NEW`. Read any teardown hook before `rm`, because it can delete external data. The new registration gets a new runtime directory. Move retained data yourself if needed.
+Parcela remembers a checkout's name after the first `up`. Changing `project` in `parcela.yaml` changes the names `up` would give it, so `up` refuses until the old registration is gone:
+
+```text
+parcela: parcela.yaml now gives this checkout shop.localhost, but it was started as app.localhost; stop it with `parcela down`, forget the old one with `parcela rm`, then run `parcela up`
+```
+
+`down`, `rm`, `status`, `logs` and `url` keep working on the old registration from the checkout. To rename it, run `parcela down`, `parcela rm`, then `parcela up --name NEW`. Read any teardown hook before `rm`, because it can delete external data. The new registration gets a new runtime directory. Move retained data yourself if needed.
 
 ## `logs` has nothing to show
 

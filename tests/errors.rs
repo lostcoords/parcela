@@ -196,26 +196,34 @@ fn missing_manifest_and_unstarted_checkout_point_to_the_next_command() {
         assert!(output.status.success(), "{command}");
     }
 
-    // Renaming the project strands the registration; the message names the way out, and it works.
+    // Renaming the project leaves the registration under the old name. Commands on what was
+    // recorded still work; up names the way out, and it works from the checkout.
     fs::write(
         app.join("parcela.yaml"),
         "version: 1\nproject: shop\nservices: {web: {command: bin/web, http: {healthcheck: /}}}\n",
     )
     .unwrap();
-    let id = status["workspace"]["id"].as_str().unwrap();
-    let renamed = cli(&app, &state, &["status", "--current"]);
-    assert_eq!(
-        String::from_utf8_lossy(&renamed.stderr),
-        format!(
-            "parcela: parcela.yaml now gives this checkout shop.localhost, but it was started as app.localhost; forget the old one with `parcela -w {id} rm`, then run `parcela up`\n"
-        )
-    );
-    let forget = Command::new(env!("CARGO_BIN_EXE_parcela"))
+    for command in [&["status", "--current"][..], &["url"], &["down"]] {
+        let output = cli(&app, &state, command);
+        assert!(
+            output.status.success(),
+            "{command:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let renamed = Command::new(env!("CARGO_BIN_EXE_parcela"))
+        .arg("--path")
+        .arg(&app)
         .arg("--state-dir")
         .arg(&state)
-        .args(["-w", id, "rm"])
+        .args(["up", "--backend-port", "1443"])
         .output()
         .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&renamed.stderr),
+        "parcela: parcela.yaml now gives this checkout shop.localhost, but it was started as app.localhost; forget the old one with `parcela rm`, then run `parcela up`\n"
+    );
+    let forget = cli(&app, &state, &["rm"]);
     assert!(
         forget.status.success(),
         "{}",
