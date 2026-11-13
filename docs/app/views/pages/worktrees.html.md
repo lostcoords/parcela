@@ -57,16 +57,16 @@ parcela ls
 
 ```text
 PROJECT  NAME     STATE    URL                                  PATH
-shop     billing  ready    https://billing-shop.localhost:1443  /Users/you/code/shop-billing
-shop     signup   ready    https://signup-shop.localhost:1443   /Users/you/code/shop-signup
-shop     primary  stopped  https://shop.localhost:1443          /Users/you/code/shop
+shop     billing  ready    https://billing-shop.localhost:1443  ~/code/shop-billing
+shop     signup   ready    https://signup-shop.localhost:1443   ~/code/shop-signup
+shop     primary  stopped  https://shop.localhost:1443          ~/code/shop
 ```
 
 ## Clean up
 
 ```sh
-parcela --path ../billing down
-git worktree remove ../billing
+parcela -w billing down
+git worktree remove ../shop-billing
 parcela rm --prune
 ```
 
@@ -124,7 +124,7 @@ Then ask Claude Code something bounded:
 
 ## Share with another device
 
-Sharing is off by default and lasts for one run. Pass the flag again after a restart.
+Sharing is off by default and lasts for one run. Pass the flag again after a restart, or set a [host default](/docs/cli/#config) to share every run on this machine.
 
 ### Share on the same network
 
@@ -138,7 +138,7 @@ $ parcela up --detach --lan
 
 Each service also answers at a `.local` name, which the device on your network resolves over mDNS. Parcela publishes the names with `dns-sd` on macOS or `avahi-publish` on Linux, and Caddy listens on this machine's LAN address with the same port. Devices on the network reach only the environments started with `--lan`.
 
-The device does not trust Parcela's certificate authority, so it warns first. To stop the warning, install the certificate from `parcela trust --print` on the device. If the network changes, run `parcela restart --lan`. `--lan-ip IP` picks the address when the detected one is wrong, for example behind a VPN. `--lan` refuses a public address, so a machine with one, such as a cloud VM, cannot serve its app to the internet this way. `PARCELA_LAN=1` in the environment works like `--lan`, and `PARCELA_TAILSCALE=1` like `--tailscale`. To share every run on this machine, for example a remote dev box you reach over the tailnet, run `parcela config set sharing.tailscale true` or `sharing.lan true`.
+The device does not trust Parcela's certificate authority, so it warns first. To stop the warning, install the certificate from `parcela trust --export > parcela-ca.crt` on the device. If the network changes, run `parcela restart --lan`. `--lan-ip IP` picks the address when the detected one is wrong, for example behind a VPN, and turns on `--lan` by itself. `--lan` needs `dns-sd` or `avahi-publish` on `PATH` and refuses a public address, so a machine with one, such as a cloud VM, cannot serve its app to the internet this way. `PARCELA_LAN=1` in the environment works like `--lan`, and `PARCELA_TAILSCALE=1` like `--tailscale`. To share every run on this machine, for example a remote dev box you reach over the tailnet, run `parcela config set sharing.tailscale true` or `sharing.lan true`.
 
 ### Share on your tailnet
 
@@ -150,7 +150,7 @@ $ parcela up --detach --tailscale
             https://mb.tail1234.ts.net:8443
 ```
 
-Each service gets its own HTTPS port on this machine's tailnet name, through `tailscale serve`. Tailscale's certificate is trusted everywhere, so there is no warning. Only devices on your tailnet can open it. It never uses Funnel. It needs the Tailscale CLI, a connected machine and HTTPS certificates turned on for the tailnet. Parcela picks ports that `tailscale serve status` shows free, and leaves the rest of your serve configuration alone.
+Each service gets its own HTTPS port on this machine's tailnet name, through `tailscale serve`. Tailscale's certificate is trusted everywhere, so there is no warning. Only devices on your tailnet can open it. It never uses Funnel. It needs the Tailscale CLI, a connected machine, MagicDNS and HTTPS certificates turned on for the tailnet. Parcela picks ports that `tailscale serve status` shows free, and leaves the rest of your serve configuration alone.
 
 ### Share under your own domain
 

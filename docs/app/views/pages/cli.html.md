@@ -7,7 +7,7 @@
 | Option | Meaning |
 | --- | --- |
 | `-C`, `--path DIR` | Checkout directory. Configuration lookup walks from this directory to its parents. Defaults to the current directory. |
-| `-w`, `--workspace ENV` | A registered environment, from any directory: one of its URLs or hostnames, with or without `.localhost` and the port, its name when only one environment has it, or its ID from `parcela ls --json`. Conflicts with `--path`. |
+| `-w`, `--workspace ENV` | A registered environment, from any directory: one of its URLs or hostnames, with or without `.localhost` or `.local` and the port, its name when only one environment has it, or its ID from `parcela ls --json`. Conflicts with `--path`. |
 | `--state-dir DIR` | State directory. Precedence is this option, `PARCELA_STATE_DIR`, `$XDG_STATE_HOME/parcela`, then `~/.local/state/parcela`. |
 | `--json` | JSON output even in a terminal. |
 | `--help`, `-h` | Help. |
@@ -15,7 +15,7 @@
 
 ## Output
 
-Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url` and `logs`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `up --detach` shows a progress line on stderr while it waits, in a terminal outside CI.
+Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url`, `logs`, `trust --print`, `trust --export`, `skill` and `completion`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `up --detach` shows a progress line on stderr while it waits, in a terminal outside CI.
 
 Colors appear only in a terminal. `CLICOLOR_FORCE=1` or `FORCE_COLOR=1` keeps them when output is piped, for `less -R` or CI logs; `NO_COLOR` turns them off and wins over both. Forcing colors never switches a piped command from JSON to text.
 
@@ -24,10 +24,32 @@ For example, `parcela status --current --json | jq -r .state` reads the environm
 | Exit code | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | Command failure, failed doctor check, or no proxy for `proxy status`. |
+| `1` | Command failure, failed doctor check, no proxy for `proxy status`, an unset key for `config get`, or an environment that `down --all` or `--all-projects` could not stop. |
 | `2` | Invalid arguments. |
 | `124` | A task exceeded `timeout_seconds`. |
 | Other | Exit code from the command executed by `task` or `run`. |
+
+## Environment variables
+
+Parcela reads these from the shell that runs it. Variables it gives your processes are in [Configuration](/docs/configuration/#environment-variables-parcela-sets).
+
+| Variable | Effect |
+| --- | --- |
+| `PARCELA_STATE_DIR` | State directory, like `--state-dir`. |
+| `XDG_STATE_HOME` | State directory is `$XDG_STATE_HOME/parcela` when neither `--state-dir` nor `PARCELA_STATE_DIR` is set. Must be absolute. |
+| `PARCELA_CONFIG` | Host config file, instead of `$XDG_CONFIG_HOME/parcela/config.yaml` or `~/.config/parcela/config.yaml`. |
+| `PARCELA_HTTPS_PORT` | Proxy port when neither `proxy.port` nor a saved port is set. |
+| `PARCELA_LAN`, `PARCELA_TAILSCALE` | `1` works like `--lan` or `--tailscale` for `up` and `restart`. |
+| `PARCELA_DOMAIN`, `PARCELA_DOMAIN_PORT` | Like `--domain`, comma-separated, and `--domain-port`. |
+| `PARCELA_NO_TRUST` | Any value but empty or `0` stops `up` from offering CA trust. |
+| `PARCELA_NO_UPDATE` | `1` turns off release checks and update prompts. |
+| `DO_NOT_TRACK`, `PARCELA_TELEMETRY_DISABLED` | Any value but empty, `0`, `false` or `no` turns off [telemetry](/docs/telemetry/). |
+| `PARCELA_TELEMETRY_DEBUG` | Prints the telemetry event instead of sending it. |
+| `NO_COLOR`, `CLICOLOR_FORCE`, `FORCE_COLOR` | Color control; see [Output](#output). |
+| `CI` | Hides the `up --detach` progress line. |
+| `BROWSER` | The browser `open` runs, instead of `open` on macOS or `xdg-open` on Linux. |
+
+Parcela removes every `PARCELA_` variable, and `PORT`, from the environment of the commands it runs, so a variable meant for the CLI never reaches your app.
 
 ## init
 
@@ -35,7 +57,7 @@ For example, `parcela status --current --json | jq -r .state` reads the environm
 parcela init [--name NAME] [--command CMD]
 ```
 
-Writes a minimal `parcela.yaml` without replacing an existing file. The command is inferred from `package.json`, Rails, or Django, with a Python file server as fallback. `--command` overrides the guess. `--name` sets the project name.
+Writes a minimal `parcela.yaml` with one HTTP service, `web`, without replacing an existing file. The command is guessed from a `dev` script in `package.json` (run with pnpm, yarn, bun or npm by lockfile), a Rails app (`Gemfile` and `bin/rails`) or Django (`manage.py`), with a Python file server as fallback. `--command` overrides the guess. The project name defaults to the main checkout's directory name; `--name` sets it, turned into a DNS label.
 
 ## create
 
@@ -70,7 +92,7 @@ Restore does not start services or mark setup complete. The next `up` runs the n
 ## up
 
 ```text
-parcela up [--detach] [--setup] [--name NAME | --primary] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]]
+parcela up [--detach] [--setup] [--name NAME | --primary] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]] [--no-share]
 ```
 
 Registers the checkout on first use and starts the configured services. If HTTP services are configured, it starts the proxy as needed and opens routes after readiness. Without HTTP services, it supervises processes without a proxy or URL. A ready environment is reused. If the owner process died but services survived, `up` adopts the recorded processes instead of starting duplicates.
@@ -83,17 +105,19 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--primary` | Gives a checkout the project's main URL if available. Conflicts with `--workspace`. |
 | `--backend-port N` | Sets the default HTTP service's backend port. Minimum 1024. Other ports are leased automatically. |
 | `--lan` | Shares this run at `.local` names on the LAN. Also set by `PARCELA_LAN=1`. |
-| `--lan-ip IP` | Chooses the LAN IPv4 address. |
+| `--lan-ip IP` | Chooses the LAN IPv4 address and turns on `--lan`. It must belong to a network interface and be private or link-local. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
 | `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Repeat it for more domains; they share `--domain-port`. Also set by `PARCELA_DOMAIN`, comma-separated. |
+| `--domain-port N` | The loopback port for `--domain`, 1480 by default, minimum 1024. Also set by `PARCELA_DOMAIN_PORT`. |
 | `--no-share` | Disables all sharing for this run, including host defaults and environment variables. Use `restart --no-share` for an already shared run. |
-| `--domain-port N` | The loopback port for `--domain`, 1480 by default. Also set by `PARCELA_DOMAIN_PORT`. |
 
 `hooks.prestart` runs on every new start after setup. A hook failure, an HTTP service exit, or a nonzero process exit before first readiness stops startup. A non-HTTP process may finish with code 0.
 
 After readiness, ordinary services are not restarted automatically. Exits are reported. If an HTTP service stops listening for longer than the readiness timeout, `readiness_timeout_seconds` in `parcela.yaml` (60 seconds by default), the environment stops. Sharing publishers have a separate retry policy.
 
-For an HTTP environment, the first `up` in a terminal may offer system CA trust. `PARCELA_NO_TRUST=1` suppresses it. Nonterminal runs never change trust.
+`--backend-port`, `--lan`, `--lan-ip`, `--tailscale` and `--domain` need an HTTP service. [Share with another device](/docs/worktrees/#share-with-another-device) covers each kind of sharing.
+
+For an HTTP environment, the first `up` in a terminal may offer system CA trust. It is offered once per CA. `PARCELA_NO_TRUST=1` or [`trust false`](#config) suppresses it. Nonterminal runs never change trust.
 
 ## down
 
@@ -109,10 +133,10 @@ Stops the selected environment in reverse dependency order. Once nothing that de
 ## restart
 
 ```text
-parcela restart [--detach] [--setup] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]]
+parcela restart [--detach] [--setup] [--backend-port N] [--lan] [--lan-ip IP] [--tailscale] [--domain DOMAIN ... [--domain-port N]] [--no-share]
 ```
 
-Checks the replacement configuration, then stops and starts the whole environment. New URL reservations happen after the old run stops. Options have the same meanings as for `up`. Sharing flags must be supplied for the new run.
+Checks the replacement configuration, then stops and starts the whole environment. New URL reservations happen after the old run stops. Options have the same meanings as for `up`. The new run does not keep the old run's sharing flags: pass them again. [Host `sharing`](#config) applies as for `up`. `restart` refuses an environment started with `run`.
 
 ## status
 
@@ -158,6 +182,8 @@ Prints the local dashboard URL, `https://parcela-dashboard.localhost:1443` with 
 
 The dashboard groups registered environments by project and discovers unregistered worktrees of known projects. Running environments come first, with those that need attention on top and stopped ones collapsed. Each row shows its URL, state and process count, with Open, Logs, Start, Restart and Stop where they apply; an environment with several services opens each by name. The filter narrows the list and opens the stopped ones. Logs open at `/logs`. Status refreshes in the background; a failed connection or an old timestamp shows a warning. Apps open at their own URLs, never in a frame.
 
+While nothing serves a registered `.localhost` name, a browser page load there shows the environment's state with Start or Restart, a link to its logs and a link to the dashboard. Starting always takes a click. The page reloads into the app once it is ready. Other requests to the name get `503`.
+
 Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture/) for what a tagged response changes.
 
 A CSP that allows neither same-origin scripts nor a nonce blocks the menu; Parcela never relaxes it. One that blocks same-origin images shows the word `parcela` in place of the icon. One that blocks same-origin `fetch` leaves the badge without data. An app that compresses even when asked not to passes through without the badge. If the extra script upsets a framework's hydration, turn the badge off.
@@ -170,7 +196,7 @@ Every `.localhost` app host answers `/_parcela/` for its own environment, so the
 
 On a domain name the menu is read-only, since other people may reach that name. It shows this environment's state and links to the project's other running environments, with no actions, logs or opened files. With `badge` off, a domain name passes `/_parcela/` to the app.
 
-A Parcela icon sits in the page's top-right corner. Drag it to any edge of the window, or focus it and press the arrow keys; each host remembers its place per browser. On a `.localhost` name it shows a count of new items your app opened and opens a panel with three tabs:
+A Parcela icon sits in the page's top-right corner. Drag it to any edge of the window, or focus it and press the arrow keys; each host remembers its place per browser. On a `.localhost` name it shows a count of new items your app opened and opens a panel with two tabs:
 
 - **Environments**, on an app page, shows only that page's environment, with Restart, Stop and Logs. The grid button opens `parcela-dashboard.localhost`, which lists every project and worktree Parcela knows, stopped and unregistered ones included, and gives registered ones Open, Start, Stop, Restart and Logs. Run `parcela up` in a checkout once to register it. Actions ignore `PARCELA_LAN`, `PARCELA_TAILSCALE` and `PARCELA_DOMAIN`, but [host `sharing`](#config) applies. Actions run `parcela up --detach`, `down` or `restart --detach` in the background; the row shows progress and the last error line.
 - **Logs** tails each process of the chosen environment and follows new output. It keeps the program's own terminal colors and highlights timestamps, HTTP methods and statuses, durations, and error and warning lines. Filter narrows to matching lines; Wrap toggles line wrapping, on by default on narrow screens.
@@ -255,7 +281,7 @@ Runs a configured task with the environment's variables. The environment must be
 parcela run [--name NAME | --primary] [--backend-port N] -- COMMAND...
 ```
 
-Runs a foreground command as the project's only HTTP service. Requires a `parcela.yaml` with a single service. The command must listen on `127.0.0.1:$PORT`.
+Runs a foreground command as the project's HTTP service. Requires a `parcela.yaml` with exactly one HTTP service. Only the command runs: no other services and no hooks. Sharing flags are not accepted, and `restart` refuses a run started this way. The command must listen on `127.0.0.1:$PORT`.
 
 Arguments execute without a shell. Shell expansion requires an explicit shell, for example:
 
@@ -276,11 +302,12 @@ One background Caddy serves all environments. Owners recover an unexpected proxy
 
 | Subcommand | Effect |
 | --- | --- |
-| `start` | Starts the proxy. `--port` chooses and saves its port. An occupied port causes an error naming its owner. |
+| `start` | Starts the proxy. `--port` chooses and saves its port. An occupied port causes an error naming its owner. A `--port` other than the host's `proxy.port`, or any move while the relay is installed, is refused. |
 | `stop` | Stops routing for every environment. App processes keep running. |
-| `restart` | Replaces the proxy, including after an upgrade. Briefly interrupts URLs. |
+| `restart` | Replaces the proxy, including after an upgrade. Briefly interrupts URLs. Takes `--port` like `start`. |
 | `status` | Shows the port, PIDs, version, and log path. Exits 1 if stopped. |
-The default port is 1443. `PARCELA_HTTPS_PORT` applies when no port is saved. Port 443 omits the port from URLs and requires permission to bind it; [`relay`](#relay) is the usual way to get URLs without a port. The proxy redirects plain HTTP on its listener to HTTPS.
+
+The port is the host's [`proxy.port`](#config), else the port saved by `proxy start --port`, else `PARCELA_HTTPS_PORT`, else 1443. Port 443 omits the port from URLs and requires permission to bind it; [`relay`](#relay) is the usual way to get URLs without a port. The proxy redirects plain HTTP on its listener to HTTPS.
 
 ## relay
 
@@ -320,13 +347,15 @@ Each environment starts with `parcela up --detach` in its checkout, shared as it
 parcela trust [--print | --export | --remove]
 ```
 
-Adds Caddy's local CA to the system trust store using `caddy trust`. Prints the certificate and undo command before the system password prompt. All projects use the same CA.
+Adds Caddy's local CA to the system trust store using `caddy trust`, starting the proxy first if needed. Prints the certificate's path and the undo command before the system password prompt. Requires a terminal. All projects use the same CA.
 
 | Flag | Effect |
 | --- | --- |
 | `--print` | Prints the certificate path. Changes nothing. |
 | `--export` | Prints the certificate itself, to install on a phone or another computer that opens `.local` URLs: `parcela trust --export > parcela-ca.crt`. Changes nothing. |
-| `--remove` | Removes the CA from the system trust store with `caddy untrust`, behind the system password prompt. | See [Use local HTTPS](/docs/faq/#clients-and-certificates).
+| `--remove` | Removes the CA from the system trust store with `caddy untrust`, behind the system password prompt. Requires a terminal. |
+
+`--print` and `--export` fail until the proxy has started once and created the CA. [Clients and certificates](/docs/faq/#clients-and-certificates) covers programs with their own CA list.
 
 ## upgrade
 
@@ -336,11 +365,11 @@ parcela upgrade [--nightly]
 
 For shell-installer installations, downloads and runs the installer. Installs the latest release, or with `--nightly` the newest build of `main`. A successful installation refreshes an older running proxy on its existing port. Application processes, data, and setup hooks keep their current run. URLs briefly disconnect while owners republish their routes. A deliberately stopped proxy stays stopped, and an older CLI never replaces a newer proxy.
 
-Normal interactive commands check for a stable release at most once a day. Shell-installer installations offer **Update now? [Y/n]**. Accepting installs the release, refreshes the running proxy, and resumes the original command with the new CLI. Declining continues the command and suppresses another prompt for a day. Offline release checks do not block the command.
+Bare `parcela`, `up`, `restart`, `run`, `status`, `ls`, `logs`, `url`, `open` and `ui` check for a stable release at most once a day when stdin, stdout and stderr are all terminals. Shell-installer installations offer **Update now? [Y/n]**. Accepting installs the release, refreshes the running proxy, and resumes the original command with the new CLI. Declining continues the command and suppresses another prompt for a day. Offline release checks do not block the command.
 
-Piped commands, `--json`, background owners, shutdown commands, and diagnostic proxy commands never check for updates or prompt. `PARCELA_NO_UPDATE=1` or `parcela config set updates false` disables automatic release checks. It does not disable local proxy maintenance after an update.
+Other commands, piped commands, `--json` and background owners never check for updates or prompt. The same commands, `--json` included, refresh an older running proxy; other commands never touch it. `PARCELA_NO_UPDATE=1` or `parcela config set updates false` disables automatic release checks. It does not disable local proxy maintenance after an update.
 
-For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade` prints the matching package-manager command without replacing the installation. After that update, the next regular CLI command refreshes an older running proxy. Builds outside known installation paths skip automatic release checks.
+For Homebrew or Cargo installations, Parcela shows an update notice, and `upgrade` exits 1 with the matching package-manager command without replacing the installation. After that update, the next of the commands above refreshes an older running proxy. Builds outside known installation paths skip automatic release checks.
 
 ## config
 
@@ -348,21 +377,21 @@ For Homebrew or Cargo installations, Parcela shows an update notice and `upgrade
 parcela config [list | get KEY | set KEY VALUE | add KEY VALUE | remove KEY VALUE | unset KEY | path]
 ```
 
-Shows or changes this machine's settings. Without a subcommand, lists them. `get` exits 1 when the key is unset. `add` and `remove` change one item of a list; `set` replaces a list with comma-separated values.
+Shows or changes this machine's settings. Without a subcommand, or with `list` (alias `ls`), lists every key with its default when unset. `get` exits 1 when the key is unset. `add` and `remove` change one item of a list; `set` replaces a list with comma-separated values. `path` prints the file's path. Booleans accept `true`, `false`, `yes`, `no`, `on`, `off`, `1` and `0`.
 
 | Key | Value |
 | --- | --- |
 | `sharing.domains` | Shares every run under each domain in the list, like `--domain`. `--domain` replaces the list for a run. Removing the last one also unsets `sharing.domain_port`. |
-| `sharing.domain_port` | The loopback port for `sharing.domains`, 1480 by default. |
+| `sharing.domain_port` | The loopback port for `sharing.domains`, 1480 by default, minimum 1024. Requires `sharing.domains`. |
 | `sharing.lan` | `true` shares every run at `.local` names, like `--lan`. |
 | `sharing.lan_ip` | The LAN address when LAN sharing is on, like `--lan-ip`. It does not turn LAN sharing on. |
 | `sharing.tailscale` | `true` shares every run through `tailscale serve`, like `--tailscale`. Never uses Funnel. |
 | `telemetry` | `false` turns off anonymous usage data, like `parcela telemetry disable`. |
 | `updates` | `false` turns off release checks, like `PARCELA_NO_UPDATE=1`. |
 | `worktrees.directory` | Where `create` puts new checkouts, as `<directory>/<repository>-<NAME>`. An absolute path or one under `~/`. |
-| `ports.backend` | The backend port range, like `30000-30999`. Default `20000-29999`. |
-| `proxy.port` | The proxy's HTTPS port, 1443 by default. Setting it moves a running proxy; restart environments to update their URLs. Remove the relay first if it is installed. |
-| `proxy.caddy` | The Caddy binary: a name on `PATH` or an absolute path. Default `caddy`. |
+| `ports.backend` | The backend port range, like `30000-30999`, from 1024 up. Default `20000-29999`. |
+| `proxy.port` | The proxy's HTTPS port, 1443 by default. Setting or unsetting it moves a running proxy; restart environments to update their URLs. Remove the relay first if it is installed. |
+| `proxy.caddy` | The Caddy binary: a name on `PATH`, an absolute path, or a path under `~/`. Default `caddy`. |
 | `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
 | `badge` | `false` stops the proxy adding the debug menu to `.localhost` and domain pages. Default `true`. A running proxy picks it up on its own. |
 

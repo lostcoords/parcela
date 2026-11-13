@@ -53,7 +53,7 @@ The setup or prestart command exited nonzero, so no other service started and th
 
 ## The URL answers 503
 
-The environment is registered but not running, or it is still starting. Run `parcela status --current`. If it says `stopped`, run `parcela up --detach`.
+The environment is registered but not running, or it is still starting. In a browser, the name shows the environment's state with a Start or Restart button instead. Run `parcela status --current`. If it says `stopped`, run `parcela up --detach`.
 
 ## Another device cannot open a shared URL
 
@@ -61,7 +61,7 @@ Run `parcela status --current` and look at the `parcela-lan-*` and `parcela-tail
 
 - **A `.local` name does not resolve.** The device must be on the same network, and some guest or office Wi-Fi blocks mDNS. After the laptop changes networks, run `parcela restart --detach --lan`.
 - **The page says the host is not allowed.** The dev server refuses the shared name. Add `PARCELA_SHARE_HOSTS` to its allowed hosts, as shown in [the sharing guide](/docs/worktrees/#let-the-dev-server-accept-the-names).
-- **`--tailscale` refuses to start.** It says what is missing: the CLI, `tailscale up`, or HTTPS certificates in the tailnet's DNS settings.
+- **`--tailscale` refuses to start.** It says what is missing: the CLI, `tailscale up`, MagicDNS, or HTTPS certificates in the tailnet's DNS settings.
 
 ## The dev server rejects the host
 

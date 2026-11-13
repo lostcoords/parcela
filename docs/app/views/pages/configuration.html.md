@@ -219,7 +219,7 @@ Extra ports for things that are not HTTP services, such as a database:
 ports: [db, cache]
 ```
 
-- Each name arrives as `PARCELA_PORT_<NAME>`, uppercased with hyphens turned into underscores: `PARCELA_PORT_CACHE`.
+- Each name is a DNS label and arrives as `PARCELA_PORT_<NAME>`, uppercased with hyphens turned into underscores: `PARCELA_PORT_CACHE`.
 - An environment keeps the same port across `down`, `up` and `restart` while it is free.
 - No two running environments get the same port. Parcela does not route or check these ports.
 - A [compose](#compose) service adds one for every port its containers publish.
@@ -236,7 +236,7 @@ env:
   API_ORIGIN: ${PARCELA_SERVICE_API_URL}
 ```
 
-Values can use `${NAME}` to insert any variable Parcela sets. A placeholder that does not resolve is an error. You cannot set `PORT`, `HOST` or names starting with `PARCELA_`, nor `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE` when a service uses `compose`. Commands inherit the launching shell's environment except names starting with `PARCELA_`. Service `env` overrides top-level `env`. Use Parcela-provided variables in placeholders. Arbitrary shell variables such as `${HOME}` are unavailable to interpolation.
+Names use ASCII letters, digits and underscores, and do not start with a digit. Values can use `${NAME}` to insert any variable Parcela sets. A placeholder that does not resolve is an error. You cannot set `PORT`, `HOST` or names starting with `PARCELA_`, nor `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE` when a service uses `compose`. Commands inherit the launching shell's environment except `PORT` and names starting with `PARCELA_`. Service `env` overrides top-level `env`. Use Parcela-provided variables in placeholders. Arbitrary shell variables such as `${HOME}` are unavailable to interpolation.
 
 ## tasks
 
@@ -256,7 +256,7 @@ tasks:
 | `command` | Required. A shell command, run from the checkout root. |
 | `timeout_seconds` | Parcela stops the task after this many seconds and exits 124. |
 
-Arguments after `--` are appended. `parcela task test -- test/models` runs `bin/rails test test/models`. `timeout_seconds` must be a positive integer when set.
+Task names are DNS labels. Arguments after `--` are appended. `parcela task test -- test/models` runs `bin/rails test test/models`. `timeout_seconds` must be a positive integer when set.
 
 ## Editor support
 
@@ -291,17 +291,17 @@ Every service, hook and task receives these. Service names are uppercased, with 
 |---|---|
 | `PORT` | `29381`, the service's own port. Only HTTP services get one. In tasks it is the port of the service at the environment's URL. |
 | `HOST` | `127.0.0.1` |
-| `BROWSER` | A shim that runs `parcela browse`, so a process asking for a browser offers the URL to the browsers showing the environment. Set `BROWSER` in `env:` to keep another browser. |
+| `BROWSER` | `bin/browser` in the runtime directory, a shim that runs `parcela browse`, so a process asking for a browser offers the URL to the browsers showing the environment. Set `BROWSER` in `env:` to keep another browser. |
 | `PARCELA_URL` | `https://shop.localhost:1443`, the environment's URL, only when HTTP is configured |
 | `PARCELA_HOSTNAME` | `shop.localhost`, only when HTTP is configured |
 | `PARCELA_SHARE_HOSTS` | `shop.local,mb.tail1234.ts.net,shop.dev.example.com`, the hostnames other devices use after `up --lan`, `--tailscale` or `--domain`. Empty otherwise. Used for dev-server host allow lists. |
 | `PARCELA_SERVICE_<NAME>_URL` | `PARCELA_SERVICE_API_URL=https://api-shop.localhost:1443` |
 | `PARCELA_SERVICE_<NAME>_HOSTNAME` | `PARCELA_SERVICE_API_HOSTNAME=api-shop.localhost` |
-| `PARCELA_SERVICE_<NAME>_PORT` | `PARCELA_SERVICE_API_PORT=26798` |
+| `PARCELA_SERVICE_<NAME>_PORT` | `PARCELA_SERVICE_API_PORT=26798`, the backend port, for calls that skip the proxy |
 | `PARCELA_PORT_<NAME>` | `PARCELA_PORT_DB=26953`, one per entry in `ports` |
 | `PARCELA_ENVIRONMENT_NAME` | `primary`, or the worktree's name, like `signup` |
 | `PARCELA_DATA_DIR` | The environment's private data directory |
-| `PARCELA_RUNTIME_DIR` | The directory that holds `data`, `tmp`, `cache` and `log` |
+| `PARCELA_RUNTIME_DIR` | The directory that holds `data`, `tmp`, `cache`, `log` and `bin` |
 | `PARCELA_PRIMARY_DIR` | The main checkout, where untracked files like `.env` usually live |
 | `PARCELA_PROJECT_ID` | `shop` |
 | `PARCELA_ENVIRONMENT_ID` | `7cceea8f-0fd3-4cdc-843f-0883f3c0fc5e` |
@@ -317,6 +317,9 @@ Every service, hook and task receives these. Service names are uppercased, with 
 | `…/registry.sqlite3` | Projects, environments, names and port leases. |
 | `…/environments/<id>/` | One environment's `PARCELA_RUNTIME_DIR`: `data`, `tmp`, `cache`, `log/owner.log`, each process's `log/processes/<name>.log` and Parcela's own records. |
 | `…/proxy/` | The proxy's Caddy config, `proxy.log` and the local certificate authority. |
+| `…/snapshots/<project>/<name>/` | Data snapshots from `parcela snapshot`. |
+| `…/telemetry.json`, `…/update-check.json`, `…/autostart.log` | The telemetry install ID and notice, the last release check, and autostart's output. |
+| `~/.config/parcela/config.yaml` | [Host settings](/docs/cli/#config), outside the state directory. Override it with `PARCELA_CONFIG` or `XDG_CONFIG_HOME`. |
 | `$(getconf DARWIN_USER_TEMP_DIR)parcela/` on macOS, `/tmp/parcela-<uid>/` on Linux | Unix sockets for the running environments and the proxy. |
 
 The state directory is private to your user. `rm` keeps an environment's directory. A later registration gets a new directory. Retained files are not automatically reused.

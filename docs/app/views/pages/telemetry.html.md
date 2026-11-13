@@ -14,7 +14,7 @@ Parcela sends anonymous command events to help maintainers understand use and fa
 | `PARCELA_TELEMETRY_DISABLED=1` | Disables telemetry for commands that inherit the variable. |
 | `PARCELA_TELEMETRY_DEBUG=1` | Prints the event to stderr instead of sending it. |
 
-The saved preference is `telemetry` in the host config, `~/.config/parcela/config.yaml`, and applies to every state directory. A preference saved by an older release in the state directory's `telemetry.json` still applies until the host config sets one.
+The saved preference is `telemetry` in the host config, `~/.config/parcela/config.yaml`, and applies to every state directory. A preference saved by an older release in the state directory's `telemetry.json` still applies until the host config sets one. A host config that cannot be read turns telemetry off. `DO_NOT_TRACK` and `PARCELA_TELEMETRY_DISABLED` count as set for any value but empty, `0`, `false` or `no`.
 
 ## When it is sent
 

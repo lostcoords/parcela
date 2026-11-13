@@ -40,8 +40,6 @@ Use containers when you need isolated execution or exact runtime images. Parcela
 
 A `compose` service runs databases, search engines and other containers from your `docker-compose.yml`, at the versions it pins, with their own containers, volumes and loopback ports in every environment. A container that serves HTTP can get its own URL. See [Docker Compose](/docs/frameworks/#docker-compose).
 
-See [Docker Compose](/docs/frameworks/#docker-compose).
-
 ## How does it fit with coding agent tools?
 
 An agent manager can create checkouts and run agents. Parcela runs the app inside each checkout. The embedded operating skill tells an agent how to select, inspect, start, and stop its own environment. See [Worktrees and agents](/docs/worktrees/).
@@ -120,11 +118,11 @@ Read the [changelog](https://github.com/lostcoords/parcela/blob/main/CHANGELOG.m
 | Homebrew | `brew upgrade parcela` |
 | Cargo | `cargo install --git https://github.com/lostcoords/parcela --locked --force` |
 
-`parcela upgrade` installs the latest release. Use `--nightly` for the newest build of `main`. For Homebrew and Cargo installations, it prints the appropriate command instead of replacing the binary.
+`parcela upgrade` installs the latest release. Use `--nightly` for the newest build of `main`. For Homebrew and Cargo installations, it exits with the appropriate command instead of replacing the binary.
 
 The installer refreshes an older running proxy automatically. If you update through Homebrew or Cargo, the next regular Parcela command does that refresh. Application processes keep running; their URLs briefly disconnect. Stopped proxies stay stopped.
 
-Interactive commands check for a stable release at most once a day and offer an update for shell-installer installations. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` or run `parcela config set updates false` to disable release checks.
+Interactive commands such as `up`, `status` and `ls` check for a stable release at most once a day and offer an update for shell-installer installations. [upgrade](/docs/cli/#upgrade) lists them. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` or run `parcela config set updates false` to disable release checks.
 
 A CLI installed before automatic update checks needs one explicit `parcela upgrade` to acquire this behavior.
 
@@ -145,7 +143,7 @@ Save any data you need before removing state. A configured `hooks.teardown` can 
    parcela trust --remove
    ```
 
-4. If you installed the port 443 relay, run `parcela relay uninstall`.
+4. If you installed the port 443 relay, run `parcela relay uninstall`. If you enabled autostart, run `parcela autostart disable`.
 5. Stop the proxy.
 
    ```sh
@@ -155,5 +153,6 @@ Save any data you need before removing state. A configured `hooks.teardown` can 
 6. Remove the binary with `brew uninstall parcela`, `cargo uninstall parcela`, or `rm ~/.local/bin/parcela`, matching your installation.
 7. If you want to delete all retained environment data, delete the state directory. Its default is `~/.local/state/parcela`. Check any `--state-dir`, `PARCELA_STATE_DIR`, or `XDG_STATE_HOME` override first.
 8. Remove the socket directory if it remains. It is `$(getconf DARWIN_USER_TEMP_DIR)parcela` on macOS or `/tmp/parcela-$(id -u)` on Linux.
+9. Delete the host settings file, `~/.config/parcela/config.yaml`, or the one `XDG_CONFIG_HOME` or `PARCELA_CONFIG` names.
 
 Remove `~/.local/bin/caddy` only if the installer added it and nothing else uses it. Data your commands created elsewhere remains until you remove it yourself.
