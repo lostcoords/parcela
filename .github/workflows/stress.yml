@@ -1,0 +1,62 @@
+name: Stress
+
+# Runs the tests and live suites many times over to surface flaky tests and races before a push
+# does. Every round runs to the end; the summary lists which tests failed in which rounds.
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: Rounds per runner
+        default: '3'
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        runner: [1, 2, 3, 4]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      ROUNDS: ${{ inputs.rounds || '3' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/ci-tools
+      - run: cargo test --locked --no-run
+      - name: Rounds
+        run: |
+          live=""
+          if [ "$RUNNER_OS" = macOS ]; then live="core service-sets ports recovery"; fi
+          failed=0
+          for round in $(seq "$ROUNDS"); do
+            if ! cargo test --locked > "test-$round.log" 2>&1; then
+              failed=1
+              grep -E '^test .* FAILED$|panicked at' "test-$round.log" | sed "s/^/round $round: /" | tee -a failures.txt
+            fi
+            if ! scripts/check-live $live > "live-$round.log" 2>&1; then
+              failed=1
+              grep -E 'FAILED|FAIL \(' "live-$round.log" | sed "s/^/round $round: /" | tee -a failures.txt
+            fi
+          done
+          if [ -s failures.txt ]; then
+            { echo '### Failures'; echo '```'; cat failures.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $failed
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-${{ matrix.os }}-${{ matrix.runner }}
+          path: |
+            *.log
+            /tmp/pcl-live-*/**/*.log
+          if-no-files-found: ignore

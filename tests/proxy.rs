@@ -1283,7 +1283,7 @@ fn a_stopped_name_offers_a_page_to_page_loads_and_a_plain_503_to_everything_else
     let https = free_port();
     fs::write(
         checkout.join("parcela.yaml"),
-        "version: 1\nproject: idle\nservices: {web: {command: python3 -m http.server $PORT, http: {healthcheck: /}}}\n",
+        "version: 1\nproject: idle\nservices: {web: {command: python3 -m http.server $PORT --bind 127.0.0.1, http: {healthcheck: /}}}\n",
     )
     .unwrap();
     let _environments = Environments {
