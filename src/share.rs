@@ -1,7 +1,7 @@
 //! Opening a run beyond this machine, only when `up` asks: `.local` names on the LAN through
 //! Caddy, `tailscale serve` on the tailnet, and names under the person's own domain for a front
 //! proxy they run. Publishers are processes of the run's graph, so they stop with it.
-use crate::{config::Manifest, process::on_path, registry::Endpoint};
+use crate::{process::on_path, project::config::Manifest, state::registry::Endpoint};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -357,7 +357,7 @@ pub(crate) fn domain_name(value: &str) -> Result<String> {
         "domain {value}: use a domain you control, such as dev.example.com"
     );
     for label in name.split('.') {
-        crate::config::dns_label(label).with_context(|| format!("domain {value}"))?;
+        crate::project::config::dns_label(label).with_context(|| format!("domain {value}"))?;
     }
     ensure!(
         !["localhost", "local"]
@@ -371,7 +371,7 @@ pub(crate) fn domain_name(value: &str) -> Result<String> {
 /// Refuse a loopback port someone else holds. The proxy's own domain listener is fine.
 fn probe_domain(state: &Path, port: u16) -> Result<()> {
     if TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
-        || crate::router::listening(state, "domain", &format!("127.0.0.1:{port}"))
+        || crate::proxy::router::listening(state, "domain", &format!("127.0.0.1:{port}"))
     {
         return Ok(());
     }
@@ -389,7 +389,7 @@ fn private_network(ip: Ipv4Addr) -> bool {
 /// Refuse a LAN port someone else holds. The proxy's own LAN listener is fine.
 fn probe_lan(state: &Path, ip: Ipv4Addr, port: u16) -> Result<()> {
     if TcpListener::bind((ip, port)).is_ok()
-        || crate::router::listening(state, "lan", &format!("{ip}:{port}"))
+        || crate::proxy::router::listening(state, "lan", &format!("{ip}:{port}"))
     {
         return Ok(());
     }

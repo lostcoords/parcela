@@ -4,7 +4,7 @@ use super::args::{Args, TelemetryCommand};
 use super::output::Output;
 use anyhow::Result;
 use clap::{ArgMatches, CommandFactory, parser::ValueSource};
-use parcela::host::Host;
+use parcela::state::host::Host;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -36,16 +36,16 @@ impl Settings {
     }
 
     pub(super) fn load(state: &Path) -> Self {
-        parcela::private::read_json(&Self::path(state)).unwrap_or_default()
+        parcela::state::private::read_json(&Self::path(state)).unwrap_or_default()
     }
 
     fn save(&self, state: &Path) -> Result<()> {
-        parcela::private::write_json(&Self::path(state), self)
+        parcela::state::private::write_json(&Self::path(state), self)
     }
 
     /// Saves the choice in the host config, which supersedes the one older releases kept here.
     pub(super) fn set_enabled(state: &Path, enabled: bool) -> Result<()> {
-        let path = parcela::host::path()?;
+        let path = parcela::state::host::path()?;
         let mut host = Host::load(&path)?;
         host.telemetry = Some(enabled);
         host.save(&path)?;

@@ -61,7 +61,7 @@ bin/rails test && npm test
 RAILS_ENV=production bin/rails kiln:build
 ```
 
-The dashboard's `src/dashboard/index.html`, `logs.html` and `ui.css` are built from `lostcoords-ui`, committed, and compiled into the binary, so running Parcela needs no Ruby. After changing `scripts/dashboard/` or the gem, run `scripts/build-dashboard`; `bin/rails test` fails if they are stale.
+The dashboard's `src/proxy/dashboard/index.html`, `logs.html` and `ui.css` are built from `lostcoords-ui`, committed, and compiled into the binary, so running Parcela needs no Ruby. After changing `scripts/dashboard/` or the gem, run `scripts/build-dashboard`; `bin/rails test` fails if they are stale.
 
 If you change runnable examples, also run their live suite. `scripts/check-live docs-example` verifies `examples/docs-demo`. The Claude Code installation block is checked by `tests/test_skill_install.py` through `scripts/check`.
 

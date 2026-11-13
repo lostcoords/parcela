@@ -1,7 +1,7 @@
 use parcela::{
-    config::{Manifest, dns_label, locate},
-    context::ResolvedContext,
-    registry::{Registry, Role},
+    project::config::{Manifest, dns_label, locate},
+    state::context::ResolvedContext,
+    state::registry::{Registry, Role},
 };
 use std::{
     fs,
@@ -122,7 +122,7 @@ fn flat_planned_urls_and_explicit_no_runtime_claims() {
         context.planned_urls["api"],
         "https://api-auth-demo.localhost:1443"
     );
-    parcela::frontdoor::FrontDoor::on(443)
+    parcela::proxy::frontdoor::FrontDoor::on(443)
         .save(registry.state_path())
         .unwrap();
     let standard = ResolvedContext::new(&registry, &m, preview).unwrap();

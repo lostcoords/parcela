@@ -1,4 +1,4 @@
-use parcela::registry::{Registry, Role};
+use parcela::state::registry::{Registry, Role};
 use std::{
     fs,
     path::Path,
@@ -34,7 +34,7 @@ fn attempt(path: &Path, state: &Path, flags: &[&str]) {
     let result = cli(path, state, &args);
     assert!(!result.status.success());
 }
-fn registered(state: &Path) -> Vec<parcela::registry::Workspace> {
+fn registered(state: &Path) -> Vec<parcela::state::registry::Workspace> {
     Registry::open(state, false)
         .unwrap()
         .map_or_else(Vec::new, |r| r.list(None).unwrap())

@@ -94,7 +94,7 @@ fn ports(value: &Value) -> String {
             format!(
                 "  {name:<width$}{:<7}{}\n",
                 cell(port),
-                parcela::config::port_variable(name)
+                parcela::project::config::port_variable(name)
             )
         })
         .collect()

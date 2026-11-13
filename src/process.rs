@@ -1,3 +1,5 @@
+//! Process identity, ownership and signals: birth identities that survive PID reuse, process
+//! groups, listener ownership through `ps` and `lsof`, and signal handling.
 use anyhow::{Context, Result, ensure};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGTERM},

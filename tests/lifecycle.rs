@@ -1,8 +1,10 @@
 use parcela::{
-    config::Manifest,
-    control::{self, Action, Server},
-    lifecycle, private, process,
-    registry::{Registry, Role, SessionStatus},
+    environment::control::{self, Action, Server},
+    environment::lifecycle,
+    process,
+    project::config::Manifest,
+    state::private,
+    state::registry::{Registry, Role, SessionStatus},
 };
 use std::{
     fs,
@@ -17,10 +19,10 @@ use uuid::Uuid;
 /// A record's children: one `web` process with this identity.
 fn web(
     identity: &process::Identity,
-) -> std::collections::BTreeMap<String, parcela::supervisor::Child> {
+) -> std::collections::BTreeMap<String, parcela::environment::supervisor::Child> {
     std::collections::BTreeMap::from([(
         "web".to_owned(),
-        parcela::supervisor::Child {
+        parcela::environment::supervisor::Child {
             identity: Some(identity.clone()),
             exit: None,
             restarts: 0,
@@ -30,14 +32,16 @@ fn web(
 }
 
 fn control_socket(runtime: &std::path::Path) -> std::path::PathBuf {
-    parcela::sockets::environment(runtime).unwrap().control
+    parcela::state::sockets::environment(runtime)
+        .unwrap()
+        .control
 }
 
 fn fixture() -> (
     TempDir,
     Registry,
-    parcela::registry::Workspace,
-    parcela::registry::Session,
+    parcela::state::registry::Workspace,
+    parcela::state::registry::Session,
 ) {
     let temp = TempDir::new_in("/tmp").unwrap();
     let source = temp.path().join("source");
@@ -185,7 +189,7 @@ fn control_server_never_replaces_or_removes_foreign_sockets_or_links() {
     let (_temp, registry, workspace, session) = fixture();
     let path = registry.runtime_path(&workspace);
     private::directory(&path).unwrap();
-    parcela::sockets::prepare(&control_socket(&path)).unwrap();
+    parcela::state::sockets::prepare(&control_socket(&path)).unwrap();
     let foreign = UnixListener::bind(control_socket(&path)).unwrap();
     assert!(Server::bind(&path).is_err());
     assert!(control_socket(&path).exists());
@@ -260,7 +264,7 @@ fn malformed_owner_health_response_stays_unknown() {
 
 #[test]
 fn an_interrupted_stop_finishes_by_stopping_recorded_survivors() {
-    use parcela::owner::{Phase, Record};
+    use parcela::environment::record::{Phase, Record};
 
     let (_temp, mut registry, workspace, session) = fixture();
     let path = registry.runtime_path(&workspace);
@@ -328,7 +332,7 @@ fn contending_stop_refuses_a_successor_generation() {
 }
 
 fn contending_stop(replace_session: bool) {
-    use parcela::owner::{Phase, Record};
+    use parcela::environment::record::{Phase, Record};
 
     let (_temp, mut registry, workspace, session) = fixture();
     let path = registry.runtime_path(&workspace);
@@ -412,7 +416,7 @@ fn waiting_stop_never_reaches_a_replaced_control_socket() {
 }
 
 fn waiting_stop(replace_control: bool) {
-    use parcela::owner::{Phase, Record};
+    use parcela::environment::record::{Phase, Record};
     use std::time::Instant;
 
     let (_temp, mut registry, workspace, session) = fixture();
@@ -478,7 +482,7 @@ fn waiting_stop(replace_control: bool) {
         drop(lock);
         admitted
     });
-    let result = parcela::runtime::recover(&mut registry, &workspace, &session, true);
+    let result = parcela::environment::recovery::recover(&mut registry, &workspace, &session, true);
     let admitted = owner.join().unwrap();
     if replace_control {
         assert!(!admitted, "stop reached a replaced control socket");
@@ -566,7 +570,7 @@ fn unfinished_open_owner_request_is_rejected_within_a_bounded_wait() {
 
 #[test]
 fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
-    use parcela::owner::{Phase, Record};
+    use parcela::environment::record::{Phase, Record};
     use serde_json::json;
 
     for case in [
@@ -638,11 +642,14 @@ fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
         drop(lock);
         let result = if case == "up" {
             let lock = private::Lock::acquire(&path.join("owner.lock")).unwrap();
-            parcela::runtime::converge_crashed_session(&mut registry, &workspace, &lock).map(
-                |converged| {
-                    assert!(converged);
-                },
+            parcela::environment::recovery::converge_crashed_session(
+                &mut registry,
+                &workspace,
+                &lock,
             )
+            .map(|converged| {
+                assert!(converged);
+            })
         } else {
             lifecycle::down(&registry, &workspace).map(|_| ())
         };
@@ -671,7 +678,7 @@ fn rebooted_runs_converge_after_device_renumbering_but_not_replaced_locks() {
 
 #[test]
 fn down_stops_what_survives_a_crashed_owner_by_recorded_identity() {
-    use parcela::owner::{Phase, Record};
+    use parcela::environment::record::{Phase, Record};
 
     let (_temp, mut registry, workspace, session) = fixture();
     registry
@@ -680,8 +687,8 @@ fn down_stops_what_survives_a_crashed_owner_by_recorded_identity() {
     let path = registry.runtime_path(&workspace);
     private::directory(&path).unwrap();
     let lock = private::Lock::acquire(&path.join("owner.lock")).unwrap();
-    let sockets = parcela::sockets::environment(&path).unwrap();
-    parcela::sockets::prepare(&sockets.control).unwrap();
+    let sockets = parcela::state::sockets::environment(&path).unwrap();
+    parcela::state::sockets::prepare(&sockets.control).unwrap();
     let control = UnixListener::bind(&sockets.control).unwrap();
 
     let mut owner = Command::new("sleep").arg("60").spawn().unwrap();

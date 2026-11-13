@@ -4,9 +4,9 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
-@source "../../src/dashboard/index.html";
-@source "../../src/dashboard/logs.html";
-@source "../../src/dashboard/logs.js";
+@source "../../src/proxy/dashboard/index.html";
+@source "../../src/proxy/dashboard/logs.html";
+@source "../../src/proxy/dashboard/logs.js";
 @import "../../docs/app/assets/builds/tailwind/lostcoords_ui/base.css";
 @import "../../docs/app/assets/builds/tailwind/lostcoords_ui/core.css";
 @import "../../docs/app/assets/builds/tailwind/lostcoords_ui/components/tooltip.css";

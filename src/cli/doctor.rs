@@ -1,10 +1,10 @@
 use super::output::Output;
 use anyhow::Result;
 use parcela::{
-    config::{Manifest, locate},
-    frontdoor::FrontDoor,
     process::on_path,
+    project::config::{Manifest, locate},
     proxy::Status,
+    proxy::frontdoor::FrontDoor,
 };
 use serde::Serialize;
 use std::{os::unix::fs::MetadataExt, path::Path};
@@ -82,7 +82,7 @@ fn config(path: &Path) -> Check {
     };
     let file = source.join("parcela.yaml");
     match Manifest::load(&file).and_then(|mut manifest| {
-        parcela::compose::resolve(&mut manifest, &source)?;
+        parcela::project::compose::resolve(&mut manifest, &source)?;
         Ok(manifest)
     }) {
         Ok(manifest) => Check::pass(
@@ -160,12 +160,12 @@ fn proxy(state: &Path) -> Check {
             );
         }
     };
-    if front_door.relay && !parcela::relay::installed() {
+    if front_door.relay && !parcela::proxy::relay::installed() {
         return Check::fail(
             "proxy",
             format!(
                 "URLs use port 443, but {} is missing",
-                parcela::relay::location()
+                parcela::proxy::relay::location()
             ),
             "parcela relay install",
         );
@@ -211,11 +211,11 @@ fn running(path: &Path, state: &Path) -> bool {
     (|| -> Result<bool> {
         let source = locate(path)?;
         let manifest = Manifest::load(&source.join("parcela.yaml"))?;
-        let Some(registry) = parcela::registry::Registry::open(state, false)? else {
+        let Some(registry) = parcela::state::registry::Registry::open(state, false)? else {
             return Ok(false);
         };
         let workspace = registry.current(&source, &manifest)?;
-        let status = parcela::lifecycle::status(&registry, &workspace)?;
+        let status = parcela::environment::lifecycle::status(&registry, &workspace)?;
         Ok(status["state"] == "ready")
     })()
     .unwrap_or(false)
@@ -294,7 +294,7 @@ fn recent_problems(state: &Path) -> Vec<Problem> {
             tally(&mut problems, "proxy", detail, &proxy_log);
         }
     }
-    let Ok(Some(registry)) = parcela::registry::Registry::open(state, false) else {
+    let Ok(Some(registry)) = parcela::state::registry::Registry::open(state, false) else {
         return problems;
     };
     for workspace in registry.list(None).unwrap_or_default() {
@@ -302,7 +302,7 @@ fn recent_problems(state: &Path) -> Vec<Problem> {
         let Some(text) = tail(&log) else {
             continue;
         };
-        let source = parcela::config::fit_label(
+        let source = parcela::project::config::fit_label(
             &format!("{}/{}", workspace.project_id, workspace.label),
             48,
         );
@@ -331,7 +331,7 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
     if !headless {
         checks.push(backend(
             "caddy",
-            probes.caddy.unwrap_or(&parcela::host::caddy()),
+            probes.caddy.unwrap_or(&parcela::state::host::caddy()),
             "v2.",
             "install Caddy 2: brew install caddy (or https://caddyserver.com/docs/install)",
         ));

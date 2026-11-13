@@ -98,7 +98,7 @@ fn the_saved_profile_beats_the_default_and_parcela_https_port_only_replaces_the_
     assert!(stderr(&print).ends_with("start the proxy with `parcela proxy start`\n"));
     assert!(!state.exists(), "trust --print creates no state");
 
-    parcela::frontdoor::FrontDoor::on(2000)
+    parcela::proxy::frontdoor::FrontDoor::on(2000)
         .save(&state)
         .unwrap();
     let saved = Command::new(env!("CARGO_BIN_EXE_parcela"))
@@ -290,15 +290,15 @@ fn only_a_proxy_on_another_protocol_warns() {
             Some(protocol) => router["protocol"] = json!(protocol),
             None => drop(router.as_object_mut().unwrap().remove("protocol")),
         }
-        parcela::private::write_json(&record, &router).unwrap();
+        parcela::state::private::write_json(&record, &router).unwrap();
     };
     let status = || json_of(&cli(&proxy.state, &["--json", "proxy", "status"]));
 
     // Another release on the same protocol shares the proxy quietly.
-    rewrite("0.0.2", Some(parcela::router::PROTOCOL));
+    rewrite("0.0.2", Some(parcela::proxy::router::PROTOCOL));
     assert_eq!(status()["version_warning"], Value::Null);
 
-    rewrite("0.0.3", Some(parcela::router::PROTOCOL + 1));
+    rewrite("0.0.3", Some(parcela::proxy::router::PROTOCOL + 1));
     assert_eq!(
         status()["version_warning"],
         format!(
@@ -307,7 +307,7 @@ fn only_a_proxy_on_another_protocol_warns() {
         )
     );
 
-    rewrite("0.0.1", Some(parcela::router::PROTOCOL - 1));
+    rewrite("0.0.1", Some(parcela::proxy::router::PROTOCOL - 1));
     let warning = format!(
         "the running proxy is from Parcela 0.0.1, older than this {}; run `parcela proxy restart` to update it",
         env!("PARCELA_VERSION")
@@ -976,8 +976,8 @@ fn proxy_start_waits_for_a_transient_status_probe_to_release_the_owner_lock() {
     let proxy = Proxy::new();
     let root = proxy._t.path().canonicalize().unwrap();
     let directory = proxy.state.join("proxy");
-    parcela::private::directory(&directory).unwrap();
-    let probe = parcela::private::Lock::acquire(&directory.join("owner.lock")).unwrap();
+    parcela::state::private::directory(&directory).unwrap();
+    let probe = parcela::state::private::Lock::acquire(&directory.join("owner.lock")).unwrap();
     let wrapper = root.join("caddy-probe");
     let reached = root.join("version-reached");
     fs::write(&wrapper, format!("#!/bin/sh\nif [ \"$1\" = version ]; then\n  '{}' version\n  touch '{}'\nelse\n  exec '{}' \"$@\"\nfi\n", caddy.display(), reached.display(), caddy.display())).unwrap();

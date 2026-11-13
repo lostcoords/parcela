@@ -1,6 +1,6 @@
 use parcela::{
-    config::Manifest,
-    registry::{Registry, Role},
+    project::config::Manifest,
+    state::registry::{Registry, Role},
 };
 use serde_json::{Value, json};
 use std::{
@@ -160,7 +160,7 @@ fn ls_shows_unregistered_jj_workspaces_without_snapshotting_or_registering() {
             .collect::<Vec<_>>(),
         ["preview"]
     );
-    let browser_inventory = parcela::inventory::collect(&state, None).unwrap();
+    let browser_inventory = parcela::environment::inventory::collect(&state, None).unwrap();
     assert_eq!(browser_inventory.workspaces.len(), 1);
     assert_eq!(browser_inventory.unregistered.len(), 1);
     assert_eq!(
@@ -178,7 +178,7 @@ fn ls_shows_unregistered_jj_workspaces_without_snapshotting_or_registering() {
         .adopt(&manifest, &missing, Role::Preview, "absent")
         .unwrap();
     fs::remove_dir_all(&missing).unwrap();
-    let browser_inventory = parcela::inventory::collect(&state, None).unwrap();
+    let browser_inventory = parcela::environment::inventory::collect(&state, None).unwrap();
     assert_eq!(browser_inventory.workspaces.len(), 2);
     assert_eq!(browser_inventory.unregistered.len(), 1);
     assert_eq!(

@@ -1,0 +1,524 @@
+//! The proxy's routes: the Caddy configuration for running environments, its private admin
+//! socket, and the per-second route leases that expire routes when nobody renews them.
+use crate::{
+    http,
+    proxy::frontdoor::FrontDoor,
+    state::private::{self, Lock},
+    state::registry::{Endpoint, Registry, Session, SessionStatus},
+};
+use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
+use uuid::Uuid;
+
+pub const LEASE_MS: u64 = 5000;
+/// How often the proxy renews route leases; a lease outlives four missed renewals.
+pub(super) const RENEW: Duration = Duration::from_secs(1);
+/// The Parcela release that started a proxy, shown to people.
+pub const VERSION: &str = env!("PARCELA_VERSION");
+/// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
+/// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
+/// Bump it only when that changes.
+pub const PROTOCOL: u32 = 9;
+/// Paths on app hosts that Parcela answers for that environment instead of the app.
+pub const ENVIRONMENT_PATHS: &str = "/_parcela/*";
+
+/// The running proxy: its ownership token, the front door it serves and the release that started
+/// it. Unknown fields are ignored, so a newer proxy's record stays readable by older releases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Router {
+    pub token: String,
+    pub front_door: FrontDoor,
+    pub version: String,
+    pub protocol: u32,
+}
+impl Router {
+    pub fn url(&self, host: &str) -> String {
+        self.front_door.url(host)
+    }
+    /// Whether Caddy itself listens on `port`, so no backend may use it.
+    pub fn listens_on(&self, port: u16) -> bool {
+        self.front_door.https == port
+    }
+    fn id(&self) -> String {
+        format!("parcela-{}", self.token)
+    }
+}
+pub(crate) fn proxy_dir(state: &Path) -> PathBuf {
+    state.join("proxy")
+}
+pub(super) fn socket(state: &Path) -> Result<PathBuf> {
+    crate::state::sockets::proxy_admin(state)
+}
+/// The token in the proxy's record, unverified: a cheap way to notice that a new proxy started.
+pub fn recorded_token(state: &Path) -> Option<String> {
+    let record: Value = private::read_json(&proxy_dir(state).join("router.json")).ok()?;
+    record["token"].as_str().map(str::to_owned)
+}
+
+/// The verified running proxy. Fails when none answers on Parcela's private admin socket.
+pub fn current(state: &Path) -> Result<Router> {
+    let file = proxy_dir(state).join("router.json");
+    let record: Value = private::read_json(&file)
+        .context("the Parcela proxy is not running; start it with `parcela proxy start`")?;
+    let router: Router = serde_json::from_value(record.clone()).map_err(|_| {
+        anyhow::anyhow!(
+            "the proxy record {} is from Parcela {}; run `parcela proxy restart`",
+            file.display(),
+            record["version"]
+        )
+    })?;
+    ensure!(
+        Uuid::parse_str(&router.token).is_ok(),
+        "malformed router ownership record"
+    );
+    verify(state, &router)?;
+    Ok(router)
+}
+pub(super) fn verify(state: &Path, router: &Router) -> Result<()> {
+    let (status, bytes) =
+        http::admin(&socket(state)?, "GET", &format!("/id/{}", router.id()), &[])?;
+    ensure!(
+        status == 200,
+        "Caddy ownership token does not match; refusing configuration takeover"
+    );
+    let object: Value = serde_json::from_slice(&bytes)?;
+    ensure!(
+        object["@id"] == router.id(),
+        "Caddy ownership marker was changed"
+    );
+    Ok(())
+}
+pub fn sync(registry: &Registry, router: &Router) -> Result<()> {
+    let state = registry.state_path();
+    let _lock = Lock::wait(&proxy_dir(state).join("updates.lock"))?;
+    verify(state, router)?;
+    let routes = routes(registry, router)?;
+    // Withdrawn routes lose their leases before Caddy changes, and new ones gain theirs only once
+    // Caddy serves them, so a published route always answers.
+    renew_leases(registry, router, &routes, false)?;
+    let mut config = render(registry, router, &routes, true)?;
+    // A LAN or domain listener Caddy could not open never takes the loopback routes down with it.
+    if FAILED_SHARE
+        .lock()
+        .is_ok_and(|failed| failed.as_ref() == Some(&config))
+    {
+        config = render(registry, router, &routes, false)?;
+    }
+    let cached: Result<Value> = private::read_json(&proxy_dir(state).join("loaded.json"));
+    if cached.is_ok_and(|cached| cached == config) {
+        return renew_leases(registry, router, &routes, true);
+    }
+    if let Err(error) = load(state, &config) {
+        let servers = &config["apps"]["http"]["servers"];
+        ensure!(
+            servers.get("lan").is_some() || servers.get("domain").is_some(),
+            error
+        );
+        crate::paint::Paint::note(&format!(
+            "LAN and domain sharing are off; Caddy could not listen there: {error:#}"
+        ));
+        if let Ok(mut failed) = FAILED_SHARE.lock() {
+            *failed = Some(config);
+        }
+        config = render(registry, router, &routes, false)?;
+        load(state, &config)?;
+    }
+    private::write_json(&proxy_dir(state).join("loaded.json"), &config)?;
+    renew_leases(registry, router, &routes, true)?;
+    if let Ok(mut evidence) =
+        private::read_json::<super::daemon::ProxyEvidence>(&proxy_dir(state).join("owner.json"))
+    {
+        ensure!(
+            evidence.child.alive() && evidence.router.token == router.token,
+            "proxy recovery evidence changed"
+        );
+        evidence.socket = private::Identity::read(&socket(state)?)?;
+        private::write_json(&proxy_dir(state).join("owner.json"), &evidence)?;
+    }
+    Ok(())
+}
+/// Loads the registry's routes into the running proxy, if one answers. Whether it did.
+pub fn resync(registry: &Registry) -> bool {
+    current(registry.state_path()).is_ok_and(|router| sync(registry, &router).is_ok())
+}
+/// The last configuration whose LAN or domain listener Caddy refused.
+static FAILED_SHARE: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
+
+/// How long one `lsof` answer stands for the same ports. Owners re-check their own listeners
+/// every 2s and withdraw a run whose listener changed, so this is a second line of defense.
+const LISTENER_CHECK: Duration = Duration::from_secs(5);
+type CachedListeners = (Instant, Vec<u16>, crate::process::Listeners);
+static LISTENERS: std::sync::Mutex<Option<CachedListeners>> = std::sync::Mutex::new(None);
+
+fn listeners(ports: impl IntoIterator<Item = u16>) -> Result<crate::process::Listeners> {
+    let mut ports: Vec<u16> = ports.into_iter().collect();
+    ports.sort_unstable();
+    ports.dedup();
+    let mut cache = LISTENERS
+        .lock()
+        .map_err(|_| anyhow::anyhow!("listener cache poisoned"))?;
+    if let Some((at, cached, listeners)) = cache.as_ref()
+        && *cached == ports
+        && at.elapsed() < LISTENER_CHECK
+    {
+        return Ok(listeners.clone());
+    }
+    let listeners = crate::process::Listeners::inspect(ports.iter().copied())?;
+    *cache = Some((Instant::now(), ports, listeners.clone()));
+    Ok(listeners)
+}
+
+fn load(state: &Path, config: &Value) -> Result<()> {
+    let (status, response) = http::admin(
+        &socket(state)?,
+        "POST",
+        "/load",
+        &serde_json::to_vec(config)?,
+    )?;
+    ensure!(
+        status == 200,
+        "Caddy rejected owned route update: {}",
+        String::from_utf8_lossy(&response)
+    );
+    Ok(())
+}
+
+/// Whether the loaded proxy configuration's `server` already listens on `address`.
+pub fn listening(state: &Path, server: &str, address: &str) -> bool {
+    private::read_json::<Value>(&proxy_dir(state).join("loaded.json")).is_ok_and(|config| {
+        config["apps"]["http"]["servers"][server]["listen"]
+            .as_array()
+            .is_some_and(|listen| listen.iter().any(|listened| listened == address))
+    })
+}
+fn lease_directory(state: &Path, router: &Router, session: &Session) -> PathBuf {
+    proxy_dir(state)
+        .join("leases")
+        .join(&router.token)
+        .join(&session.token)
+}
+pub fn route_published(registry: &Registry, router: &Router, session: &Session) -> bool {
+    let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        return false;
+    };
+    let file =
+        lease_directory(registry.state_path(), router, session).join(now.as_secs().to_string());
+    std::fs::read(file).is_ok_and(|bytes| bytes == session.token.as_bytes())
+}
+/// A ready session this proxy may route: its live owner still holds the lock and every endpoint
+/// listens inside the recorded supervisor tree. `dials` pairs each endpoint with its address.
+struct Route {
+    session: Session,
+    dials: Vec<(Endpoint, std::net::SocketAddr)>,
+    /// The LAN address of a run started with `--lan`.
+    lan: Option<Ipv4Addr>,
+    /// The front proxy's domains of a run started with `--domain`.
+    domains: Vec<crate::share::Domain>,
+    /// Services that also take every subdomain of their host.
+    wildcard: std::collections::BTreeSet<String>,
+}
+/// Every routable session, checked once per update with one listener snapshot.
+fn routes(registry: &Registry, router: &Router) -> Result<Vec<Route>> {
+    let mut candidates = Vec::new();
+    for session in registry.sessions()? {
+        if session.status != SessionStatus::Ready
+            || session.router_token.as_ref() != Some(&router.token)
+        {
+            continue;
+        }
+        let path = registry
+            .state_path()
+            .join("environments")
+            .join(&session.environment_id);
+        if let Ok(record) = crate::environment::record::Record::read(&path, &session)
+            && record.owner_holds(&path)
+        {
+            let endpoints = session.endpoints(record.manifest.default_service.as_deref());
+            let wildcard = record
+                .manifest
+                .services
+                .iter()
+                .filter(|(_, service)| service.wildcard)
+                .map(|(name, _)| name.clone())
+                .collect();
+            candidates.push((
+                session,
+                record.roots(),
+                endpoints,
+                record.share.lan,
+                record.share.domains.clone(),
+                wildcard,
+            ));
+        }
+    }
+    let listeners = listeners(candidates.iter().flat_map(|(_, _, endpoints, _, _, _)| {
+        endpoints.iter().map(|endpoint| endpoint.backend_port)
+    }))?;
+    let mut routes = Vec::new();
+    for (session, roots, endpoints, lan, domains, wildcard) in candidates {
+        let owned = endpoints.iter().all(|endpoint| {
+            listeners
+                .owned(endpoint.backend_port, &roots)
+                .is_ok_and(|pids| !pids.is_empty())
+        });
+        if owned {
+            let dials = endpoints
+                .into_iter()
+                .map(|endpoint| {
+                    let address = listeners.address(endpoint.backend_port)?;
+                    Ok((endpoint, address))
+                })
+                .collect::<Result<_>>()?;
+            routes.push(Route {
+                session,
+                dials,
+                lan,
+                domains,
+                wildcard,
+            });
+        }
+    }
+    Ok(routes)
+}
+/// Drops expired and withdrawn leases, and with `grant` extends those of the active routes.
+fn renew_leases(registry: &Registry, router: &Router, routes: &[Route], grant: bool) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    for session in registry.sessions()? {
+        if session.router_token.as_ref() != Some(&router.token) {
+            continue;
+        }
+        let directory = lease_directory(registry.state_path(), router, &session);
+        let active = routes
+            .iter()
+            .any(|route| route.session.token == session.token);
+        if active && grant {
+            private::directory(&directory)?;
+            for tick in now..now + LEASE_MS / 1000 {
+                let file = directory.join(tick.to_string());
+                if !file.exists() {
+                    private::write_bytes(&file, session.token.as_bytes())?;
+                }
+            }
+        }
+        if directory.exists() {
+            private::existing_directory(&directory)?;
+            for entry in std::fs::read_dir(&directory)? {
+                let entry = entry?;
+                if let Ok(tick) = entry.file_name().to_string_lossy().parse::<u64>()
+                    && (!active || tick < now)
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    let metadata = std::fs::symlink_metadata(entry.path())?;
+                    ensure!(
+                        metadata.is_file() && metadata.mode() & 0o077 == 0,
+                        "foreign lease artifact preserved"
+                    );
+                    ensure!(
+                        std::fs::read(entry.path())? == session.token.as_bytes(),
+                        "foreign lease artifact preserved"
+                    );
+                    std::fs::remove_file(entry.path())?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+pub fn configuration(registry: &Registry, router: &Router) -> Result<Value> {
+    render(registry, router, &routes(registry, router)?, true)
+}
+/// The whole Caddy configuration. With `shared`, runs started with `--lan` also answer on their
+/// LAN address under `.local` names, on a server of their own so LAN clients reach nothing else,
+/// and runs started with `--domain` answer their names in plain HTTP on a loopback server, for
+/// the person's own front proxy to terminate TLS in front of it.
+fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -> Result<Value> {
+    let state = registry.state_path();
+    let dashboard = format!(
+        "unix/{}",
+        crate::state::sockets::dashboard(state)?.display()
+    );
+    let injector = format!("unix/{}", crate::state::sockets::injector(state)?.display());
+    // An unreadable host file never takes routes down; the CLI reports it.
+    let badge = router.protocol >= 6
+        && crate::state::host::Host::current().map_or(true, |host| host.badge != Some(false));
+    let workspaces = registry.list(None)?;
+    let mut routes = Vec::new();
+    let mut hosts = std::collections::BTreeSet::new();
+    for workspace in &workspaces {
+        hosts.extend(registry.hosts(&workspace.id)?.into_values());
+    }
+    if router.protocol >= 4 {
+        ensure!(
+            !hosts.contains(crate::proxy::dashboard::HOST),
+            "{} is reserved for the Parcela dashboard; rename the conflicting environment before starting this proxy",
+            crate::proxy::dashboard::HOST
+        );
+        hosts.insert(crate::proxy::dashboard::HOST.to_owned());
+        routes.push(json!({"match":[{"host":[crate::proxy::dashboard::HOST]}], "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":dashboard.clone()}],
+            "headers":{"request":{"delete":["X-Parcela-Environment", "X-Parcela-Hostname", "X-Parcela-Access"]}}}], "terminal":true}));
+    }
+    let hosts: Vec<_> = hosts.into_iter().collect();
+    for host in &hosts {
+        crate::project::config::dns_label(
+            host.strip_suffix(".localhost")
+                .context("invalid owned hostname")?,
+        )?;
+    }
+    let mut lan_routes = Vec::new();
+    let mut lan_listen = std::collections::BTreeSet::new();
+    let mut lan_hosts = Vec::new();
+    let mut wildcards = Vec::new();
+    let mut domain_routes = Vec::new();
+    let mut domain_listen = std::collections::BTreeSet::new();
+    for Route {
+        session,
+        dials,
+        lan: lan_address,
+        domains,
+        wildcard,
+    } in ready
+    {
+        let workspace = workspaces
+            .iter()
+            .find(|workspace| workspace.id == session.environment_id)
+            .context("session source missing from registry")?;
+        let reserved = registry.hosts(&workspace.id)?;
+        for (endpoint, address) in dials {
+            ensure!(
+                reserved.values().any(|host| host == &endpoint.hostname),
+                "unreserved service route refused"
+            );
+            ensure!(
+                !router.listens_on(endpoint.backend_port),
+                "proxy loop rejected"
+            );
+            let leased = json!({"root":lease_directory(state, router, session), "try_files":["{time.now.unix}"]});
+            let handle = json!([{
+                "handler":"reverse_proxy", "upstreams":[{"dial":address.to_string()}],
+                "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Generation":[session.generation.to_string()]}}}
+            }]);
+            // Loopback names reach all of Parcela's own paths, domain names a read-only part of them
+            // while the badge is on, and on LAN names they are the app's. Caddy always sets
+            // `X-Parcela-Access`, which the dashboard requires.
+            let environment = (router.protocol >= 5).then(|| json!([{
+                "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                "headers":{"request":{"set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Hostname":[endpoint.hostname], "X-Parcela-Access":["local"]}}}
+            }]));
+            let mut matched = vec![endpoint.hostname.clone()];
+            if wildcard.contains(&endpoint.service) {
+                // Subdomains of an environment's host are never another environment's: those
+                // join their labels with hyphens, `api-shop.localhost`.
+                let tenants = format!("*.{}", endpoint.hostname);
+                matched.push(tenants.clone());
+                wildcards.push(tenants);
+            }
+            if let Some(environment) = environment {
+                routes.push(json!({"match":[{"host":matched, "path":[ENVIRONMENT_PATHS], "file":leased}], "handle":environment, "terminal": true}));
+            }
+            // Only top-level page loads take this detour: assets, API calls, WebSockets and frames
+            // reach the app directly, and clients that send no fetch metadata see it untouched.
+            let page_load = |matched: &[String]| {
+                json!({"match":[{"host":matched, "method":["GET"], "header":{"Sec-Fetch-Dest":["document"]}, "file":leased}],
+                    "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":injector}],
+                        "headers":{"request":{"set":{
+                            "X-Parcela-Environment":[session.environment_id],
+                            "X-Parcela-Generation":[session.generation.to_string()],
+                            crate::proxy::inject::UPSTREAM_HEADER:[address.to_string()]}}}}],
+                    "terminal": true})
+            };
+            if badge {
+                routes.push(page_load(&matched));
+            }
+            routes.push(json!({"@id": format!("run-{}-{}", session.token, endpoint.service), "match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
+            if let Some(ip) = lan_address.filter(|ip| shared && crate::share::present(*ip)) {
+                let host = crate::share::local_host(&endpoint.hostname);
+                lan_listen.insert(format!("{ip}:{}", router.front_door.https));
+                lan_routes.push(json!({"match":[{"host":[host], "file":leased}], "handle":handle, "terminal": true}));
+                lan_hosts.push(host);
+            }
+            for domain in domains.iter().filter(|_| shared) {
+                let host = domain.host(&endpoint.hostname);
+                let mut matched = vec![host.clone()];
+                if wildcard.contains(&endpoint.service) {
+                    matched.push(format!("*.{host}"));
+                }
+                domain_listen.insert(format!("127.0.0.1:{}", domain.port));
+                if badge {
+                    domain_routes.push(json!({"match":[{"host":matched, "path":[ENVIRONMENT_PATHS], "file":leased}],
+                        "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                            "headers":{"request":{"set":{
+                                "X-Parcela-Environment":[session.environment_id],
+                                "X-Parcela-Hostname":[host],
+                                "X-Parcela-Access":["shared"]}}}}],
+                        "terminal": true}));
+                    domain_routes.push(page_load(&matched));
+                }
+                domain_routes.push(json!({"match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
+            }
+        }
+    }
+    // Past the leased routes, so these answer only while nothing is serving the name: a page load
+    // gets a page that can start the environment, and everything else the plain 503 below.
+    if router.protocol >= 7 {
+        for workspace in &workspaces {
+            for host in registry.hosts(&workspace.id)?.into_values() {
+                let handle = json!({
+                    "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+                    "headers":{"request":{"set":{"X-Parcela-Environment":[workspace.id], "X-Parcela-Hostname":[host], "X-Parcela-Access":["local"]}}}
+                });
+                routes.push(json!({"match":[{"host":[host], "path":[ENVIRONMENT_PATHS]}], "handle":[handle], "terminal":true}));
+                routes.push(json!({"match":[{"host":[host], "method":["GET"], "header":{"Sec-Fetch-Dest":["document"]}}],
+                    "handle":[{"handler":"rewrite", "uri":"/_parcela/unavailable"}, handle], "terminal":true}));
+            }
+        }
+    }
+    if !hosts.is_empty() {
+        routes.push(json!({"match":[{"host":hosts}], "handle":[{"handler":"static_response","status_code":503,"body":"Parcela environment unavailable\n"}], "terminal":true}));
+    }
+    routes.push(json!({"@id":router.id(), "handle":[{"handler":"static_response", "status_code":404, "body":"No ready Parcela route\n"}], "terminal":true}));
+    let https_port = router.front_door.https;
+    // Plain HTTP on the HTTPS port, including port 80 through the macOS relay, gets a 308 to
+    // https:// with the same host and path.
+    let wrappers = json!([{"wrapper":"http_redirect"}, {"wrapper":"tls"}]);
+    let mut servers = json!({
+        "https":{"listen":[format!("127.0.0.1:{https_port}")], "protocols":["h1","h2"],
+            "listener_wrappers":wrappers, "tls_connection_policies":[{}], "automatic_https":{"disable_redirects":true}, "routes":routes}
+    });
+    if !lan_routes.is_empty() {
+        lan_routes.push(json!({"handle":[{"handler":"static_response", "status_code":404, "body":"No shared Parcela route\n"}], "terminal":true}));
+        servers["lan"] = json!({"listen":lan_listen, "protocols":["h1","h2"],
+            "listener_wrappers":wrappers, "tls_connection_policies":[{}], "automatic_https":{"disable_redirects":true}, "routes":lan_routes});
+    }
+    if !domain_routes.is_empty() {
+        domain_routes.push(json!({"handle":[{"handler":"static_response", "status_code":404, "body":"No shared Parcela route\n"}], "terminal":true}));
+        // The front proxy is the client here, so its X-Forwarded-Proto and -Host reach the app,
+        // which then builds https:// links to the name the browser asked for.
+        servers["domain"] = json!({"listen":domain_listen, "protocols":["h1"],
+            "trusted_proxies":{"source":"static", "ranges":["127.0.0.1/32", "::1/128"]},
+            "automatic_https":{"disable":true}, "routes":domain_routes});
+    }
+    let http_app = json!({"https_port": https_port, "servers": servers});
+    let mut config = json!({
+        "admin":{"listen":format!("unix/{}", socket(state)?.display()), "config":{"persist":false}},
+        // At info, Caddy logs every request Parcela makes to its admin API.
+        "logging":{"logs":{"default":{"level":"WARN"}}},
+        "storage":{"module":"file_system", "root":proxy_dir(state).join("data")},
+        "apps":{
+            "pki":{"certificate_authorities":{"local":{"install_trust":false}}},
+            "http":http_app
+        }
+    });
+    if !hosts.is_empty() {
+        let subjects: Vec<_> = hosts.iter().chain(&lan_hosts).chain(&wildcards).collect();
+        config["apps"]["tls"] = json!({"automation":{"policies":[{"subjects":subjects, "issuers":[{"module":"internal"}]}]}});
+    }
+    Ok(config)
+}

@@ -24,5 +24,5 @@ const art = {
   height: (rows.at(-1) + 1 - rows[0]) * scale,
 };
 const badgeHeight = Math.round(96 * art.height / art.width);
-writeFileSync(new URL('../src/dashboard/badge.png', import.meta.url), render(art, 96, badgeHeight).asPng());
+writeFileSync(new URL('../src/proxy/dashboard/badge.png', import.meta.url), render(art, 96, badgeHeight).asPng());
 console.log(`Built the 512×512 Fence Buddy icon and the 96×${badgeHeight} badge from the generated master, preserving transparency.`);

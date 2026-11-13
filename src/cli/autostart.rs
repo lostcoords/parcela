@@ -2,7 +2,7 @@
 use super::args::AutostartCommand;
 use super::output::Output;
 use anyhow::{Context, Result};
-use parcela::{autostart, registry::Registry};
+use parcela::{environment::autostart, state::registry::Registry};
 use serde_json::json;
 use std::{path::Path, process::Stdio};
 

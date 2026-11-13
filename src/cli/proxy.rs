@@ -6,10 +6,10 @@ use super::{
 };
 use anyhow::{Context, Result};
 use parcela::{
-    frontdoor::FrontDoor,
+    proxy::frontdoor::FrontDoor,
+    proxy::router::{Router, VERSION},
     proxy::{self, Started, Status},
-    registry::Registry,
-    router::{Router, VERSION},
+    state::registry::Registry,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -17,7 +17,7 @@ use std::path::Path;
 /// An explicit `--port` is a port profile; otherwise the saved profile or the default.
 fn requested(state: &Path, port: Option<u16>) -> Result<FrontDoor> {
     let saved = FrontDoor::load(state)?;
-    if let Some(configured) = parcela::host::Host::current()?.proxy.port
+    if let Some(configured) = parcela::state::host::Host::current()?.proxy.port
         && port.is_some_and(|port| port != configured)
     {
         anyhow::bail!(
@@ -45,9 +45,9 @@ pub(super) fn move_running(state: &Path, front_door: FrontDoor) -> Result<()> {
     if router.front_door.https == front_door.https {
         return Ok(());
     }
-    parcela::router::probe_listener(front_door.https)?;
+    parcela::proxy::daemon::probe_listener(front_door.https)?;
     proxy::stop(state)?;
-    proxy::start(state, &parcela::host::caddy(), front_door, true)?;
+    proxy::start(state, &parcela::state::host::caddy(), front_door, true)?;
     parcela::paint::Paint::note(&format!(
         "the proxy moved to :{}; restart running environments to update their URLs",
         front_door.https
@@ -60,7 +60,7 @@ fn switch(state: &Path, front_door: FrontDoor, out: Output) -> Result<i32> {
     front_door.save(state)?;
     if matches!(proxy::status(state)?, Status::Running(_)) {
         proxy::stop(state)?;
-        proxy::start(state, &parcela::host::caddy(), front_door, true)?;
+        proxy::start(state, &parcela::state::host::caddy(), front_door, true)?;
     }
     let report = json!({"front_door": front_door, "url": front_door.url("<name>.localhost")});
     out.emit(&report, |style| {
@@ -109,7 +109,7 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
         ProxyCommand::Run { listen } => {
             let registry = Registry::open(state, true)?.context("cannot create the registry")?;
             let front_door = requested(registry.state_path(), listen.port)?;
-            parcela::router::run(&registry, &listen.caddy(), front_door)
+            parcela::proxy::daemon::run(&registry, &listen.caddy(), front_door)
         }
         ProxyCommand::Refresh => {
             let refreshed = proxy::refresh(state)?;
@@ -165,7 +165,7 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             };
             // Refuse a busy new port before stopping the proxy that works.
             if running.map(|running| running.https) != Some(front_door.https) {
-                parcela::router::probe_listener(front_door.https)?;
+                parcela::proxy::daemon::probe_listener(front_door.https)?;
             }
             proxy::stop(state)?;
             let started = proxy::start(state, &listen.caddy(), front_door, true)?;
@@ -179,7 +179,9 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
                 Some(registry) => registry
                     .sessions()?
                     .iter()
-                    .filter(|session| session.status != parcela::registry::SessionStatus::Stopped)
+                    .filter(|session| {
+                        session.status != parcela::state::registry::SessionStatus::Stopped
+                    })
                     .count(),
                 None => 0,
             };
@@ -200,22 +202,22 @@ pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
     match command {
         RelayCommand::Install => {
             Registry::open(state, true)?.context("cannot create the registry")?;
-            let front_door = parcela::relay::install(state, FrontDoor::load(state)?)?;
+            let front_door = parcela::proxy::relay::install(state, FrontDoor::load(state)?)?;
             switch(state, front_door, out)
         }
         RelayCommand::Uninstall => {
-            let front_door = parcela::relay::uninstall(FrontDoor::load(state)?)?;
+            let front_door = parcela::proxy::relay::uninstall(FrontDoor::load(state)?)?;
             switch(state, front_door, out)
         }
         RelayCommand::Status => {
-            let (installed, http) = parcela::relay::status();
+            let (installed, http) = parcela::proxy::relay::status();
             let front_door = FrontDoor::load(state)?;
-            let relayed = parcela::relay::target().filter(|_| installed);
+            let relayed = parcela::proxy::relay::target().filter(|_| installed);
             let target = relayed.unwrap_or(front_door.https);
             let report = json!({
                 "installed": installed,
                 "http": http,
-                "location": parcela::relay::location(),
+                "location": parcela::proxy::relay::location(),
                 "target": target,
                 "proxy_port": front_door.https,
             });

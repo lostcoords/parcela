@@ -237,7 +237,7 @@ fn restore_detects_corruption_and_never_publishes_partial_data() {
     let manifest_path = snapshot.join("manifest.json");
     let mut metadata: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     metadata["entries"][0]["path"] = "../../outside".into();
-    parcela::private::write_json(&manifest_path, &metadata).unwrap();
+    parcela::state::private::write_json(&manifest_path, &metadata).unwrap();
     assert!(
         !f.target(second_id, &["restore", "baseline"])
             .status
@@ -293,13 +293,16 @@ fn data_policy_rejects_unsafe_or_overlapping_paths() {
         "uploads//file",
     ] {
         let config = CONFIG.replace("files: [uploads]", &format!("files: [{path:?}]"));
-        assert!(parcela::config::Manifest::parse(&config).is_err(), "{path}");
+        assert!(
+            parcela::project::config::Manifest::parse(&config).is_err(),
+            "{path}"
+        );
     }
     for config in [
         CONFIG.replace("sqlite: [app.sqlite3]", "sqlite: [uploads/db.sqlite3]"),
         CONFIG.replace("files: [uploads]", "files: [uploads, uploads/nested]"),
     ] {
-        assert!(parcela::config::Manifest::parse(&config).is_err());
+        assert!(parcela::project::config::Manifest::parse(&config).is_err());
     }
 }
 

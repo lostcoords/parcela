@@ -3,8 +3,8 @@ use super::args::ConfigCommand;
 use super::output::Output;
 use anyhow::Result;
 use parcela::{
-    frontdoor::FrontDoor,
-    host::{self, Host},
+    proxy::frontdoor::FrontDoor,
+    state::host::{self, Host},
 };
 use serde_json::{Map, Value, json};
 use std::path::Path;

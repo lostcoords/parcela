@@ -481,6 +481,8 @@ pub struct Listen {
 impl Listen {
     /// `--caddy`, else the host's `proxy.caddy`, else `caddy` on PATH.
     pub fn caddy(&self) -> String {
-        self.caddy.clone().unwrap_or_else(parcela::host::caddy)
+        self.caddy
+            .clone()
+            .unwrap_or_else(parcela::state::host::caddy)
     }
 }

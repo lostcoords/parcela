@@ -9,10 +9,10 @@ on:
       - 'examples/docs-demo/**'
       - 'assets/brand/logo.png'
       - 'scripts/dashboard/**'
-      - 'src/dashboard/index.html'
-      - 'src/dashboard/logs.html'
-      - 'src/dashboard/logs.js'
-      - 'src/dashboard/ui.css'
+      - 'src/proxy/dashboard/index.html'
+      - 'src/proxy/dashboard/logs.html'
+      - 'src/proxy/dashboard/logs.js'
+      - 'src/proxy/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
@@ -23,10 +23,10 @@ on:
       - 'examples/docs-demo/**'
       - 'assets/brand/logo.png'
       - 'scripts/dashboard/**'
-      - 'src/dashboard/index.html'
-      - 'src/dashboard/logs.html'
-      - 'src/dashboard/logs.js'
-      - 'src/dashboard/ui.css'
+      - 'src/proxy/dashboard/index.html'
+      - 'src/proxy/dashboard/logs.html'
+      - 'src/proxy/dashboard/logs.js'
+      - 'src/proxy/dashboard/ui.css'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

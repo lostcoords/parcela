@@ -1,34 +1,18 @@
-//! Parcela's Rust control plane. Caddy is the proxy; `supervisor` runs each environment's processes.
-pub mod autostart;
-pub mod checkout;
-pub mod compose;
-pub mod config;
-pub mod context;
-pub mod control;
-pub mod dashboard;
-pub mod discovery;
-pub mod frontdoor;
+//! Parcela's Rust control plane. Caddy is the proxy; `environment::supervisor` runs each
+//! environment's processes.
+//!
+//! - `project`: what a checkout declares, and its VCS checkouts and data.
+//! - `state`: durable machine state: the registry, port leases, host settings, private files.
+//! - `environment`: one environment's run: its owner, process graph, control socket and logs.
+//! - `proxy`: the shared proxy: Caddy routes, the daemon, the dashboard and the badge injector.
+//! - `share`: LAN, Tailscale and domain sharing for one run.
+pub mod environment;
 #[cfg(test)]
 mod fuzz;
-pub mod host;
 pub mod http;
-pub mod inject;
-pub mod inventory;
-pub mod lifecycle;
-pub mod logs;
-pub mod opens;
-pub mod owner;
 pub mod paint;
-pub mod ports;
-pub mod private;
 pub mod process;
+pub mod project;
 pub mod proxy;
-pub mod registry;
-pub mod relay;
-pub mod router;
-pub mod runtime;
 pub mod share;
-pub mod snapshots;
-pub mod sockets;
-pub mod startup;
-pub mod supervisor;
+pub mod state;

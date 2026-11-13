@@ -14,7 +14,7 @@ class DashboardBuildTest < ActiveSupport::TestCase
         ENV.delete("DASHBOARD_OUT")
       end
       %w[index.html logs.html].each do |file|
-        assert_equal ROOT.join("src/dashboard", file).read, File.read(File.join(dir, file)), STALE
+        assert_equal ROOT.join("src/proxy/dashboard", file).read, File.read(File.join(dir, file)), STALE
       end
     end
   end
@@ -26,7 +26,7 @@ class DashboardBuildTest < ActiveSupport::TestCase
         assert system("bin/rails", "tailwindcss:engines", out: File::NULL)
         assert system("bundle", "exec", "tailwindcss", "-i", ROOT.join("scripts/dashboard/ui.input.css").to_s, "-o", output, "--minify", out: File::NULL, err: File::NULL)
       end
-      assert_equal ROOT.join("src/dashboard/ui.css").read, File.read(output), STALE
+      assert_equal ROOT.join("src/proxy/dashboard/ui.css").read, File.read(output), STALE
     end
   end
 end

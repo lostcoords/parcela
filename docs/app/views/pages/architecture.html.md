@@ -33,7 +33,7 @@ The CLI accepts only standard input, output, and error as inherited descriptors.
 6. Wait for hooks to complete, services to start, and explicit readiness checks to pass. For HTTP services, confirm that listeners belong to the graph and readiness paths return 2xx.
 7. Publish the environment's HTTP routes, if any. A detached start returns when its owner reports readiness.
 
-The owner holds `owner.lock`, serves its control socket, and saves `owner.json`. Each command runs under `bash -c`, or `sh -c` without bash, in a separate process group. Each process writes its own log.
+The owner holds `owner.lock`, serves its control socket, and saves `owner.json` before any process starts. Each command in the graph runs under `bash -c`, or `sh -c` without bash, in a separate process group. Each process writes its own log. `parcela task` and `hooks.teardown` run outside the graph under `/bin/sh -c`, with the latest run's variables, or those of no run yet.
 
 A dependency is ready after its readiness check passes, after it starts if it has no check, or after it exits 0 if it is a hook. Setup enters the graph only until it has succeeded. Ordinary services do not restart automatically. Sharing publishers can restart up to 10 times after failure.
 
@@ -50,6 +50,10 @@ If the owner dies, services may survive. The next lifecycle operation acquires t
 The background `parcela proxy run` process supervises one Caddy instance. Every second it renews a lease file per active route; Caddy matches a route only while the file for the current second exists, so routes expire five seconds after the last renewal even if the proxy process dies. Owners publish and withdraw their routes at once; renewal only keeps them alive.
 
 Listener ownership is checked with `ps` and `lsof`. An owner checks its own process tree and listeners every 200 ms while starting and every 2 seconds once ready, re-entering the starting phase (and withdrawing its routes) when a listener changes. The proxy re-checks every routed listener at most every 5 seconds.
+
+`ps` and `lsof` can miss their deadline on a loaded machine, so a failed check is retried. After 30 seconds of failures a start fails, but a run that was ready keeps its processes and loses only its routes until the checks work again; its readiness timeout restarts then.
+
+Status requests do not probe a slow app inline. While someone keeps asking, such as the dashboard every 2 seconds, the owner checks each service's health URL every 2 seconds on its own thread, and a reply reuses a healthy answer up to 3 seconds old. The checks stop 10 seconds after the last request, so an idle app's log stays quiet.
 
 If the proxy dies, environment owners attempt to restart it within about two seconds and republish routes. An explicit `proxy stop` leaves a stopped marker that prevents this recovery. App services keep running while the proxy is stopped.
 
@@ -120,27 +124,37 @@ Control and Caddy admin sockets use a hash of the state path under a per-user te
 
 ## Source map
 
-| Module | Responsibility |
-| --- | --- |
-| `config` | Parses format version 1 and validates manifests. |
-| `compose` | Runs a `compose` service: reads the ports its containers publish from `docker compose config` on `up`, writes the environment's Compose override, and forwards a `compose.http` service's `$PORT` to its container, so routing still reaches only listeners the graph holds. |
-| `registry`, `ports` | Stores identity and reservations, leases backend ports. |
-| `startup`, `runtime` | Registers a checkout and coordinates startup and readiness. |
-| `supervisor`, `logs` | Runs the process graph and retains process output. |
-| `owner`, `control`, `lifecycle` | Owns environments and handles stop, restart, and recovery. |
-| `autostart` | Installs the per-user login service and finds environments a reboot interrupted. |
-| `router`, `proxy`, `frontdoor`, `relay` | Builds Caddy configuration, runs the proxy, and installs the optional 443/80 relay. |
-| `share` | Plans LAN, Tailscale and domain sharing and allowed host variables. |
-| `host` | Reads and writes the machine's own settings, `parcela config`. |
-| `process`, `http` | Checks process identity, listener ownership, and readiness. `http` is a client. |
-| `discovery` | Reads jj and Git checkout inventory without modifying it. Unresolvable jj roots are reported and omitted without hiding live checkouts. |
-| `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |
-| `snapshots` | Saves declared environment data with SQLite backups and checksums; restores only to absent data directories. |
-| `private`, `sockets` | Owns private files, locks, and socket placement. |
-| `inventory`, `dashboard` | Collects read-only environment status and serves the local browser dashboard, switcher and app debug menu. |
-| `inject` | Adds the badge script to HTML page loads on loopback and domain names. |
-| `opens` | Records what processes hand to `BROWSER` and resolves opened files and their page assets. |
-| `src/cli` | Parses arguments, selects commands, and renders output. |
+The crate is grouped by subsystem. The groups organize the code; they are not strict layers, since an environment publishes routes and the proxy reads environment status.
+
+| Group | Module | Responsibility |
+| --- | --- | --- |
+| `src` | `process`, `http`, `paint` | Process identity, groups, signals and listener ownership; a small HTTP client for readiness and Caddy's admin socket; terminal color. |
+| `project` | `config` | Parses format version 1 and validates manifests. |
+| | `compose` | Runs a `compose` service: reads the ports its containers publish from `docker compose config` on `up`, writes the environment's Compose override, and forwards a `compose.http` service's `$PORT` to its container, so routing still reaches only listeners the graph holds. |
+| | `startup` | Chooses the identity a checkout registers with: the project name or a preview name. |
+| | `discovery` | Reads jj and Git checkout inventory without modifying it. Unresolvable jj roots are reported and omitted without hiding live checkouts. |
+| | `checkout` | Creates explicit Git worktrees or jj workspaces without starting services or copying data. |
+| | `snapshots` | Saves declared environment data with SQLite backups and checksums; restores only to absent data directories. |
+| `state` | `registry`, `ports` | Stores identity and reservations, leases backend ports. |
+| | `host` | Reads and writes the machine's own settings, `parcela config`. |
+| | `private`, `sockets` | Owns private files, locks, and socket placement. |
+| | `context` | Reports an environment's resolved context for `parcela context`. |
+| `environment` | `launch` | Validates `up` and `run`, leases ports, records the session and starts an owner. |
+| | `variables` | Builds the variables every process, hook and task sees, and prepares the runtime directory. |
+| | `owner`, `record`, `health`, `echo` | The owner loop: readiness, route publication, control requests and shutdown; `owner.json`; cached health checks; process output on the terminal or `owner.log`. |
+| | `supervisor`, `logs` | Runs the process graph and retains process output. |
+| | `control`, `lifecycle` | The owner's control socket, and the client side of `down`, `restart`, `status`, `logs` and detached starts. |
+| | `recovery` | Adopts a run whose owner died, or marks it stopped once nothing of it is left. |
+| | `tasks` | Runs `parcela task` and `hooks.teardown`. |
+| | `inventory` | Collects read-only status of every environment for the CLI overview and the dashboard. |
+| | `autostart` | Installs the per-user login service and finds environments a reboot interrupted. |
+| `proxy` | `mod` | Starts, stops, refreshes and revives the proxy, and installs or removes CA trust. |
+| | `daemon` | `parcela proxy run`: owns Caddy, the dashboard and the injector, and renews route leases. |
+| | `router` | Builds Caddy configuration and route leases, and loads them over the admin socket. |
+| | `frontdoor`, `relay` | The proxy's HTTPS port, and the optional 443/80 relay. |
+| | `dashboard`, `inject`, `opens` | Serves the local browser dashboard, switcher and app debug menu; adds the badge script to HTML page loads on loopback and domain names; records what processes hand to `BROWSER`. |
+| `share` | | Plans LAN, Tailscale and domain sharing and allowed host variables. |
+| `cli` | | Parses arguments, selects commands, and renders output. |
 
 ## Privileged changes
 

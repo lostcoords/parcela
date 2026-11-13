@@ -1,6 +1,6 @@
 use parcela::{
-    config::Manifest,
-    registry::{Registry, Role},
+    project::config::Manifest,
+    state::registry::{Registry, Role},
 };
 use serde_json::{Value, json};
 use std::{

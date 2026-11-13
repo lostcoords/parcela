@@ -1,7 +1,7 @@
 use parcela::{
-    config::Manifest,
-    registry::Endpoint,
-    supervisor::{Condition, Kind, Probe, Program, plan},
+    environment::supervisor::{Condition, Kind, Probe, Program, plan},
+    project::config::Manifest,
+    state::registry::Endpoint,
 };
 use serde_json::json;
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
@@ -334,7 +334,7 @@ fn named_ports_reject_invalid_names() {
         ["db", "vite-hmr"]
     );
     assert_eq!(
-        parcela::config::port_variable("vite-hmr"),
+        parcela::project::config::port_variable("vite-hmr"),
         "PARCELA_PORT_VITE_HMR"
     );
     for (ports, message) in [
@@ -400,7 +400,8 @@ fn linked_checkouts_suggest_the_main_checkout_project_name() {
         ("git-main", "git-main"),
         ("linked-git", "git-main"),
     ] {
-        let name = parcela::config::inferred_project_name(&t.path().join(directory)).unwrap();
+        let name =
+            parcela::project::config::inferred_project_name(&t.path().join(directory)).unwrap();
         assert_eq!(name, expected, "{directory}");
     }
 }
@@ -441,8 +442,8 @@ fn long_inferred_labels_fit_every_service_host() {
     )
     .unwrap();
     let branch = "add-mobile-checkout-flow-with-apple-pay-and-google-pay-v2";
-    let label = parcela::config::fit_label(branch, manifest.label_budget());
-    let other = parcela::config::fit_label(
+    let label = parcela::project::config::fit_label(branch, manifest.label_budget());
+    let other = parcela::project::config::fit_label(
         "add-mobile-checkout-flow-with-apple-pay-and-google-pay-v3",
         manifest.label_budget(),
     );
@@ -455,7 +456,7 @@ fn long_inferred_labels_fit_every_service_host() {
             .values()
             .all(|host| host.len() - ".localhost".len() <= 63)
     );
-    assert_eq!(parcela::config::fit_label("signup", 40), "signup");
+    assert_eq!(parcela::project::config::fit_label("signup", 40), "signup");
     let error = manifest.hostname(false, branch).unwrap_err().to_string();
     assert!(error.contains("choose a shorter --name"), "{error}");
 }

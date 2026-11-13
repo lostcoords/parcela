@@ -1,6 +1,6 @@
 use super::output::Output;
 use anyhow::{Context, Result, bail};
-use parcela::{config::Manifest, frontdoor::FrontDoor};
+use parcela::{project::config::Manifest, proxy::frontdoor::FrontDoor};
 use std::{fs, io::Write, path::Path};
 
 const DOCS: &str = "https://parcela.run/docs/configuration/";
@@ -98,9 +98,9 @@ pub fn run(
         None => suggest(&directory),
     };
     let project = match name {
-        Some(name) => parcela::config::sanitize_label(name)
+        Some(name) => parcela::project::config::sanitize_label(name)
             .context("--name needs letters or digits for a DNS-safe project name")?,
-        None => parcela::config::inferred_project_name(&directory)?,
+        None => parcela::project::config::inferred_project_name(&directory)?,
     };
     let mut text = format!(
         "# yaml-language-server: $schema={SCHEMA}\n# Reference: {DOCS}\nversion: 1\nproject: {project}\n\nservices:\n  web:\n"

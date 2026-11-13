@@ -6,15 +6,15 @@ use super::{
 };
 use anyhow::{Context, Result};
 use parcela::{
-    config::Manifest,
-    lifecycle,
-    registry::{Registry, SessionStatus, Workspace},
+    environment::lifecycle,
+    project::config::Manifest,
+    state::registry::{Registry, SessionStatus, Workspace},
 };
 use serde_json::json;
 use std::path::Path;
 
 pub fn list(state: &Path, path: &Path, out: Output, overview: bool) -> Result<()> {
-    let mut inventory = parcela::inventory::collect(state, Some(path))?;
+    let mut inventory = parcela::environment::inventory::collect(state, Some(path))?;
     if overview {
         inventory.prioritize(path);
     }
@@ -150,7 +150,7 @@ pub fn remove(
         let manifest = if workspace.source.is_dir() {
             Manifest::load(&workspace.source.join("parcela.yaml")).ok()
         } else {
-            parcela::private::read_json(
+            parcela::state::private::read_json(
                 &existing
                     .runtime_path(&workspace)
                     .join("last-successful.json"),
@@ -159,8 +159,8 @@ pub fn remove(
         };
         let cleaned = match manifest {
             Some(manifest) if !running(&existing, &workspace)? => {
-                parcela::runtime::teardown(&existing, &manifest, &workspace)
-                    .and_then(|()| parcela::compose::remove(&manifest, &workspace.label))
+                parcela::environment::tasks::teardown(&existing, &manifest, &workspace)
+                    .and_then(|()| parcela::project::compose::remove(&manifest, &workspace.label))
             }
             _ => Ok(Vec::new()),
         };

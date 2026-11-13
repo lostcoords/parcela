@@ -1,15 +1,20 @@
 use parcela::{
-    config::Manifest,
-    frontdoor::FrontDoor,
-    private,
-    registry::{Registry, Role, SessionStatus},
-    router::{self, Router},
-    runtime,
+    environment::variables,
+    project::config::Manifest,
+    proxy::frontdoor::FrontDoor,
+    proxy::router::{self, Router},
+    state::private,
+    state::registry::{Registry, Role, SessionStatus},
 };
 use std::{collections::BTreeMap, fs, os::unix::fs::symlink};
 use tempfile::TempDir;
 use uuid::Uuid;
-fn fixture() -> (TempDir, Registry, Manifest, parcela::registry::Workspace) {
+fn fixture() -> (
+    TempDir,
+    Registry,
+    Manifest,
+    parcela::state::registry::Workspace,
+) {
     let temp = TempDir::new().unwrap();
     let source = temp.path().join("source");
     fs::create_dir(&source).unwrap();
@@ -183,7 +188,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
     );
     assert_eq!(
         config["apps"]["http"]["servers"]["https"]["routes"][0]["match"][0]["host"][0],
-        parcela::dashboard::HOST
+        parcela::proxy::dashboard::HOST
     );
     assert_eq!(
         config["apps"]["tls"]["automation"]["policies"][0]["issuers"][0]["module"],
@@ -212,7 +217,7 @@ fn caddy_config_is_exact_owned_loopback_no_trust_no_persist() {
 #[test]
 fn context_placeholders_reserved_names_and_readiness_validation() {
     let (_temp, registry, mut manifest, workspace) = fixture();
-    let env = runtime::environment(
+    let env = variables::build(
         &manifest,
         &workspace,
         &registry.runtime_path(&workspace),
@@ -234,7 +239,7 @@ fn context_placeholders_reserved_names_and_readiness_validation() {
         .environment
         .insert("MISSING".into(), "${WRONG}".into());
     assert!(
-        runtime::environment(
+        variables::build(
             &manifest,
             &workspace,
             &registry.runtime_path(&workspace),
@@ -296,11 +301,11 @@ fn port_443_urls_carry_no_port() {
 
 #[test]
 fn service_hosts_and_port_leases_are_atomic_for_the_whole_set() {
-    use parcela::registry::Endpoint;
+    use parcela::state::registry::Endpoint;
     let (temp, mut registry, mut manifest, workspace) = fixture();
     manifest.services.insert(
         "backend".into(),
-        parcela::config::Service {
+        parcela::project::config::Service {
             subdomain: Some("api".into()),
             readiness_path: "/ready".into(),
             wildcard: false,
@@ -448,7 +453,7 @@ fn secondary_hostname_conflicts_with_preview_base_without_partial_adoption() {
     let (temp, mut registry, mut manifest, workspace) = fixture();
     manifest.services.insert(
         "api".into(),
-        parcela::config::Service {
+        parcela::project::config::Service {
             subdomain: None,
             readiness_path: "/".into(),
             wildcard: false,

@@ -1,8 +1,8 @@
 use parcela::{
-    config::Manifest,
-    control::Server,
-    registry::{Registry, Role},
-    sockets,
+    environment::control::Server,
+    project::config::Manifest,
+    state::registry::{Registry, Role},
+    state::sockets,
 };
 use std::{
     fs,
@@ -89,7 +89,7 @@ fn shared_or_linked_socket_directories_are_refused() {
     let directory = socket.parent().unwrap().to_owned();
 
     // The base may not exist yet on a fresh machine.
-    parcela::private::directory(directory.parent().unwrap()).unwrap();
+    parcela::state::private::directory(directory.parent().unwrap()).unwrap();
     fs::create_dir(&directory).unwrap();
     fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).unwrap();
     let error = Server::bind(&runtime).err().unwrap();

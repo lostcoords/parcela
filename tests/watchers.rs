@@ -201,7 +201,7 @@ fn watcher_sessions_coexist_with_http_and_refuse_a_newer_running_proxy() {
     let metadata = env.path().join("state/proxy/router.json");
     let original = fs::read(&metadata).unwrap();
     let mut older: Value = serde_json::from_slice(&original).unwrap();
-    older["protocol"] = serde_json::json!(parcela::router::PROTOCOL + 1);
+    older["protocol"] = serde_json::json!(parcela::proxy::router::PROTOCOL + 1);
     fs::write(&metadata, serde_json::to_vec(&older).unwrap()).unwrap();
     let watcher_doctor = env.run(&["doctor"]);
     assert!(!watcher_doctor.status.success());
@@ -243,8 +243,8 @@ fn watcher_sessions_coexist_with_http_and_refuse_a_newer_running_proxy() {
 fn watcher_doctor_and_up_both_refuse_an_unverified_live_proxy() {
     let env = Environment::new(WATCHER);
     let proxy = env.path().join("state/proxy");
-    parcela::private::directory(&proxy).unwrap();
-    let _owner = parcela::private::Lock::acquire(&proxy.join("owner.lock")).unwrap();
+    parcela::state::private::directory(&proxy).unwrap();
+    let _owner = parcela::state::private::Lock::acquire(&proxy.join("owner.lock")).unwrap();
     let output = env.run(&["doctor", "--caddy", "/nonexistent/caddy"]);
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(!output.status.success(), "{report}");

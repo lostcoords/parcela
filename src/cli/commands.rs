@@ -5,13 +5,13 @@ use super::{
 };
 use anyhow::{Context, Result, ensure};
 use parcela::{
-    config::{Manifest, locate},
-    context::ResolvedContext,
-    frontdoor::FrontDoor,
-    lifecycle,
-    registry::{NOT_STARTED, Registry, Workspace},
+    environment::lifecycle,
+    project::config::{Manifest, locate},
+    project::startup,
+    proxy::frontdoor::FrontDoor,
     share::Request as Share,
-    startup,
+    state::context::ResolvedContext,
+    state::registry::{NOT_STARTED, Registry, Workspace},
 };
 use std::path::{Path, PathBuf};
 
@@ -208,7 +208,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         return Ok(0);
     }
     if let Command::ComposeForward { service, port } = &cli.command {
-        parcela::compose::forward(service, *port)?;
+        parcela::project::compose::forward(service, *port)?;
         return Ok(0);
     }
     if let Command::Upgrade { nightly } = cli.command {
@@ -321,7 +321,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         } => super::proxy::trust(
             &state,
             super::proxy::TrustAction::from_flags(print, export, remove),
-            &caddy.unwrap_or_else(parcela::host::caddy),
+            &caddy.unwrap_or_else(parcela::state::host::caddy),
         ),
         Command::Run {
             name,
@@ -334,11 +334,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                 project(&cli.path).context("`parcela run` needs a project's parcela.yaml")?;
             let request = startup::Request { name, primary };
             let (mut registry, workspace) = startup_registry(&state, &source, &manifest, &request)?;
-            parcela::runtime::run(
+            parcela::environment::launch::run(
                 &mut registry,
                 &manifest,
                 &workspace,
-                parcela::runtime::Launch::Command(&argv),
+                parcela::environment::launch::Launch::Command(&argv),
                 backend_port,
                 readiness_timeout,
                 &Default::default(),
@@ -423,7 +423,12 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                     .session(&workspace.id)?
                     .context("no session to recover")?;
                 drop(existing);
-                parcela::runtime::recover(&mut writable(&state)?, &workspace, &session, false)?
+                parcela::environment::recovery::recover(
+                    &mut writable(&state)?,
+                    &workspace,
+                    &session,
+                    false,
+                )?
             };
             out.emit(&result, |style| render::recovered(&result, style))?;
             Ok(0)
@@ -455,12 +460,12 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Command::Ui => {
-            let router = parcela::router::current(&state)?;
+            let router = parcela::proxy::router::current(&state)?;
             ensure!(
-                router.protocol == parcela::router::PROTOCOL,
+                router.protocol == parcela::proxy::router::PROTOCOL,
                 "the running proxy does not provide this dashboard; run `parcela proxy restart` to upgrade it"
             );
-            let url = router.url(parcela::dashboard::HOST);
+            let url = router.url(parcela::proxy::dashboard::HOST);
             out.emit(&serde_json::json!({"url": url}), |_| format!("{url}\n"))?;
             Ok(0)
         }
@@ -509,11 +514,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                 .context("parcela browse runs inside a Parcela environment, as its $BROWSER")?;
             let targets = targets
                 .iter()
-                .map(|target| parcela::opens::Target::parse(target))
+                .map(|target| parcela::proxy::opens::Target::parse(target))
                 .collect::<Result<Vec<_>>>()?;
             let opens = targets
                 .into_iter()
-                .map(|target| parcela::opens::record(Path::new(&runtime), target))
+                .map(|target| parcela::proxy::opens::record(Path::new(&runtime), target))
                 .collect::<Result<Vec<_>>>()?;
             out.emit(&serde_json::json!({"opens": opens}), |_| String::new())?;
             Ok(0)
@@ -563,7 +568,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             let (source, manifest) = project(&cli.path)?;
             let registry = writable(&state)?;
             let workspace = registry.current(&source, &manifest)?;
-            parcela::runtime::task(&registry, &manifest, &workspace, &name, &args)
+            parcela::environment::tasks::task(&registry, &manifest, &workspace, &name, &args)
         }
         Command::Context => {
             let (source, manifest) = project(&cli.path)?;
@@ -593,11 +598,11 @@ struct Start {
 }
 
 fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32> {
-    let launch = parcela::runtime::Launch::Up;
+    let launch = parcela::environment::launch::Launch::Up;
     let snapshot: Option<lifecycle::LaunchSnapshot> = start
         .launch_file
         .as_ref()
-        .map(|path| parcela::private::read_json(path))
+        .map(|path| parcela::state::private::read_json(path))
         .transpose()?;
     let (source, manifest) = if let Some(snapshot) = &snapshot {
         ensure!(
@@ -607,13 +612,13 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         (snapshot.source.clone(), snapshot.manifest.clone())
     } else {
         let (source, mut manifest) = project(path)?;
-        parcela::compose::resolve(&mut manifest, &source)?;
+        parcela::project::compose::resolve(&mut manifest, &source)?;
         (source, manifest)
     };
     if start.no_share {
         start.share = Share::default();
     } else if snapshot.is_none() {
-        parcela::host::Host::current()?.share(&mut start.share, &manifest);
+        parcela::state::host::Host::current()?.share(&mut start.share, &manifest);
     }
     ensure!(
         start.share.domain_port.is_none() || !start.share.domains.is_empty(),
@@ -622,7 +627,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     let readiness_timeout = start
         .readiness_timeout
         .unwrap_or(manifest.readiness_timeout_seconds);
-    parcela::runtime::validate_request(
+    parcela::environment::launch::validate_request(
         &manifest,
         launch,
         start.backend_port,
@@ -685,7 +690,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         let result = if start.detach {
             lifecycle::recover_detached(&registry, &workspace)?
         } else {
-            parcela::runtime::recover(&mut registry, &workspace, &session, false)?
+            parcela::environment::recovery::recover(&mut registry, &workspace, &session, false)?
         };
         out.emit(&result, |style| render::recovered(&result, style))?;
         return Ok(0);
@@ -696,8 +701,8 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         return Ok(0);
     }
     let restart_lock = if start.restart {
-        parcela::private::directory(&registry.runtime_path(&workspace))?;
-        Some(parcela::private::Lock::wait(
+        parcela::state::private::directory(&registry.runtime_path(&workspace))?;
+        Some(parcela::state::private::Lock::wait(
             &registry.runtime_path(&workspace).join("restart.lock"),
         )?)
     } else {
@@ -708,7 +713,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         && snapshot.is_none()
         && registry.hosts(&workspace.id)? != manifest.service_hosts(&workspace.hostname)?;
     if start.restart || start.detach {
-        parcela::runtime::preflight(
+        parcela::environment::launch::preflight(
             &registry,
             &manifest,
             &workspace,
@@ -731,7 +736,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
         let workspace = registry
             .adopt(&manifest, &source, workspace.role, &workspace.label)
             .context("the environment stopped, but the new service URLs could not be reserved")?;
-        parcela::runtime::preflight(
+        parcela::environment::launch::preflight(
             &registry,
             &manifest,
             &workspace,
@@ -747,7 +752,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     if start.setup {
         let marker = registry
             .runtime_path(&workspace)
-            .join(parcela::runtime::SETUP_DONE);
+            .join(parcela::environment::launch::SETUP_DONE);
         match std::fs::remove_file(&marker) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
                 return Err(error).context("forget the finished setup");
@@ -757,7 +762,7 @@ fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32
     }
     if !start.detach {
         drop(restart_lock);
-        return parcela::runtime::run(
+        return parcela::environment::launch::run(
             &mut registry,
             &manifest,
             &workspace,
@@ -796,7 +801,7 @@ fn already_running(
 ) -> Result<Option<serde_json::Value>> {
     if registry
         .session(&workspace.id)?
-        .is_none_or(|session| session.status == parcela::registry::SessionStatus::Stopped)
+        .is_none_or(|session| session.status == parcela::state::registry::SessionStatus::Stopped)
     {
         return Ok(None);
     }

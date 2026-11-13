@@ -5,7 +5,7 @@ Fence Buddy is the main logo: three ivory pickets with two charcoal eyes and no 
 | File | Purpose |
 | --- | --- |
 | [`logo.png`](logo.png) | The 512×512 site logo, resized from the generated Fence Buddy master with transparency preserved. |
-| [`../../src/dashboard/badge.png`](../../src/dashboard/badge.png) | The icon of the debug menu's badge, built from the same master. |
+| [`../../src/proxy/dashboard/badge.png`](../../src/proxy/dashboard/badge.png) | The icon of the debug menu's badge, built from the same master. |
 | [`fence-buddy-reference.png`](fence-buddy-reference.png) | Unmodified imagegen output of the selected ivory mascot with the two board marks removed. |
 | [`fence-buddy-prompt.json`](fence-buddy-prompt.json) | Exact imagegen edit prompt and source reference. |
 

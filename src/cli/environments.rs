@@ -1,10 +1,10 @@
 use super::{commands::project, output::Output};
 use anyhow::{Context, Result, ensure};
 use parcela::{
-    config::Manifest,
-    registry::Registry,
-    snapshots::{self, Snapshot},
-    startup,
+    project::config::Manifest,
+    project::snapshots::{self, Snapshot},
+    project::startup,
+    state::registry::Registry,
 };
 use serde_json::json;
 use std::path::Path;
@@ -32,15 +32,15 @@ pub fn create(
     let snapshot = from
         .map(|name| Snapshot::open(state, &manifest, name))
         .transpose()?;
-    let main =
-        parcela::config::main_checkout(&source).context("checkout creation needs Git or jj")?;
+    let main = parcela::project::config::main_checkout(&source)
+        .context("checkout creation needs Git or jj")?;
     let leaf = format!(
         "{}-{name}",
         main.file_name()
             .context("repository needs a name")?
             .to_string_lossy()
     );
-    let default = match parcela::host::Host::current()?.worktrees_directory()? {
+    let default = match parcela::state::host::Host::current()?.worktrees_directory()? {
         Some(directory) => {
             std::fs::create_dir_all(&directory)
                 .with_context(|| format!("create {}", directory.display()))?;
@@ -49,7 +49,7 @@ pub fn create(
         None => main.with_file_name(leaf),
     };
     let checkout =
-        parcela::checkout::create(&source, directory.unwrap_or(&default), name, revision)?;
+        parcela::project::checkout::create(&source, directory.unwrap_or(&default), name, revision)?;
     let (workspace, registry, created_manifest) = (|| -> Result<_> {
         let created_manifest = Manifest::load(&checkout.source.join("parcela.yaml"))?;
         ensure!(
@@ -96,7 +96,7 @@ pub fn create(
 pub fn snapshot(
     registry: &Registry,
     manifest: &Manifest,
-    workspace: &parcela::registry::Workspace,
+    workspace: &parcela::state::registry::Workspace,
     name: &str,
     out: Output,
 ) -> Result<i32> {
@@ -110,7 +110,7 @@ pub fn snapshot(
 pub fn restore(
     registry: &Registry,
     manifest: &Manifest,
-    workspace: &parcela::registry::Workspace,
+    workspace: &parcela::state::registry::Workspace,
     name: &str,
     out: Output,
 ) -> Result<i32> {
