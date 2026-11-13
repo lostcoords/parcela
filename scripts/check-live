@@ -18,7 +18,7 @@ import time
 import traceback
 
 ROOT = Path(__file__).resolve().parent.parent
-SUITES = {'core': 'core', 'dashboard': 'dashboard', 'updates': 'updates', 'service-sets': 'service_sets', 'ports': 'ports', 'docs-example': 'docs_example', 'recovery': 'recovery', 'compose': 'compose', 'upgrades': 'upgrades'}
+SUITES = {'core': 'core', 'dashboard': 'dashboard', 'updates': 'updates', 'service-sets': 'service_sets', 'ports': 'ports', 'docs-example': 'docs_example', 'recovery': 'recovery', 'compose': 'compose', 'sharing': 'sharing', 'upgrades': 'upgrades'}
 
 
 def main():

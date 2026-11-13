@@ -33,6 +33,10 @@ The `dashboard` suite checks the local UI over real Caddy. Set `PARCELA_PLAYWRIG
 
 The `upgrades` suite downloads the two latest releases older than the build (or the tags in `PARCELA_UPGRADE_FROM`), starts environments and the proxy with each, then checks that the build answers their old owners, replaces the old proxy without restarting apps, and stops, restarts and starts them. It needs network access to GitHub.
 
+The `sharing` suite serves a run at `<name>.<domain>` on a loopback port and checks that `down` and `--no-share` leave no listener. LAN and Tailscale sharing publish to other devices, so no suite runs them.
+
+The `compose` suite needs Docker. It also checks that a Compose older than 2.24.4 is refused.
+
 The `recovery` suite kills, freezes and starves Parcela's own processes: owners, the proxy and Caddy, at chosen and at random moments. `random_crashes` prints its seed; `PARCELA_CHAOS_SEED` replays one and `PARCELA_CHAOS_ROUNDS` runs more rounds.
 
 Each fixture uses a disposable directory, isolated state, an untrusted test CA, and explicit ports from 30000 through 32767. The runner builds once and writes a JSON report per suite. `--output DIR` retains reports at a chosen path. `--caddy PATH` selects Caddy.

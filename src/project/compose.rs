@@ -136,6 +136,7 @@ pub fn resolve(manifest: &mut Manifest, source: &Path) -> Result<()> {
         "compose.file {} does not exist",
         files[0].display()
     );
+    supported(&compose_version()?)?;
     let mut command = Command::new("docker");
     command.current_dir(source).arg("compose");
     for file in &files {
@@ -174,6 +175,40 @@ pub fn resolve(manifest: &mut Manifest, source: &Path) -> Result<()> {
         );
         manifest.ports.push(port.name.clone());
     }
+    Ok(())
+}
+
+/// The oldest Compose that applies the override's `!override` tag. Older releases ignore it
+/// without an error and keep the project's own published ports, so two environments would publish
+/// the same host port.
+const MINIMUM: semver::Version = semver::Version::new(2, 24, 4);
+
+fn compose_version() -> Result<String> {
+    let output = Command::new("docker")
+        .args(["compose", "version", "--short"])
+        .output()
+        .context("run `docker compose version`; is Docker installed?")?;
+    ensure!(
+        output.status.success(),
+        "docker compose version failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Refuses a Compose older than `MINIMUM`. Accepts `v2.24.4`, `2.29.1-desktop.1` and the like.
+fn supported(version: &str) -> Result<()> {
+    let core = version
+        .trim_start_matches('v')
+        .split(['-', '+'])
+        .next()
+        .unwrap_or_default();
+    let parsed = semver::Version::parse(core)
+        .with_context(|| format!("cannot read the Docker Compose version {version:?}"))?;
+    ensure!(
+        parsed >= MINIMUM,
+        "Docker Compose {version} ignores the port overrides Parcela writes; update to {MINIMUM} or newer"
+    );
     Ok(())
 }
 
@@ -405,6 +440,17 @@ fn override_text(compose: &Compose, ports: &BTreeMap<String, u16>) -> Result<Str
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compose_before_2_24_4_is_refused() {
+        for old in ["2.24.3", "v2.20.0", "1.29.2"] {
+            assert!(super::supported(old).is_err(), "{old}");
+        }
+        for new in ["2.24.4", "v2.24.5", "2.29.1-desktop.1", "5.5.0"] {
+            super::supported(new).unwrap();
+        }
+        assert!(super::supported("unknown").is_err());
+    }
+
     use super::*;
     use serde_json::json;
 

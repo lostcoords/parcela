@@ -1,5 +1,7 @@
 """A compose service: two copies of one project run the same Compose file side by side."""
 import json
+import os
+import shutil
 import subprocess
 import urllib.request
 import uuid
@@ -70,6 +72,17 @@ def run(caddy, **_):
                 (source / 'docker-compose.override.yml').write_text('services:\n  files:\n    labels: [parcela.live.override]\n')
             doctor = live.cli(alpha, '--json', 'doctor', check=False)
             assert next(check for check in json.loads(doctor.stdout)['checks'] if check['name'] == 'config')['ok'], doctor.stdout
+            # Compose before 2.24.4 ignores `!override` and keeps the project's own published ports.
+            shim = live.root / 'old-docker'
+            shim.mkdir()
+            real = shutil.which('docker')
+            (shim / 'docker').write_text(f'#!/bin/sh\n[ "$*" = "compose version --short" ] && {{ echo 2.24.3; exit 0; }}\nexec {real!r} "$@"\n')
+            (shim / 'docker').chmod(0o755)
+            old = subprocess.run(live.argv(alpha, 'up', '--detach'), capture_output=True, text=True, timeout=60,
+                                 env={**os.environ, 'PATH': f"{shim}:{os.environ['PATH']}", 'PARCELA_NO_TRUST': '1'})
+            assert old.returncode == 1 and 'Docker Compose 2.24.3 ignores the port overrides' in old.stderr, old.stderr
+            assert docker('ps', '-a', '-q', '--filter', f'label=com.docker.compose.project={project}-primary') == '', 'nothing started'
+            cases.append('compose-older-than-2.24.4-is-refused')
             live.start_proxy()
             live.cli(alpha, 'up', '--detach', timeout=180)
             live.cli(beta, 'up', '--detach', '--name', 'beta', timeout=180)

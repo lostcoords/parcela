@@ -14,6 +14,7 @@
 
 ### Added
 
+- `parcela up` and `parcela doctor` refuse Docker Compose older than 2.24.4 for a `compose` service. Those releases silently ignore the port overrides Parcela writes, so two environments would publish the same host port.
 - `parcela doctor` lists problems from the last day's logs: proxy errors and what each environment's supervisor reported, with counts.
 
 ## 0.9.1 - 2026-11-13

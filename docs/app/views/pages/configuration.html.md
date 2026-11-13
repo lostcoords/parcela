@@ -97,7 +97,7 @@ env:
 
 - Only one service can use `compose`. List every Compose service it should start, in `services` or `http`.
 - `docker compose up` gets every variable Parcela sets, so the Compose file can use them: `APP_URL: ${PARCELA_URL:-http://localhost:3000}` keeps working without Parcela.
-- It needs Docker Compose 2.24.4 or newer. `parcela doctor` checks that the file and services exist.
+- It needs Docker Compose 2.24.4 or newer. Older releases ignore the port overrides Parcela writes, so `up` and `doctor` refuse them. `parcela doctor` checks that the file and services exist.
 - Compose reads `.env` next to the Compose file for its own variables. A new worktree does not have it until it is copied, and the containers start before `setup` runs. Point Compose at the main checkout's with `COMPOSE_ENV_FILES: ${PARCELA_PRIMARY_DIR}/.env` in `env` if the containers need it.
 - A built image shared by every worktree needs an `image:` name next to `build:`, or Compose builds one per environment.
 - `parcela rm` removes the environment's containers and network and lists the volumes it keeps. Delete them with `docker volume rm`.
