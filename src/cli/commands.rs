@@ -1,7 +1,6 @@
 use super::{
     args::{Cli, Command, Global},
-    output::{Output, status_diagnostics},
-    render,
+    output::Output,
 };
 use anyhow::{Context, Result, ensure};
 use parcela::{
@@ -10,7 +9,6 @@ use parcela::{
     project::startup,
     proxy::frontdoor::FrontDoor,
     share::Request as Share,
-    state::context::ResolvedContext,
     state::registry::{NOT_STARTED, Registry, Workspace},
 };
 use std::path::{Path, PathBuf};
@@ -102,16 +100,6 @@ fn select(registry: &Registry, selector: &str) -> Result<Workspace> {
         ),
     }
 }
-fn service_url(
-    registry: &Registry,
-    workspace: &Workspace,
-    service: Option<String>,
-) -> Result<String> {
-    match service {
-        Some(service) => lifecycle::service_url(registry, workspace, &service),
-        None => lifecycle::url(registry, workspace),
-    }
-}
 fn unknown_environment(selector: &str) -> String {
     match uuid::Uuid::parse_str(selector) {
         Ok(_) => UNKNOWN_ID.to_owned(),
@@ -127,10 +115,10 @@ fn by_id(registry: &Registry, id: uuid::Uuid) -> Result<Workspace> {
         .context(UNKNOWN_ID)
 }
 /// Open the registry for writing, which creates it on first use.
-fn writable(state: &Path) -> Result<Registry> {
+pub(super) fn writable(state: &Path) -> Result<Registry> {
     Registry::open(state, true)?.context(NOT_STARTED)
 }
-fn startup_registry(
+pub(super) fn startup_registry(
     state: &Path,
     source: &Path,
     manifest: &Manifest,
@@ -161,31 +149,6 @@ pub fn bare(global: Global) -> Result<i32> {
         format!("{hint}\nSee `parcela --help` for every command.\n")
     })?;
     Ok(0)
-}
-/// Show what a failed detached start wrote to its log, not output from earlier runs.
-fn print_new_log_lines(log: &Path, start: u64, count: usize) {
-    use std::io::{Read, Seek};
-    let mut text = String::new();
-    let Ok(mut file) = std::fs::File::open(log) else {
-        return;
-    };
-    if file.seek(std::io::SeekFrom::Start(start)).is_err()
-        || file.read_to_string(&mut text).is_err()
-    {
-        return;
-    }
-    let lines: Vec<&str> = text.lines().collect();
-    if lines.is_empty() {
-        return;
-    }
-    eprintln!("parcela: last lines of {}:", log.display());
-    for line in &lines[lines.len().saturating_sub(count)..] {
-        let line: String = line
-            .chars()
-            .filter(|c| !c.is_control() || *c == '\t')
-            .collect();
-        eprintln!("  {line}");
-    }
 }
 
 pub fn run(mut cli: Cli) -> Result<i32> {
@@ -329,21 +292,14 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             backend_port,
             readiness_timeout,
             argv,
-        } => {
-            let (source, manifest) =
-                project(&cli.path).context("`parcela run` needs a project's parcela.yaml")?;
-            let request = startup::Request { name, primary };
-            let (mut registry, workspace) = startup_registry(&state, &source, &manifest, &request)?;
-            parcela::environment::launch::run(
-                &mut registry,
-                &manifest,
-                &workspace,
-                parcela::environment::launch::Launch::Command(&argv),
-                backend_port,
-                readiness_timeout,
-                &Default::default(),
-            )
-        }
+        } => super::start::literal(
+            &state,
+            &cli.path,
+            &startup::Request { name, primary },
+            backend_port,
+            readiness_timeout,
+            &argv,
+        ),
         Command::Up {
             name,
             primary,
@@ -358,10 +314,10 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             domain_port,
             no_share,
             launch_file,
-        } => start(
+        } => super::start::start(
             &state,
             &cli.path,
-            Start {
+            super::start::Start {
                 request: startup::Request { name, primary },
                 restart: false,
                 backend_port,
@@ -392,10 +348,10 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             domain_port,
             no_share,
             launch_file,
-        } => start(
+        } => super::start::start(
             &state,
             &cli.path,
-            Start {
+            super::start::Start {
                 request: startup::Request::default(),
                 restart: true,
                 backend_port,
@@ -416,22 +372,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         ),
         Command::Recover { detach } => {
             let (existing, workspace) = reader()?;
-            let result = if detach {
-                lifecycle::recover_detached(&existing, &workspace)?
-            } else {
-                let session = existing
-                    .session(&workspace.id)?
-                    .context("no session to recover")?;
-                drop(existing);
-                parcela::environment::recovery::recover(
-                    &mut writable(&state)?,
-                    &workspace,
-                    &session,
-                    false,
-                )?
-            };
-            out.emit(&result, |style| render::recovered(&result, style))?;
-            Ok(0)
+            super::lifecycle::recover(&state, existing, &workspace, detach, out)
         }
         Command::Down {
             all: true,
@@ -450,37 +391,20 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         }
         Command::Down { .. } => {
             let (registry, workspace) = reader()?;
-            let result = lifecycle::down(&registry, &workspace)?;
-            let name = render::name(&serde_json::to_value(&workspace)?);
-            out.emit(&result, |style| render::down(&result, &name, style))?;
-            Ok(0)
+            super::lifecycle::down(&registry, &workspace, out)
         }
         Command::Ls => {
             super::inventory::list(&state, &cli.path, out, false)?;
             Ok(0)
         }
-        Command::Ui => {
-            let router = parcela::proxy::router::current(&state)?;
-            ensure!(
-                router.protocol == parcela::proxy::router::PROTOCOL,
-                "the running proxy does not provide this dashboard; run `parcela proxy restart` to upgrade it"
-            );
-            let url = router.url(parcela::proxy::dashboard::HOST);
-            out.emit(&serde_json::json!({"url": url}), |_| format!("{url}\n"))?;
-            Ok(0)
-        }
+        Command::Ui => super::lifecycle::ui(&state, out),
         Command::Status { current: false } if id.is_none() => {
             super::inventory::list(&state, &cli.path, out, true)?;
             Ok(0)
         }
         Command::Status { .. } => {
             let (registry, workspace) = reader()?;
-            let status = lifecycle::status_with_processes(&registry, &workspace)?;
-            if out == Output::Human {
-                status_diagnostics(std::slice::from_ref(&status));
-            }
-            out.emit(&status, |style| render::status(&status, style))?;
-            Ok(0)
+            super::lifecycle::status(&registry, &workspace, out)
         }
         Command::Logs {
             service,
@@ -493,369 +417,22 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         }
         Command::Logs { service, tail, .. } => {
             let (registry, workspace) = reader()?;
-            let logs = lifecycle::logs(&registry, &workspace, service.as_deref(), tail as usize)?;
-            use std::io::Write;
-            let mut out = std::io::stdout().lock();
-            let paint = parcela::paint::Paint::stdout();
-            let width = logs.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
-            for (index, (name, lines)) in logs.iter().enumerate() {
-                for line in lines {
-                    if service.is_some() {
-                        writeln!(out, "{line}")?;
-                    } else {
-                        writeln!(out, "{} {line}", paint.log_prefix(index, name, width))?;
-                    }
-                }
-            }
-            Ok(0)
+            super::lifecycle::logs(&registry, &workspace, service.as_deref(), tail as usize)
         }
-        Command::Browse { targets } => {
-            let runtime = std::env::var_os("PARCELA_RUNTIME_DIR")
-                .context("parcela browse runs inside a Parcela environment, as its $BROWSER")?;
-            let targets = targets
-                .iter()
-                .map(|target| parcela::proxy::opens::Target::parse(target))
-                .collect::<Result<Vec<_>>>()?;
-            let opens = targets
-                .into_iter()
-                .map(|target| parcela::proxy::opens::record(Path::new(&runtime), target))
-                .collect::<Result<Vec<_>>>()?;
-            out.emit(&serde_json::json!({"opens": opens}), |_| String::new())?;
-            Ok(0)
-        }
+        Command::Browse { targets } => super::lifecycle::browse(&targets, out),
         Command::Url { service } => {
             let (registry, workspace) = reader()?;
-            let url = service_url(&registry, &workspace, service)?;
-            println!("{url}");
-            Ok(0)
+            super::lifecycle::url(&registry, &workspace, service.as_deref())
         }
         Command::Open { service } => {
             let (registry, workspace) = reader()?;
-            let status = lifecycle::status(&registry, &workspace)?;
-            anyhow::ensure!(
-                status["state"] != "stopped",
-                "{} is not running; start it with `parcela up`",
-                render::name(&status["workspace"])
-            );
-            let url = service_url(&registry, &workspace, service)?;
-            // $BROWSER may carry arguments, like `firefox -P work`, so the shell splits it.
-            let browser = std::env::var("BROWSER")
-                .ok()
-                .filter(|browser| !browser.is_empty());
-            let name = browser.clone().unwrap_or_else(|| {
-                if cfg!(target_os = "macos") {
-                    "open"
-                } else {
-                    "xdg-open"
-                }
-                .into()
-            });
-            let opened = std::process::Command::new("/bin/sh")
-                .args(["-c", &format!("{name} \"$1\""), "sh", &url])
-                .status()
-                .with_context(|| format!("run {name}"))?;
-            anyhow::ensure!(opened.success(), "{name} could not open {url}");
-            out.emit(&serde_json::json!({ "url": url }), |style| {
-                format!("Opened {}\n", style.url(&url))
-            })?;
-            Ok(0)
+            super::lifecycle::open(&registry, &workspace, service.as_deref(), out)
         }
         Command::Rm { prune } => {
             super::inventory::remove(&state, &cli.path, id, prune, out)?;
             Ok(0)
         }
-        Command::Task { name, args } => {
-            let (source, manifest) = project(&cli.path)?;
-            let registry = writable(&state)?;
-            let workspace = registry.current(&source, &manifest)?;
-            parcela::environment::tasks::task(&registry, &manifest, &workspace, &name, &args)
-        }
-        Command::Context => {
-            let (source, manifest) = project(&cli.path)?;
-            let registry = Registry::open(&state, false)?.context(NOT_STARTED)?;
-            let workspace = registry.current(&source, &manifest)?;
-            let result =
-                serde_json::to_value(ResolvedContext::new(&registry, &manifest, workspace)?)?;
-            out.emit(&result, |style| render::context(&result, style))?;
-            Ok(0)
-        }
+        Command::Task { name, args } => super::lifecycle::task(&state, &cli.path, &name, &args),
+        Command::Context => super::lifecycle::context(&state, &cli.path, out),
     }
-}
-
-/// What `up` and `restart` were asked to do.
-struct Start {
-    request: startup::Request,
-    restart: bool,
-    backend_port: Option<u16>,
-    /// `--readiness-timeout`; `readiness_timeout_seconds` from parcela.yaml otherwise.
-    readiness_timeout: Option<u64>,
-    detach: bool,
-    setup: bool,
-    share: Share,
-    no_share: bool,
-    /// Set only for the detached owner `up --detach` launches, pinning its source and manifest.
-    launch_file: Option<PathBuf>,
-}
-
-fn start(state: &Path, path: &Path, mut start: Start, out: Output) -> Result<i32> {
-    let launch = parcela::environment::launch::Launch::Up;
-    let snapshot: Option<lifecycle::LaunchSnapshot> = start
-        .launch_file
-        .as_ref()
-        .map(|path| parcela::state::private::read_json(path))
-        .transpose()?;
-    let (source, manifest) = if let Some(snapshot) = &snapshot {
-        ensure!(
-            path.canonicalize()? == snapshot.source,
-            "launch source changed"
-        );
-        (snapshot.source.clone(), snapshot.manifest.clone())
-    } else {
-        let (source, mut manifest) = project(path)?;
-        parcela::project::compose::resolve(&mut manifest, &source)?;
-        (source, manifest)
-    };
-    if start.no_share {
-        start.share = Share::default();
-    } else if snapshot.is_none() {
-        parcela::state::host::Host::current()?.share(&mut start.share, &manifest);
-    }
-    ensure!(
-        start.share.domain_port.is_none() || !start.share.domains.is_empty(),
-        "--domain-port requires --domain or `parcela config add sharing.domains`"
-    );
-    let readiness_timeout = start
-        .readiness_timeout
-        .unwrap_or(manifest.readiness_timeout_seconds);
-    parcela::environment::launch::validate_request(
-        &manifest,
-        launch,
-        start.backend_port,
-        readiness_timeout,
-        &start.share,
-    )?;
-    let (mut registry, workspace) = if start.restart || snapshot.is_some() {
-        ensure!(
-            start.request.name.is_none() && !start.request.primary,
-            "pinned startup cannot change environment identity"
-        );
-        let registry = writable(state)?;
-        let workspace = registry.current(&source, &manifest)?;
-        (registry, workspace)
-    } else {
-        startup_registry(state, &source, &manifest, &start.request)?
-    };
-    if start.no_share && !start.restart && registry.session(&workspace.id)?.is_some() {
-        let status = lifecycle::status(&registry, &workspace)?;
-        let state = status["state"].as_str().unwrap_or("unknown");
-        let shared = status["live"]["endpoints"]
-            .as_object()
-            .is_some_and(|endpoints| {
-                endpoints.values().any(|endpoint| {
-                    endpoint["shared"]
-                        .as_array()
-                        .is_some_and(|urls| !urls.is_empty())
-                })
-            });
-        ensure!(
-            state == "stopped" || (state == "ready" && !shared),
-            "existing run is shared or cannot be verified local-only; run `parcela restart --no-share`"
-        );
-    }
-    if let Some(snapshot) = &snapshot {
-        ensure!(
-            start.launch_file.as_ref()
-                == Some(&registry.runtime_path(&workspace).join("launch.json")),
-            "unexpected launch snapshot path"
-        );
-        let current = registry.session(&workspace.id)?;
-        ensure!(
-            current.as_ref().map(|s| (&s.token, s.generation))
-                == snapshot
-                    .predecessor
-                    .as_ref()
-                    .map(|s| (&s.token, s.generation)),
-            "launch predecessor changed; successor preserved"
-        );
-    } else if !start.restart
-        && let Some(session) = lifecycle::orphaned(&registry, &workspace)?
-    {
-        parcela::paint::Paint::note(&format!(
-            "the Parcela process that started {} exited; taking back control of its running services",
-            render::name(&serde_json::to_value(&workspace)?)
-        ));
-        if !manifest.services.is_empty() {
-            parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
-        }
-        let result = if start.detach {
-            lifecycle::recover_detached(&registry, &workspace)?
-        } else {
-            parcela::environment::recovery::recover(&mut registry, &workspace, &session, false)?
-        };
-        out.emit(&result, |style| render::recovered(&result, style))?;
-        return Ok(0);
-    } else if !start.restart
-        && let Some(result) = already_running(&registry, &workspace, &start.share)?
-    {
-        out.emit(&result, |style| render::started(&result, style))?;
-        return Ok(0);
-    }
-    let restart_lock = if start.restart {
-        parcela::state::private::directory(&registry.runtime_path(&workspace))?;
-        Some(parcela::state::private::Lock::wait(
-            &registry.runtime_path(&workspace).join("restart.lock"),
-        )?)
-    } else {
-        None
-    };
-    // A service was added, removed or renamed: its URLs can only be reserved once the old run stops.
-    let new_hosts = start.restart
-        && snapshot.is_none()
-        && registry.hosts(&workspace.id)? != manifest.service_hosts(&workspace.hostname)?;
-    if start.restart || start.detach {
-        parcela::environment::launch::preflight(
-            &registry,
-            &manifest,
-            &workspace,
-            launch,
-            start.backend_port,
-            readiness_timeout,
-            &start.share,
-        )?;
-    }
-    if start.restart {
-        ensure!(
-            registry
-                .session(&workspace.id)?
-                .is_none_or(|session| session.kind == "up"),
-            "restart does not replay arbitrary run commands; use down then an explicit run"
-        );
-        lifecycle::down(&registry, &workspace)?;
-    }
-    let workspace = if new_hosts {
-        let workspace = registry
-            .adopt(&manifest, &source, workspace.role, &workspace.label)
-            .context("the environment stopped, but the new service URLs could not be reserved")?;
-        parcela::environment::launch::preflight(
-            &registry,
-            &manifest,
-            &workspace,
-            launch,
-            start.backend_port,
-            readiness_timeout,
-            &start.share,
-        )?;
-        workspace
-    } else {
-        workspace
-    };
-    if start.setup {
-        let marker = registry
-            .runtime_path(&workspace)
-            .join(parcela::environment::launch::SETUP_DONE);
-        match std::fs::remove_file(&marker) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(error).context("forget the finished setup");
-            }
-            _ => {}
-        }
-    }
-    if !start.detach {
-        drop(restart_lock);
-        return parcela::environment::launch::run(
-            &mut registry,
-            &manifest,
-            &workspace,
-            launch,
-            start.backend_port,
-            readiness_timeout,
-            &start.share,
-        );
-    }
-    // Started here so its notice reaches this terminal, not the detached owner's log.
-    if !manifest.services.is_empty() {
-        parcela::proxy::ensure_running(registry.state_path(), &workspace.hostname)?;
-        parcela::proxy::offer_trust(registry.state_path());
-    }
-    let log = registry.runtime_path(&workspace).join("log/owner.log");
-    let offset = std::fs::metadata(&log).map_or(0, |metadata| metadata.len());
-    let result = lifecycle::detached(
-        &registry,
-        &workspace,
-        start.backend_port,
-        readiness_timeout,
-        &start.share,
-        &manifest,
-    )
-    .inspect_err(|_| print_new_log_lines(&log, offset, 20))?;
-    out.emit(&result, |style| render::started(&result, style))?;
-    Ok(0)
-}
-
-/// `up` on a ready environment reports it like a fresh start, as `docker compose up -d` does.
-/// A ready run without the sharing asked for is refused.
-fn already_running(
-    registry: &Registry,
-    workspace: &Workspace,
-    share: &Share,
-) -> Result<Option<serde_json::Value>> {
-    if registry
-        .session(&workspace.id)?
-        .is_none_or(|session| session.status == parcela::state::registry::SessionStatus::Stopped)
-    {
-        return Ok(None);
-    }
-    let status = lifecycle::status(registry, workspace)?;
-    let name = render::name(&serde_json::to_value(workspace)?);
-    // Anything but ready goes on to the start path, which takes back or replaces a crashed run.
-    let state = status["state"].as_str().unwrap_or("unknown");
-    if state != "ready" {
-        return Ok(None);
-    }
-    let shared: Vec<&str> = status["live"]["endpoints"]
-        .as_object()
-        .into_iter()
-        .flat_map(|endpoints| endpoints.values())
-        .flat_map(|endpoint| endpoint["shared"].as_array().into_iter().flatten())
-        .filter_map(serde_json::Value::as_str)
-        .collect();
-    let host = |url: &str| -> String {
-        let authority = url.split('/').nth(2).unwrap_or_default();
-        authority.split(':').next().unwrap_or_default().to_owned()
-    };
-    let domains: Vec<(String, String)> = share
-        .domains
-        .iter()
-        .map(|domain| {
-            let domain = domain.trim_end_matches('.').to_ascii_lowercase();
-            (format!("--domain {domain}"), format!(".{domain}"))
-        })
-        .collect();
-    let asked = [
-        (
-            share.lan || share.lan_ip.is_some(),
-            "--lan".into(),
-            ".local".into(),
-        ),
-        (share.tailscale, "--tailscale".into(), ".ts.net".into()),
-    ]
-    .into_iter()
-    .chain(
-        domains
-            .into_iter()
-            .map(|(flag, suffix)| (true, flag, suffix)),
-    );
-    for (asked, flag, suffix) in asked {
-        ensure!(
-            !asked || shared.iter().any(|url| host(url).ends_with(&suffix)),
-            "{name} is already running without {flag}; run `parcela restart {flag}`"
-        );
-    }
-    Ok(Some(serde_json::json!({
-        "already_running": true,
-        "workspace": status["workspace"],
-        "session": status["recorded_session"],
-        "live": status["live"],
-        "state": state,
-    })))
 }

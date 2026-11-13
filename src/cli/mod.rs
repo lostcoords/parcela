@@ -6,9 +6,11 @@ mod doctor;
 mod environments;
 mod init;
 mod inventory;
+mod lifecycle;
 mod output;
 mod proxy;
 mod render;
+mod start;
 mod telemetry;
 mod upgrade;
 
