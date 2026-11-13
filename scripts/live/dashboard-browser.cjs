@@ -93,6 +93,13 @@ const path = require('node:path');
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'dashboard.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    // On a phone each row's name and URL take the full width, with its controls on a line below.
+    const layout = await page.evaluate(() => [...document.querySelectorAll('[data-slot=list-row]')].map(row => {
+      const text = row.querySelector('[data-slot=list-text]').getBoundingClientRect();
+      const controls = row.querySelector('[data-slot=controls]').getBoundingClientRect();
+      return { textWidth: text.width, rowWidth: row.getBoundingClientRect().width, gap: controls.top - text.bottom };
+    }));
+    assert.ok(layout.length && layout.every(row => row.textWidth > row.rowWidth * 0.7 && row.gap >= 0), JSON.stringify(layout));
     if (artifacts) await page.screenshot({ path: path.join(artifacts, 'dashboard-mobile.png'), fullPage: true });
     failStatus = true;
     await page.getByText('Could not reach Parcela. Retrying.', { exact: true }).waitFor();

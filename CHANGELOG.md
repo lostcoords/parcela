@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Dashboard: on a phone, each environment's URL fits on its own line with its buttons below, instead of breaking letter by letter under the status badge.
 - After `project` changes in `parcela.yaml`, `parcela down` and `parcela rm` work again from the checkout. Before, `up` said to remove the old registration, `rm` said to stop it first, and `down` refused with the same message as `up`. `status`, `logs` and `url` work too, and `up` says to stop the old run only while it runs.
 
 ### Changed

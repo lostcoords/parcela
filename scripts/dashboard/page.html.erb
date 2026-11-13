@@ -23,7 +23,7 @@
 <template id="project"><%= lc_list_section("Project") { lc_list_group(tag: :ul) } %></template>
 <% [ [ "row", nil ], [ "row-linked", "#" ] ].each do |id, href| %>
   <template id="<%= id %>">
-    <%= lc_list_row "Name", subtitle: "URL", href: href, tag: :li, class: "max-sm:flex-wrap max-sm:[&>[data-slot=list-text]]:basis-full" do %>
+    <%= lc_list_row "Name", subtitle: "URL", href: href, tag: :li, class: "max-sm:flex-wrap max-sm:*:data-[slot=list-text]:basis-full" do %>
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-1 max-sm:justify-start" data-slot="controls"></div>
     <% end %>
   </template>
