@@ -11,7 +11,7 @@
     <div class="cta-try">
       <%= install_command class: "cta-install" %>
       <div class="cta-actions">
-        <%= home_button "Get started", "/docs/getting-started/", start: true %>
+        <%= home_button "Get started", "/docs/getting-started/", start: true, data: { umami_event: "get-started", umami_event_place: "cta" } %>
         <%= home_button "Read the docs", "/docs/", variant: :secondary, arrow: false %>
       </div>
     </div>

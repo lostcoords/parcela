@@ -11,6 +11,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <%= stylesheet_link_tag "tailwind", "site", "highlight", "header", "docs_shell", *yield(:stylesheets).split, data: { turbo_track: "reload" } %>
     <%= javascript_importmap_tags %>
+    <%= render "shared/analytics" %>
   </head>
   <body class="bg-background font-sans text-foreground antialiased">
     <%= lc_skip_link %>

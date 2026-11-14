@@ -1,7 +1,7 @@
 <div class="hero" data-controller="home-field">
   <div class="hero-field" data-home-field-target="field" aria-hidden="true"><canvas data-home-field-target="mesh"></canvas></div>
   <div class="hero-intro">
-    <a class="release-pill" href="<%= ApplicationHelper::REPOSITORY %>/releases/tag/<%= ApplicationHelper::RELEASE %>">
+    <a class="release-pill" data-umami-event="github" data-umami-event-place="release-pill" href="<%= ApplicationHelper::REPOSITORY %>/releases/tag/<%= ApplicationHelper::RELEASE %>">
       <%= lucide("tag") %>
       Parcela <%= ApplicationHelper::RELEASE %> is out <%= lucide("arrow-up-right") %>
     </a>
@@ -10,12 +10,12 @@
       <span class="line">for your <span class="sr-only">coding agents</span><span class="rotator" aria-hidden="true" data-controller="home-rotator"><% home_agents.each_with_index do |agent, index| %><span class="agent<%= " on" if index.zero? %>" data-home-rotator-target="item" style="<%= "color: #{agent[:color]}" if agent[:color] %>"><%= brand_mark(agent[:path]) %><span class="name<%= " blend" if agent[:gradient] %>" style="<%= "background-image: #{agent[:gradient]}" if agent[:gradient] %>"><%= agent[:name] %></span></span><% end %></span></span>
     </h1>
     <nav class="hero-actions" aria-label="Get Parcela">
-      <%= home_button "Get started", "/docs/getting-started/", start: true %>
-      <%= lc_button_link_to ApplicationHelper::REPOSITORY, variant: :ghost, size: :lg, class: "hero-github" do %><%= brand_mark(HomeHelper::GITHUB) %>GitHub<% end %>
+      <%= home_button "Get started", "/docs/getting-started/", start: true, data: { umami_event: "get-started", umami_event_place: "hero" } %>
+      <%= lc_button_link_to ApplicationHelper::REPOSITORY, variant: :ghost, size: :lg, class: "hero-github", data: { umami_event: "github", umami_event_place: "hero" } do %><%= brand_mark(HomeHelper::GITHUB) %>GitHub<% end %>
     </nav>
     <%= install_command class: "hero-install" %>
     <p class="agent-install">
-      <a class="agent-install-link" href="/docs/getting-started/#install-it-with-your-agent" data-controller="home-agent-install" data-home-agent-install-prompt-value="<%= agent_prompt %>" data-action="home-agent-install#open">
+      <a class="agent-install-link" data-umami-event="agent-install" data-umami-event-place="hero" href="/docs/getting-started/#install-it-with-your-agent" data-controller="home-agent-install" data-home-agent-install-prompt-value="<%= agent_prompt %>" data-action="home-agent-install#open">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></svg>
         Or install it with your AI agent
       </a>

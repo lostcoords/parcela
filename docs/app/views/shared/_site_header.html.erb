@@ -11,5 +11,5 @@
 ] %>
 <%= render layout: "shared/header", locals: { brand:, home_label: "Parcela home", links:, width: "max-w-360", navigation_class: "md:flex" } do %>
   <%= render "shared/search" %>
-  <%= lc_button_link_to ApplicationHelper::REPOSITORY, variant: :ghost, size: :sm, aria: { label: "Parcela on GitHub" } do %><%= render "shared/github_icon" %><% end %>
+  <%= lc_button_link_to ApplicationHelper::REPOSITORY, variant: :ghost, size: :sm, aria: { label: "Parcela on GitHub" }, data: { umami_event: "github", umami_event_place: "header" } do %><%= render "shared/github_icon" %><% end %>
 <% end %>

@@ -1,0 +1,10 @@
+<%# Umami page views and click events, production only. %>
+<% if Rails.env.production? %>
+  <script defer src="https://t.lostcoords.com/lc.js" data-website-id="a242c1f7-ebe8-46f6-8a94-ec8bc2dce82a" data-domains="parcela.run"></script>
+  <script>
+    document.addEventListener("lc-copy:copied", (event) => {
+      const block = event.target.closest(".lc-code-block")
+      window.umami?.track("copy-code", { block: block?.id, page: location.pathname })
+    })
+  </script>
+<% end %>

@@ -17,7 +17,7 @@
       <nav class="flex flex-col gap-2.5" aria-label="<%= title %>">
         <h3 class="mb-1 text-[13px] font-extrabold text-foreground"><%= title %></h3>
         <% links.each do |text, url, icon| %>
-          <a href="<%= url %>" class="inline-flex items-center gap-2 text-muted-foreground no-underline transition-colors hover:text-foreground">
+          <a href="<%= url %>"<% if icon == :github %> data-umami-event="github" data-umami-event-place="footer"<% end %> class="inline-flex items-center gap-2 text-muted-foreground no-underline transition-colors hover:text-foreground">
             <% if icon %><svg viewBox="0 0 24 24" class="size-4 flex-none" aria-hidden="true" focusable="false"><%= icons.fetch(icon).html_safe %></svg><% end %>
             <%= text %>
           </a>
