@@ -252,6 +252,10 @@ fn serve(
     let mut hostname = None;
     let mut acting = false;
     let mut access = None;
+    let mut cookie = None;
+    let mut user_agent = "";
+    let mut fetch_dest = None;
+    let mut client = "";
     for line in lines.take_while(|line| !line.is_empty()) {
         let (name, value) = line.split_once(':').context("invalid dashboard header")?;
         match name.to_ascii_lowercase().as_str() {
@@ -267,6 +271,11 @@ fn serve(
             "x-parcela-environment" => environment = Some(value.trim()),
             "x-parcela-hostname" => hostname = Some(value.trim()),
             "x-parcela-action" => acting = true,
+            // HTTP/2 may split cookies across several header lines.
+            "cookie" => cookie = cookie.or(crate::proxy::devices::cookie_token(value)),
+            "user-agent" => user_agent = value.trim(),
+            "sec-fetch-dest" => fetch_dest = Some(value.trim()),
+            "x-parcela-client" => client = value.trim(),
             "x-parcela-access" => {
                 ensure!(access.is_none(), "duplicate dashboard access");
                 access = Some(value.trim());
@@ -282,7 +291,29 @@ fn serve(
     let public_asset = path == "/widget.js";
     let foreign = origin.is_some_and(|origin| origin != front_door.url(HOST));
     let mut policy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
-    let (status, mime, body) = if let (Some(environment), Some(hostname), Some(path)) =
+    let mut extra = Vec::new();
+    let (status, mime, body) = if access == Some("device") {
+        // Caddy's forward_auth for a LAN name: only this gate, never the panel or an action.
+        let answer = crate::proxy::devices::answer(
+            state,
+            &crate::proxy::devices::Ask {
+                host: hostname.unwrap_or_default(),
+                cookie,
+                navigation: matches!(fetch_dest, None | Some("document")),
+                user_agent,
+                address: client,
+            },
+        )?;
+        policy = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+        extra = answer.headers;
+        (answer.status, answer.mime, answer.body)
+    } else if let (true, Some(path)) = (
+        host == Some(authority.as_str()),
+        target.strip_prefix("/_parcela/devices"),
+    ) {
+        let response = environment::devices(method, path, host, origin, acting, state);
+        (response.status, response.mime, response.body)
+    } else if let (Some(environment), Some(hostname), Some(path)) =
         (environment, hostname, target.strip_prefix("/_parcela/"))
     {
         let response = environment::respond(
@@ -396,7 +427,7 @@ fn serve(
     };
     write!(
         stream,
-        "HTTP/1.1 {status} {}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: {policy}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status} {}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: {policy}\r\n{}Connection: close\r\n\r\n",
         match status {
             200 => "OK",
             202 => "Accepted",
@@ -408,7 +439,11 @@ fn serve(
             500 => "Internal Server Error",
             _ => "Error",
         },
-        body.len()
+        body.len(),
+        extra
+            .iter()
+            .map(|(name, value)| format!("{name}: {value}\r\n"))
+            .collect::<String>()
     )?;
     if method != "HEAD" {
         stream.write_all(&body)?;
@@ -448,11 +483,16 @@ mod tests {
     }
 
     fn response(request: &str) -> String {
+        response_in(Path::new("/nonexistent"), request)
+    }
+
+    fn response_in(state: &Path, request: &str) -> String {
         let (mut client, mut server) = UnixStream::pair().unwrap();
+        let state = state.to_owned();
         let worker = thread::spawn(move || {
             serve(
                 &mut server,
-                Path::new("/nonexistent"),
+                &state,
                 FrontDoor::on(1443),
                 &Mutex::new(Snapshot::default()),
                 &environment::Actions::default(),
@@ -511,5 +551,69 @@ mod tests {
         assert!(status.starts_with("HTTP/1.1 200"));
         assert!(!status.contains("Access-Control-Allow-Origin"));
         assert!(response("GET /widget.js HTTP/1.1\r\nHost: parcela-dashboard.localhost:1443\r\nOrigin: https://demo.localhost:1443\r\n\r\n").starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn only_the_dashboard_name_decides_about_devices() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path();
+        let gate = "GET /_parcela/device HTTP/1.1\r\nHost: shop.local\r\nX-Parcela-Access: device\r\nX-Parcela-Hostname: shop.local\r\nX-Parcela-Client: 192.168.1.30\r\nUser-Agent: Phone\r\nSec-Fetch-Dest: document\r\n\r\n";
+        let waiting = response_in(state, gate);
+        assert!(waiting.starts_with("HTTP/1.1 403"), "{waiting}");
+        assert!(waiting.contains("Set-Cookie: parcela_device="), "{waiting}");
+        assert!(waiting.contains("Waiting for approval on"), "{waiting}");
+        let token = waiting
+            .split("parcela_device=")
+            .nth(1)
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let id = crate::proxy::devices::list(state).unwrap()[0].id.clone();
+        let dashboard = "parcela-dashboard.localhost:1443";
+        let decide = |host: &str, origin: &str, acting: &str| {
+            response_in(
+                state,
+                &format!(
+                    "POST /_parcela/devices/{id}/approve HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\n{acting}\r\n"
+                ),
+            )
+        };
+        for refused in [
+            decide(dashboard, "https://evil.example", "X-Parcela-Action: 1\r\n"),
+            decide(dashboard, &format!("https://{dashboard}"), ""),
+            decide(
+                "shop.local",
+                "https://shop.local",
+                "X-Parcela-Action: 1\r\n",
+            ),
+        ] {
+            assert!(!refused.starts_with("HTTP/1.1 200"), "{refused}");
+        }
+        assert_eq!(
+            crate::proxy::devices::list(state).unwrap()[0].standing,
+            crate::proxy::devices::Standing::Pending
+        );
+        let listed = response_in(
+            state,
+            &format!("GET /_parcela/devices HTTP/1.1\r\nHost: {dashboard}\r\n\r\n"),
+        );
+        assert!(listed.contains(&format!("\"id\":\"{id}\"")), "{listed}");
+        assert!(!listed.contains("token"), "{listed}");
+        let approved = decide(
+            dashboard,
+            &format!("https://{dashboard}"),
+            "X-Parcela-Action: 1\r\n",
+        );
+        assert!(approved.starts_with("HTTP/1.1 200"), "{approved}");
+        let allowed = response_in(
+            state,
+            &gate.replace(
+                "\r\n\r\n",
+                &format!("\r\nCookie: a=1; parcela_device={token}\r\n\r\n"),
+            ),
+        );
+        assert!(allowed.starts_with("HTTP/1.1 200"), "{allowed}");
     }
 }

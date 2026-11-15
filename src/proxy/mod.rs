@@ -3,6 +3,7 @@
 //! identity, never a bare PID.
 pub mod daemon;
 pub mod dashboard;
+pub mod devices;
 pub mod frontdoor;
 pub mod inject;
 pub mod opens;

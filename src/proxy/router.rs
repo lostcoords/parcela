@@ -2,6 +2,7 @@
 //! socket, and the per-second route leases that expire routes when nobody renews them.
 use crate::{
     http,
+    proxy::devices::COOKIE,
     proxy::frontdoor::FrontDoor,
     state::private::{self, Lock},
     state::registry::{Endpoint, Registry, Session, SessionStatus},
@@ -24,7 +25,7 @@ pub const VERSION: &str = env!("PARCELA_VERSION");
 /// What a proxy and the commands that load routes into it must agree on: the proxy's own behavior
 /// and the shape of its Caddy configuration. Releases share a running proxy while this matches.
 /// Bump it only when that changes.
-pub const PROTOCOL: u32 = 9;
+pub const PROTOCOL: u32 = 10;
 /// Paths on app hosts that Parcela answers for that environment instead of the app.
 pub const ENVIRONMENT_PATHS: &str = "/_parcela/*";
 
@@ -332,6 +333,46 @@ fn renew_leases(registry: &Registry, router: &Router, routes: &[Route], grant: b
     }
     Ok(())
 }
+/// Caddy's `forward_auth` to the device gate on the dashboard socket: a 2xx answer lets the request
+/// continue, through a handler that changes nothing, and anything else is what the device sees.
+fn paired(dashboard: &str, host: &str) -> Value {
+    json!({
+        "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+        "rewrite":{"method":"GET", "uri":"/_parcela/device"},
+        "headers":{"request":{
+            "set":{"X-Parcela-Access":["device"], "X-Parcela-Hostname":[host], "X-Parcela-Client":["{http.request.remote.host}"]},
+            "delete":["X-Parcela-Environment", "X-Parcela-Action"]}},
+        "handle_response":[{"match":{"status_code":[2]}, "routes":[{"handle":[{"handler":"vars"}]}]}]
+    })
+}
+
+/// Headers through which proxies, Caddy among them, tell an app the client's address.
+const CLIENT_ADDRESS_HEADERS: [&str; 9] = [
+    "X-Forwarded-For",
+    "Forwarded",
+    "X-Real-IP",
+    "Client-IP",
+    "X-Client-IP",
+    "True-Client-IP",
+    "X-Cluster-Client-IP",
+    "CF-Connecting-IP",
+    "Fastly-Client-IP",
+];
+
+/// The app behind the gate. An approved device is as trusted as this machine, so the app sees a
+/// loopback request: Caddy deletes `CLIENT_ADDRESS_HEADERS`, its own and the client's, and keeps
+/// `X-Forwarded-Proto` and `X-Forwarded-Host`. The pairing cookie stays between the device and
+/// Parcela.
+fn lan_handle(address: &std::net::SocketAddr, session: &Session) -> Value {
+    json!({
+        "handler":"reverse_proxy", "upstreams":[{"dial":address.to_string()}],
+        "headers":{"request":{
+            "set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Generation":[session.generation.to_string()]},
+            "delete":CLIENT_ADDRESS_HEADERS,
+            "replace":{"Cookie":[{"search_regexp":format!("(^|;\\s*){COOKIE}=[^;]*"), "replace":""}]}}}
+    })
+}
+
 pub fn configuration(registry: &Registry, router: &Router) -> Result<Value> {
     render(registry, router, &routes(registry, router)?, true)
 }
@@ -438,10 +479,14 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
                 routes.push(page_load(&matched));
             }
             routes.push(json!({"@id": format!("run-{}-{}", session.token, endpoint.service), "match":[{"host":matched, "file":leased}], "handle":handle, "terminal": true}));
-            if let Some(ip) = lan_address.filter(|ip| shared && crate::share::present(*ip)) {
+            // A proxy without the device gate serves no LAN name rather than serve it ungated.
+            if let Some(ip) = lan_address
+                .filter(|ip| shared && router.protocol >= 10 && crate::share::present(*ip))
+            {
                 let host = crate::share::local_host(&endpoint.hostname);
                 lan_listen.insert(format!("{ip}:{}", router.front_door.https));
-                lan_routes.push(json!({"match":[{"host":[host], "file":leased}], "handle":handle, "terminal": true}));
+                lan_routes.push(json!({"match":[{"host":[host], "file":leased}],
+                    "handle":[paired(&dashboard, &host), lan_handle(address, session)], "terminal": true}));
                 lan_hosts.push(host);
             }
             for domain in domains.iter().filter(|_| shared) {
@@ -521,4 +566,54 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
         config["apps"]["tls"] = json!({"automation":{"policies":[{"subjects":subjects, "issuers":[{"module":"internal"}]}]}});
     }
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn a_lan_name_asks_the_device_gate_and_only_a_2xx_continues() {
+        let gate = super::paired("unix//tmp/dashboard.sock", "shop.local");
+        assert_eq!(gate["upstreams"][0]["dial"], "unix//tmp/dashboard.sock");
+        assert_eq!(gate["rewrite"]["uri"], "/_parcela/device");
+        let set = &gate["headers"]["request"]["set"];
+        assert_eq!(set["X-Parcela-Access"][0], "device");
+        assert_eq!(set["X-Parcela-Hostname"][0], "shop.local");
+        assert_eq!(
+            gate["headers"]["request"]["delete"],
+            json!(["X-Parcela-Environment", "X-Parcela-Action"])
+        );
+        let pass = &gate["handle_response"][0];
+        assert_eq!(pass["match"]["status_code"], json!([2]));
+        assert_eq!(pass["routes"], json!([{"handle": [{"handler": "vars"}]}]));
+    }
+
+    #[test]
+    fn an_approved_device_reaches_the_app_as_a_loopback_request() {
+        let session = crate::state::registry::Session {
+            environment_id: "abc".into(),
+            token: "t".into(),
+            router_token: None,
+            generation: 3,
+            backend_port: None,
+            status: crate::state::registry::SessionStatus::Ready,
+            kind: "run".into(),
+            public_url: None,
+            endpoints: Vec::new(),
+            ports: Default::default(),
+        };
+        let app = "127.0.0.1:4000".parse().unwrap();
+        for handle in [super::lan_handle(&app, &session)] {
+            let request = &handle["headers"]["request"];
+            let deleted = request["delete"].as_array().unwrap();
+            for name in ["X-Forwarded-For", "Forwarded", "X-Real-IP"] {
+                assert!(deleted.contains(&json!(name)), "{name}");
+            }
+            for kept in ["X-Forwarded-Proto", "X-Forwarded-Host"] {
+                assert!(!deleted.contains(&json!(kept)), "{kept}");
+            }
+            assert_eq!(request["replace"]["Cookie"][0]["replace"], "");
+        }
+    }
 }

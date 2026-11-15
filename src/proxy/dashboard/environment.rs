@@ -316,11 +316,7 @@ fn logs(request: &Request, state: &Path, query: &str, rows: &[Value]) -> Respons
 /// custom header makes a cross-site request preflight, which this server never approves), and
 /// from an app page only its own environment.
 fn act(request: &Request, path: &str, state: &Path, rows: &[Value], actions: &Actions) -> Response {
-    let same_origin = match (request.origin, request.host) {
-        (Some(origin), Some(host)) => origin.split_once("://").map(|(_, rest)| rest) == Some(host),
-        _ => false,
-    };
-    if !request.acting || !same_origin {
+    if !request.acting || !same_origin(request.origin, request.host) {
         return Response::text(403, "Cross-origin action refused");
     }
     let Some((wanted, name)) = path
@@ -409,6 +405,52 @@ fn act(request: &Request, path: &str, state: &Path, rows: &[Value], actions: &Ac
             Response::json(202, &json!({"accepted": true}))
         }
         Err(_) => Response::text(500, "Could not start the action"),
+    }
+}
+
+fn same_origin(origin: Option<&str>, host: Option<&str>) -> bool {
+    match (origin, host) {
+        (Some(origin), Some(host)) => origin.split_once("://").map(|(_, rest)| rest) == Some(host),
+        _ => false,
+    }
+}
+
+/// `/_parcela/devices` on the dashboard's own name: the devices that asked to reach LAN shares, and
+/// approving or revoking one. Decisions take the same same-origin script rule as actions,
+/// and LAN names never reach this path, so a device cannot approve itself.
+pub(super) fn devices(
+    method: &str,
+    path: &str,
+    host: Option<&str>,
+    origin: Option<&str>,
+    acting: bool,
+    state: &Path,
+) -> Response {
+    match (method, path) {
+        ("GET" | "HEAD", "") => match crate::proxy::devices::list(state) {
+            Ok(devices) => Response::json(
+                200,
+                &json!({"devices": devices.iter().map(|device| device.public()).collect::<Vec<_>>()}),
+            ),
+            Err(_) => Response::text(500, "Device list unavailable"),
+        },
+        ("POST", _) if !acting || !same_origin(origin, host) => {
+            Response::text(403, "Cross-origin action refused")
+        }
+        ("POST", path) => {
+            let Some((id, decision)) = path
+                .strip_prefix('/')
+                .and_then(|rest| rest.split_once('/'))
+                .and_then(|(id, name)| Some((id, crate::proxy::devices::Decision::parse(name)?)))
+            else {
+                return Response::text(404, "No such action");
+            };
+            match crate::proxy::devices::decide(state, id, decision) {
+                Ok(device) => Response::json(200, &device.public()),
+                Err(error) => Response::text(404, &format!("{error:#}")),
+            }
+        }
+        _ => Response::text(405, "Method not allowed"),
     }
 }
 

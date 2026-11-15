@@ -173,6 +173,53 @@
     $('summary').replaceChildren(...(checked ? [badge(`${ready} ready`, ready ? 'success' : 'neutral')] : []));
   };
 
+  // Devices that asked to open LAN shares: approving one lets it in, from here or `parcela devices`.
+  let devices = [];
+  let deviceProblem = null;
+  const STANDING = { pending: ['waiting', 'warning'], approved: ['paired', 'success'] };
+  const decide = async (device, decision) => {
+    deviceProblem = null;
+    try {
+      const response = await fetch(`/_parcela/devices/${encodeURIComponent(device.id)}/${decision}`, { method: 'POST', headers: { 'X-Parcela-Action': '1' } });
+      if (!response.ok) deviceProblem = (await response.text()).trim();
+    } catch {
+      deviceProblem = 'Could not reach Parcela.';
+    }
+    refresh();
+  };
+  const drawDevices = () => {
+    const signature = JSON.stringify([devices, deviceProblem]);
+    if (signature === drawnDevices) return;
+    drawnDevices = signature;
+    const order = { pending: 0, approved: 1 };
+    const rows = [...devices].sort((a, b) => order[a.standing] - order[b.standing] || b.requested_at_unix_ms - a.requested_at_unix_ms).map(device => {
+      const node = clone('row');
+      node.dataset.device = device.id;
+      node.querySelector('[data-slot=list-title]').textContent = device.user_agent || 'Unknown device';
+      node.querySelector('[data-slot=list-subtitle]').textContent = [device.host, device.address, device.id].filter(Boolean).join(' · ');
+      const [label, tone] = STANDING[device.standing] || [device.standing, 'neutral'];
+      const buttons = (device.standing === 'pending' ? ['approve'] : ['revoke']).map(decision => {
+        const button = clone(decision);
+        button.addEventListener('click', () => decide(device, decision));
+        return button;
+      });
+      node.querySelector('[data-slot=controls]').append(badge(label, tone), ...buttons);
+      return node;
+    });
+    const section = clone('project');
+    section.querySelector('h2').textContent = 'Devices on the LAN';
+    section.querySelector('ul').append(...rows);
+    const nodes = [section];
+    if (deviceProblem) {
+      const text = clone('problem');
+      text.textContent = deviceProblem;
+      nodes.push(text);
+    }
+    $('devices').replaceChildren(...nodes);
+    $('devices').hidden = !devices.length;
+  };
+  let drawnDevices = null;
+
   const health = () => {
     const stale = checked && Date.now() - checked > STALE_MS;
     $('health').textContent = problem || (stale ? 'Status may be out of date.' : '');
@@ -181,7 +228,7 @@
 
   const refresh = async () => {
     try {
-      const [status, listed] = await Promise.all(['/api/status', '/_parcela/environments'].map(async path => {
+      const [status, listed, paired] = await Promise.all(['/api/status', '/_parcela/environments', '/_parcela/devices'].map(async path => {
         const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
         if (!response.ok) throw new Error(path);
         return response.json();
@@ -191,12 +238,14 @@
         const { action = null, manageable = false } = rows.get(environment.id) || {};
         return { ...environment, action, manageable };
       });
+      devices = paired.devices;
       problem = status.error ? 'Could not read the environments.' : null;
       if (status.checked_at_unix_ms) checked = status.checked_at_unix_ms;
     } catch {
       problem = 'Could not reach Parcela. Retrying.';
     }
     draw();
+    drawDevices();
     health();
   };
 

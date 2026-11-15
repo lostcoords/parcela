@@ -186,6 +186,7 @@ pub fn run(mut cli: Cli) -> Result<i32> {
                 | Command::Telemetry { .. }
                 | Command::Config { .. }
                 | Command::Relay { .. }
+                | Command::Devices { .. }
                 | Command::Autostart { .. }
         )
     {
@@ -269,6 +270,11 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         Command::Autostart { command } => super::autostart::run(
             &state,
             command.unwrap_or(super::args::AutostartCommand::Status),
+            out,
+        ),
+        Command::Devices { command } => super::devices::run(
+            &state,
+            command.unwrap_or(super::args::DevicesCommand::List),
             out,
         ),
         Command::Relay { command } => super::proxy::relay(

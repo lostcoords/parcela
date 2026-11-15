@@ -227,3 +227,51 @@ fn autostart_writes_and_removes_a_launch_agent() {
     assert_eq!(run(&["autostart", "disable"])["enabled"], false);
     assert!(!agent.exists());
 }
+
+#[test]
+fn devices_are_approved_and_revoked_from_the_cli() {
+    use parcela::proxy::devices::{Ask, answer};
+    let temp = TempDir::new().unwrap();
+    let config = temp.path().join("config.yaml");
+    let state = temp.path().join("state");
+    let run = |args: &[&str]| cli(&config, &state, args);
+    let listed = |run: &dyn Fn(&[&str]) -> Output| -> serde_json::Value {
+        serde_json::from_str(&stdout(&run(&["devices", "--json"]))).unwrap()
+    };
+    assert_eq!(listed(&run)["devices"], serde_json::json!([]));
+    let ask = |host| Ask {
+        host,
+        navigation: true,
+        user_agent: "Phone",
+        address: "192.168.1.30",
+        ..Ask::default()
+    };
+    for host in ["shop.local", "api-shop.local"] {
+        assert_eq!(answer(&state, &ask(host)).unwrap().status, 403);
+    }
+    let devices = listed(&run)["devices"].as_array().unwrap().clone();
+    assert_eq!(devices.len(), 2);
+    assert!(devices.iter().all(|device| device["standing"] == "pending"));
+    assert!(
+        devices
+            .iter()
+            .all(|device| device.get("token_sha256").is_none())
+    );
+    let first = devices[0]["id"].as_str().unwrap();
+    let second = devices[1]["id"].as_str().unwrap();
+    let approved: serde_json::Value =
+        serde_json::from_str(&stdout(&run(&["devices", "approve", first]))).unwrap();
+    assert_eq!(approved["standing"], "approved");
+    assert_eq!(listed(&run)["devices"][1]["standing"], "pending");
+    assert!(!run(&["devices", "deny", second]).status.success());
+    let error = stderr(&run(&["devices", "approve", "missing"]));
+    assert!(error.contains("no device missing"), "{error}");
+    stdout(&run(&["devices", "revoke", first]));
+    assert_eq!(listed(&run)["devices"].as_array().unwrap().len(), 1);
+    let revoked: serde_json::Value =
+        serde_json::from_str(&stdout(&run(&["devices", "revoke", "--all"]))).unwrap();
+    assert_eq!(revoked["revoked"], 1);
+    let usage = run(&["devices", "revoke"]);
+    assert_eq!(usage.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&usage.stderr).contains("<ID>"));
+}

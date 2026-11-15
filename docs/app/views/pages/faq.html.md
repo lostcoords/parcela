@@ -6,7 +6,7 @@ Parcela stores its registry, logs, certificates, and environment data in a priva
 
 `parcela init` writes `parcela.yaml` in your checkout. Your configured commands and hooks can write other files or change external services.
 
-The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`. System services require `parcela relay install`.
+The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`, and a LAN device must also be [approved](/docs/cli#devices). System services require `parcela relay install`.
 
 Parcela sends anonymous command telemetry unless disabled. [Telemetry](/docs/telemetry) describes its fields and controls.
 

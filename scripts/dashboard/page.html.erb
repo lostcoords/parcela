@@ -17,6 +17,7 @@
       </summary>
       <div id="stopped-list" class="mt-6 grid gap-section"></div>
     </details>
+    <div id="devices" class="grid gap-section" hidden></div>
   <% end %>
 <% end %>
 
@@ -40,3 +41,5 @@
 <template id="start"><%= lc_icon_button "Start", icon: "play", size: :sm, shape: :square, class: "text-(--parcela-brand)", tooltip: true %></template>
 <template id="restart"><%= lc_icon_button "Restart", icon: "arrow-path", size: :sm, shape: :square, tooltip: true %></template>
 <template id="stop"><%= lc_icon_button "Stop", icon: "stop", size: :sm, shape: :square, tooltip: true %></template>
+<template id="approve"><%= lc_button "Approve", size: :sm %></template>
+<template id="revoke"><%= lc_button "Revoke", variant: :outline, tone: :destructive, size: :sm %></template>

@@ -268,6 +268,12 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<AutostartCommand>,
     },
+    /// Approve the devices that may open LAN shares
+    #[command(display_order = 20)]
+    Devices {
+        #[command(subcommand)]
+        command: Option<DevicesCommand>,
+    },
     /// Serve URLs without a port (443 and 80)
     #[command(display_order = 20)]
     Relay {
@@ -456,6 +462,26 @@ pub enum AutostartCommand {
     /// Start environments left running now
     #[command(hide = true)]
     Run,
+}
+
+#[derive(clap::Subcommand)]
+pub enum DevicesCommand {
+    /// List pending and paired devices
+    List,
+    /// Let a device open this machine's LAN shares
+    Approve {
+        /// Device id, from `parcela devices`
+        id: String,
+    },
+    /// Forget a device; it must ask again
+    Revoke {
+        /// Device id, from `parcela devices`
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        id: Option<String>,
+        /// Forget every device
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(clap::Subcommand)]

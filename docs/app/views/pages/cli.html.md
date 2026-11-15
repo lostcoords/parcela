@@ -104,7 +104,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 | `--name NAME` | Chooses a preview name on first registration. Conflicts with `--primary` and `--workspace`. |
 | `--primary` | Gives a checkout the project's main URL if available. Conflicts with `--workspace`. |
 | `--backend-port N` | Sets the default HTTP service's backend port. Minimum 1024. Other ports are leased automatically. |
-| `--lan` | Shares this run at `.local` names on the LAN. Also set by `PARCELA_LAN=1`. |
+| `--lan` | Shares this run at `.local` names on the LAN, to [paired devices](#devices) only. Also set by `PARCELA_LAN=1`. |
 | `--lan-ip IP` | Chooses the LAN IPv4 address and turns on `--lan`. It must belong to a network interface and be private or link-local. |
 | `--tailscale` | Shares this run through `tailscale serve`. Also set by `PARCELA_TAILSCALE=1`. Never uses Funnel. |
 | `--domain DOMAIN` | Also serves each service at `<name>.DOMAIN`, in plain HTTP on loopback for your own HTTPS proxy. Repeat it for more domains; they share `--domain-port`. Also set by `PARCELA_DOMAIN`, comma-separated. |
@@ -308,6 +308,29 @@ One background Caddy serves all environments. Owners recover an unexpected proxy
 | `status` | Shows the port, PIDs, version, and log path. Exits 1 if stopped. |
 
 The port is the host's [`proxy.port`](#config), else the port saved by `proxy start --port`, else `PARCELA_HTTPS_PORT`, else 1443. Port 443 omits the port from URLs and requires permission to bind it; [`relay`](#relay) is the usual way to get URLs without a port. The proxy redirects plain HTTP on its listener to HTTPS.
+
+## devices
+
+```text
+parcela devices [list | approve ID | revoke ID | revoke --all]
+```
+
+Decides which devices may open runs shared with `--lan`. A device that opens a `.local` name without approval gets a page saying it waits for approval on this machine, with its device id, and Parcela lists it as pending. The page reloads every 3 seconds and opens the app once the device is approved. Requests that are not page loads, such as images or `fetch`, get a plain `403` and ask for nothing.
+
+| Subcommand | Effect |
+| --- | --- |
+| `list` | The default. Lists pending and paired devices with their id, `.local` name, address and browser. JSON is `{devices}`, each with `id`, `standing` (`pending` or `approved`), `host`, `address`, `user_agent`, `requested_at_unix_ms` and `decided_at_unix_ms`. |
+| `approve ID` | Lets the device open that `.local` name. |
+| `revoke ID` | Forgets the device, pending or approved. Its next page load asks again. |
+| `revoke --all` | Forgets every device. |
+
+The dashboard at `parcela-dashboard.localhost` shows the same list under **Devices on the LAN**, with Approve for a pending device and Revoke for an approved one. Only the dashboard's own name decides, with the same same-origin rule as its other actions. LAN names never reach the dashboard, so a device cannot approve itself.
+
+Approval is per device and `.local` name: browsers keep no cookie across single-label `.local` domains, so a phone that opens `shop.local` and `api-shop.local` is approved for each. The cookie, `parcela_device`, is `Secure`, `HttpOnly` and `SameSite=Lax`, lasts 400 days, and never reaches the app. Parcela stores a SHA-256 hash of its token in `proxy/devices.json` in the state directory. At most 20 requests stay pending; older ones make room, so 20 page loads without a cookie can push out a real request. Approve the id the device's page shows, and if it is no longer listed, reload the page there to ask again. Revoking a device stops its next request, but a WebSocket it already opened stays open until either side closes it.
+
+An approved device is as trusted as this machine. Its requests reach the app as loopback requests: Caddy removes `X-Forwarded-For`, `Forwarded`, `X-Real-IP` and similar headers that would name the device, whether Caddy added them or the device sent them, and keeps `X-Forwarded-Proto` and `X-Forwarded-Host`, so the app still sees HTTPS on the `.local` name. Tools that answer only local requests, such as Rails' web-console, should therefore answer an approved device; that has not been tested. Approve only devices you would let use this computer. Apps need no change and learn nothing about pairing. Unapproved devices never reach the app. Tailscale and `--domain` shares are not gated and still pass the real client address.
+
+Verified live through the [LAN redirect](#relay) on port 443: an iPhone (Brave on iOS) got the waiting page, was approved here and reached the app, and another host on the LAN got the waiting page.
 
 ## relay
 

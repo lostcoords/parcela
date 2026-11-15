@@ -2,6 +2,7 @@ mod args;
 mod autostart;
 mod commands;
 mod config;
+mod devices;
 mod doctor;
 mod environments;
 mod init;
