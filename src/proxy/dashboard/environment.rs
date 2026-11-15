@@ -1,8 +1,8 @@
 //! `/_parcela/` on an app host. Caddy names the environment in `X-Parcela-Environment`, the route's
 //! own hostname in `X-Parcela-Hostname`, and sets `X-Parcela-Access`: `local` on a loopback name,
-//! `shared` on a domain name. The dashboard name never carries them and LAN names never route here.
-//! A shared name is read-only and sees no logs or opened files, which can hold secrets and sign-in
-//! links, and a request with neither access is refused.
+//! `shared` on a domain name, `lan` on a LAN name for an approved device. The dashboard name never
+//! carries them. A shared name is read-only and sees no logs or opened files, which can hold
+//! secrets and sign-in links; a LAN name sees only its own environment's name and state. A request with none of these accesses is refused.
 use super::{Snapshot, widget};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -38,6 +38,7 @@ pub(super) struct Request<'a> {
     pub acting: bool,
     pub local: bool,
     pub shared: bool,
+    pub lan: bool,
     /// Empty on the dashboard's own name, which may manage every environment. An app page
     /// manages only its own, so a script on one app cannot stop another or read its logs.
     pub environment: &'a str,
@@ -84,7 +85,7 @@ pub(super) fn respond(
     snapshot: &Mutex<Snapshot>,
     actions: &Actions,
 ) -> Response {
-    if !request.local && !request.shared {
+    if !request.local && !request.shared && !request.lan {
         return Response::text(403, "Only a .localhost name reaches Parcela");
     }
     if !request
@@ -105,6 +106,9 @@ pub(super) fn respond(
             .map(|snapshot| snapshot.rows.clone())
             .unwrap_or_default()
     };
+    if request.lan {
+        return lan(request, path, &rows());
+    }
     if request.shared {
         return shared(request, path, dashboard, &rows());
     }
@@ -194,6 +198,30 @@ fn shared(request: &Request, path: &str, dashboard: &str, rows: &[Value]) -> Res
                 .map(|row| Listed::shared(row, request))
                 .collect();
             Response::json(200, &json!({"environments": environments}))
+        }
+        _ => Response::text(403, "Only a .localhost name shows this"),
+    }
+}
+
+/// What a LAN name serves an approved device: the badge and its own environment's name and state.
+/// No other environment, project, link, log or action, and the badge script there does not know
+/// the dashboard's address.
+fn lan(request: &Request, path: &str, rows: &[Value]) -> Response {
+    if request.method != "GET" && request.method != "HEAD" {
+        return Response::text(403, "Only a .localhost name manages environments");
+    }
+    match path {
+        "widget.js" => Response::new(200, "text/javascript; charset=utf-8", widget("")),
+        "badge.png" => Response::new(200, "image/png", BADGE.to_vec()),
+        "lan" => {
+            let own = find(rows, request.environment);
+            Response::json(
+                200,
+                &json!({
+                    "name": own.map(|row| &row["workspace"]["label"]),
+                    "state": own.map(|row| &row["state"]),
+                }),
+            )
         }
         _ => Response::text(403, "Only a .localhost name shows this"),
     }
@@ -615,6 +643,7 @@ mod tests {
             acting: true,
             local,
             shared: false,
+            lan: false,
             environment,
             hostname: "shop.localhost",
         }
@@ -751,6 +780,56 @@ mod tests {
         assert_eq!(names, ["shop", "auth-shop"], "this project's running ones");
         assert!(rows[0]["url"].is_null() && rows[0]["current"] == true);
         assert_eq!(rows[1]["url"], "https://auth-shop.tower.example.com");
+    }
+
+    #[test]
+    fn a_lan_name_shows_only_its_own_state_and_never_acts() {
+        let snapshot = Mutex::new(Snapshot {
+            rows: vec![
+                json!({"workspace": {"id": "abc", "project_id": "shop", "label": "shop", "source": "/src/shop"},
+                    "state": "ready", "url": "https://shop.localhost:1443",
+                    "processes": [{"name": "web", "state": "running", "pid": 7}]}),
+                json!({"workspace": {"id": "sib", "project_id": "shop", "label": "auth-shop", "source": "/src/auth"},
+                    "state": "ready", "url": "https://auth-shop.localhost:1443", "processes": []}),
+            ],
+            ..Snapshot::default()
+        });
+        let actions = Actions::default();
+        let lan = |method, path: &str| {
+            let mut request = request(method, path, false, "abc");
+            request.acting = true;
+            request.lan = true;
+            request.hostname = "shop.local";
+            respond(
+                &request,
+                Path::new("/nonexistent"),
+                "https://parcela.localhost:1443",
+                &snapshot,
+                &actions,
+            )
+        };
+        for (method, path) in [
+            ("POST", "environments/abc/stop"),
+            ("POST", "environments/abc/restart"),
+            ("POST", "environments/abc/start"),
+            ("GET", "environments"),
+            ("GET", "logs?environment=abc"),
+            ("GET", "opens"),
+            ("GET", "files/1/mail.html"),
+            ("GET", ""),
+            ("GET", "unavailable"),
+        ] {
+            assert_eq!(lan(method, path).status, 403, "{method} {path}");
+        }
+        assert_eq!(lan("GET", "badge.png").status, 200);
+        let script = String::from_utf8(lan("GET", "widget.js").body).unwrap();
+        assert!(
+            !script.contains("parcela.localhost"),
+            "no dashboard address on a LAN name"
+        );
+        let own: Value = serde_json::from_slice(&lan("GET", "lan").body).unwrap();
+        assert_eq!(own, json!({"name": "shop", "state": "ready"}));
+        assert!(actions.lock().unwrap().is_empty(), "nothing ran");
     }
 
     #[test]

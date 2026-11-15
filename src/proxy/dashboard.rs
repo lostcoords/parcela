@@ -292,6 +292,7 @@ fn serve(
     let foreign = origin.is_some_and(|origin| origin != front_door.url(HOST));
     let mut policy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
     let mut extra = Vec::new();
+    let device_policy;
     let (status, mime, body) = if access == Some("device") {
         // Caddy's forward_auth for a LAN name: only this gate, never the panel or an action.
         let answer = crate::proxy::devices::answer(
@@ -304,7 +305,14 @@ fn serve(
                 address: client,
             },
         )?;
-        policy = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+        device_policy = crate::proxy::devices::policy(answer.nonce.as_deref());
+        policy = &device_policy;
+        extra = answer.headers;
+        (answer.status, answer.mime, answer.body)
+    } else if access == Some("certificate") {
+        let answer = crate::proxy::devices::certificate(state, path)?;
+        device_policy = crate::proxy::devices::policy(None);
+        policy = &device_policy;
         extra = answer.headers;
         (answer.status, answer.mime, answer.body)
     } else if let (true, Some(path)) = (
@@ -325,6 +333,7 @@ fn serve(
                 acting,
                 local: access == Some("local"),
                 shared: access == Some("shared"),
+                lan: access == Some("lan"),
                 environment,
                 hostname,
             },
@@ -352,6 +361,7 @@ fn serve(
                 acting,
                 local: true,
                 shared: false,
+                lan: false,
                 environment: "",
                 hostname: HOST,
             },
@@ -499,10 +509,10 @@ mod tests {
             )
         });
         client.write_all(request.as_bytes()).unwrap();
-        let mut response = String::new();
-        client.read_to_string(&mut response).unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).unwrap();
         worker.join().unwrap().unwrap();
-        response
+        String::from_utf8_lossy(&response).into_owned()
     }
 
     #[test]
@@ -615,5 +625,40 @@ mod tests {
             ),
         );
         assert!(allowed.starts_with("HTTP/1.1 200"), "{allowed}");
+    }
+
+    #[test]
+    fn a_lan_name_gets_the_root_certificate_and_its_steps_without_pairing() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = directory.path();
+        let root = crate::proxy::certificate(state);
+        std::fs::create_dir_all(root.parent().unwrap()).unwrap();
+        std::fs::write(&root, include_str!("../../tests/fixtures/root.crt")).unwrap();
+        std::fs::write(root.with_file_name("root.key"), "PRIVATE KEY").unwrap();
+        let request = |path: &str| {
+            response_in(
+                state,
+                &format!(
+                    "GET {path} HTTP/1.1\r\nHost: shop.local\r\nX-Parcela-Access: certificate\r\n\r\n"
+                ),
+            )
+        };
+        let file = request("/_parcela/ca.crt");
+        assert!(file.starts_with("HTTP/1.1 200"), "{file}");
+        assert!(file.contains("Content-Type: application/x-x509-ca-cert\r\n"));
+        assert!(file.contains("Content-Disposition: attachment; filename=\"parcela-ca.crt\"\r\n"));
+        assert!(!file.contains("PRIVATE KEY"));
+        let page = request("/_parcela/certificate");
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(page.contains(&crate::proxy::fingerprint(
+            &crate::proxy::certificate_der(state).unwrap()
+        )));
+        assert!(page.contains("Certificate Trust Settings"));
+        assert!(request("/_parcela/ca.key").starts_with("HTTP/1.1 404"));
+        assert!(request("/").starts_with("HTTP/1.1 404"));
+        assert!(
+            crate::proxy::devices::list(state).unwrap().is_empty(),
+            "the certificate asks for no pairing"
+        );
     }
 }

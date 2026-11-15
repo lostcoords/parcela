@@ -287,8 +287,11 @@ pub enum Command {
         #[arg(long, conflicts_with_all = ["export", "remove"])]
         print: bool,
         /// Print the CA certificate, to copy to other devices
-        #[arg(long, conflicts_with = "remove")]
+        #[arg(long, conflicts_with_all = ["remove", "fingerprint"])]
         export: bool,
+        /// Print the CA certificate's SHA-256 fingerprint, to compare on another device
+        #[arg(long, conflicts_with_all = ["print", "remove"])]
+        fingerprint: bool,
         /// Remove the CA from the system trust store
         #[arg(long)]
         remove: bool,

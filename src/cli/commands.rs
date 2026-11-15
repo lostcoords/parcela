@@ -285,11 +285,12 @@ pub fn run(mut cli: Cli) -> Result<i32> {
         Command::Trust {
             print,
             export,
+            fingerprint,
             remove,
             caddy,
         } => super::proxy::trust(
             &state,
-            super::proxy::TrustAction::from_flags(print, export, remove),
+            super::proxy::TrustAction::from_flags(print, export, fingerprint, remove),
             &caddy.unwrap_or_else(parcela::state::host::caddy),
         ),
         Command::Run {

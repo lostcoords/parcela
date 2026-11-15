@@ -14,9 +14,9 @@ Parcela sends anonymous command telemetry unless disabled. [Telemetry](/docs/tel
 
 Caddy generates a local root certificate so browsers can accept Parcela's HTTPS URLs. Trust is added only by `parcela trust` or a first `up` in a terminal, behind the system password prompt.
 
-The CA has no name constraints. Anyone who obtains its private key can issue certificates your system accepts for any hostname. The key lives under the private state directory at `proxy/data/pki/authorities/local/root.key`. Keep that directory out of shared backups and dotfiles repositories.
+The CA has no name constraints: Caddy's root sets only `CA:TRUE` with a path length of 1 and the certificate-signing key usage. Anyone who obtains its private key can issue certificates your system accepts for any hostname. The same holds for a phone or another computer that trusts it from `/_parcela/certificate` or `parcela trust --export`: whoever holds this machine's key could read and change that device's HTTPS traffic to any site. The key lives under the private state directory at `proxy/data/pki/authorities/local/root.key`. Keep that directory out of shared backups and dotfiles repositories.
 
-Use `parcela trust` to add trust and `parcela trust --remove` to undo it, before deleting the state directory. Set `parcela config set trust false`, or `PARCELA_NO_TRUST=1` for one shell, to stop `up` from offering it.
+Use `parcela trust` to add trust and `parcela trust --remove` to undo it, before deleting the state directory. A phone or tablet that trusts it from the LAN finds the removal steps for iPhone, iPad and Android on the same `/_parcela/certificate` page it installed from, on any `.local` name a run shares. Set `parcela config set trust false`, or `PARCELA_NO_TRUST=1` for one shell, to stop `up` from offering it.
 
 ## Why port 1443?
 

@@ -7,6 +7,7 @@ import http.client
 import ipaddress
 import json
 import os
+import re
 import socket
 import ssl
 
@@ -47,12 +48,12 @@ def lan_address():
     return address if ipaddress.ip_address(address).is_private and not address.startswith('127.') else None
 
 
-def lan_fetch(live, ip, host, headers='', path='/'):
+def lan_fetch(live, ip, host, headers='', path='/', method='GET'):
     """One HTTPS request to the run's LAN listener, as another device sends it."""
     context = ssl.create_default_context(cafile=str(live.state / 'proxy/data/pki/authorities/local/root.crt'))
     with context.wrap_socket(socket.create_connection((ip, live.https), timeout=5), server_hostname=host) as sock:
         connection = 'Upgrade' if path == '/ws' else 'close'
-        sock.sendall(f'GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: {connection}\r\n{headers}\r\n'.encode())
+        sock.sendall(f'{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: {connection}\r\n{headers}\r\n'.encode())
         data = b''
         while part := sock.recv(65536):
             data += part
@@ -77,6 +78,16 @@ def lan_pairing(live, source, cases):
         live.cli(source, 'up', '--detach', '--lan-ip', ip, timeout=60)
     finally:
         os.environ['PATH'] = path
+    root = live.state / 'proxy/data/pki/authorities/local/root.crt'
+    code, head, body = wait_for(lambda: (lambda answer: answer[0] == 200 and answer)(
+        lan_fetch(live, ip, 'shop.local', path='/_parcela/ca.crt')), [live.proxy])
+    assert 'application/x-x509-ca-cert' in head, head
+    assert body == ssl.PEM_cert_to_DER_cert(root.read_text()), 'the root certificate in DER'
+    fingerprint = live.cli(source, 'trust', '--fingerprint').stdout.strip()
+    code, _, body = lan_fetch(live, ip, 'shop.local', path='/_parcela/certificate')
+    assert code == 200 and fingerprint.encode() in body, (code, fingerprint, body[:300])
+    assert live.json(source, 'devices')['devices'] == []
+    cases.append('an-unpaired-device-downloads-the-root-certificate-and-sees-its-fingerprint')
     spoofed = 'X-Forwarded-For: 203.0.113.9\r\nForwarded: for=203.0.113.9\r\nX-Real-IP: 203.0.113.9\r\nTrue-Client-IP: 203.0.113.9\r\n'
 
     def local(headers):
@@ -88,11 +99,24 @@ def lan_pairing(live, source, cases):
 
     code, head, body = wait_for(lambda: (lambda answer: answer[0] == 403 and answer)(
         lan_fetch(live, ip, 'shop.local', 'Sec-Fetch-Dest: document\r\nUser-Agent: LiveTest\r\n' + spoofed)), [live.proxy])
-    assert b'Waiting for approval' in body, body[:300]
+    assert b'Waiting for approval' in body and b'/_parcela/certificate' in body, body[:300]
+    assert b'href="/_parcela/ca.crt" download' in body and fingerprint.encode() not in body, body[:600]
+    nonce = re.search(r"script-src 'nonce-([0-9a-f]{32})'", head).group(1)
+    assert 'Parcela-Pairing: pending' in head and f'<script nonce="{nonce}">'.encode() in body, head
+    assert b'widget.js' not in body, 'an unpaired device never gets the badge'
+    cases.append('the-waiting-page-offers-the-certificate-and-links-to-its-steps')
     cookie = next(line.split(':', 1)[1].strip() for line in head.split('\r\n') if line.lower().startswith('set-cookie:'))
     assert cookie.endswith('Secure; HttpOnly; SameSite=Lax'), cookie
     token = cookie.split(';', 1)[0].split('=', 1)[1]
     cases.append('an-unpaired-device-gets-the-pairing-page-and-a-cookie')
+
+    for path in ('/_parcela/widget.js', '/_parcela/lan', '/_parcela/badge.png'):
+        for headers in ('', f'Cookie: parcela_device={token}\r\n'):
+            code, _, body = lan_fetch(live, ip, 'shop.local', 'Sec-Fetch-Dest: empty\r\n' + headers, path=path)
+            assert code == 403 and (b'Waiting for approval' in body or b'not paired' in body), (path, code, body[:200])
+    code, _, body = lan_fetch(live, ip, 'shop.local', f'Sec-Fetch-Dest: document\r\nCookie: parcela_device={token}\r\n', path='/page')
+    assert code == 403 and b'widget.js' not in body, (code, body[:200])
+    cases.append('an-unpaired-device-never-reaches-the-badge')
 
     code, _, body = lan_fetch(live, ip, 'shop.local', 'Sec-Fetch-Dest: image\r\n')
     assert code == 403 and b'not paired' in body, (code, body[:200])
@@ -108,6 +132,32 @@ def lan_pairing(live, source, cases):
     assert local(answer['headers']), answer['headers']
     assert 'theme=dark' in answer['headers'].get('Cookie', ''), answer['headers']
     cases.append('an-approved-device-reaches-the-app-as-this-machine-with-forged-headers-gone')
+
+    paired = f'Cookie: parcela_device={token}\r\n'
+    page = 'Sec-Fetch-Dest: document\r\n' + paired
+    code, _, body = lan_fetch(live, ip, 'shop.local', page, path='/page')
+    assert code == 200 and b'<script defer src="/_parcela/widget.js"></script>' in body, (code, body[:300])
+    code, _, body = lan_fetch(live, ip, 'shop.local', page + spoofed)
+    headers = json.loads(body)['headers']
+    assert local(headers), headers
+    # The dashboard's snapshot can still show the run stopped just before.
+    own = lambda: json.loads(lan_fetch(live, ip, 'shop.local', paired, path='/_parcela/lan')[2])
+    wait_for(lambda: own() == {'name': 'primary', 'state': 'ready'}, [live.proxy])
+    code, _, body = lan_fetch(live, ip, 'shop.local', paired, path='/_parcela/widget.js')
+    assert code == 200 and b'const lan' in body and b'localhost:' not in body, (code, body[:200])
+    code, _, _ = lan_fetch(live, ip, 'shop.local', paired + 'X-Parcela-Action: 1\r\nContent-Length: 0\r\n', path='/_parcela/lan', method='POST')
+    assert code == 403, code
+    for path in ('/_parcela/environments', '/_parcela/logs', '/_parcela/'):
+        code, _, body = lan_fetch(live, ip, 'shop.local', paired, path=path)
+        assert code == 200 and json.loads(body)['argv'] == [], (path, code, body[:200])
+    cases.append('an-approved-device-gets-a-read-only-badge-and-other-parcela-paths-are-the-apps')
+
+    live.cli(source, 'config', 'set', 'badge', 'false')
+    wait_for(lambda: b'widget.js' not in lan_fetch(live, ip, 'shop.local', page, path='/page')[2], [live.proxy], timeout=10)
+    code, _, body = lan_fetch(live, ip, 'shop.local', paired, path='/_parcela/lan')
+    assert code == 200 and json.loads(body)['argv'] == [], (code, body[:200])
+    live.cli(source, 'config', 'set', 'badge', 'true')
+    cases.append('badge-off-takes-the-badge-off-lan-names')
 
     upgrade = f'Cookie: parcela_device={token}\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
     code, _, _ = lan_fetch(live, ip, 'shop.local', upgrade, path='/ws')
@@ -127,39 +177,48 @@ def lan_pairing(live, source, cases):
 
 def run(caddy, **_):
     with Live('sharing', caddy) as live:
-        cases = []
-        source = live.checkout('shop', MANIFEST)
-        domain_port = free_port()
-        live.ports.append(domain_port)
-        live.start_proxy()
-        live.cli(source, 'up', '--detach', '--primary', '--domain', 'example.test', '--domain-port', str(domain_port), timeout=60)
-        status = live.json(source, 'status', '--current')
-        live.ports.extend(endpoint['backend_port'] for endpoint in status['recorded_session']['endpoints'])
-        shared = {name: endpoint['shared'] for name, endpoint in status['live']['endpoints'].items()}
-        assert shared == {'web': ['https://shop.example.test'], 'api': ['https://api-shop.example.test']}, shared
-        cases.append('status-lists-each-service-domain-url')
+        # Its own host settings, since this suite turns the badge off and on.
+        os.environ['PARCELA_CONFIG'] = str(live.root / 'config.toml')
+        try:
+            return sharing(live)
+        finally:
+            del os.environ['PARCELA_CONFIG']
 
-        for host, argv in (('shop.example.test', []), ('api-shop.example.test', ['api'])):
-            code, body = get(domain_port, host, {'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': host})
-            assert code == 200, (host, code, body[:200])
-            answer = json.loads(body)
-            assert answer['argv'] == argv, answer
-            assert answer['headers'].get('X-Forwarded-Proto') == 'https', answer['headers']
-            assert answer['headers'].get('X-Forwarded-For') == '127.0.0.1', answer['headers']
-        cases.append('each-service-answers-on-its-domain-name-with-forwarded-headers')
 
-        code, _ = get(domain_port, 'other.example.test')
-        assert code != 200, code
-        cases.append('an-unknown-name-is-not-routed')
+def sharing(live):
+    cases = []
+    source = live.checkout('shop', MANIFEST)
+    domain_port = free_port()
+    live.ports.append(domain_port)
+    live.start_proxy()
+    live.cli(source, 'up', '--detach', '--primary', '--domain', 'example.test', '--domain-port', str(domain_port), timeout=60)
+    status = live.json(source, 'status', '--current')
+    live.ports.extend(endpoint['backend_port'] for endpoint in status['recorded_session']['endpoints'])
+    shared = {name: endpoint['shared'] for name, endpoint in status['live']['endpoints'].items()}
+    assert shared == {'web': ['https://shop.example.test'], 'api': ['https://api-shop.example.test']}, shared
+    cases.append('status-lists-each-service-domain-url')
 
-        live.cli(source, 'down', timeout=60)
-        wait_for(lambda: not listening(domain_port), [live.proxy], timeout=15)
-        cases.append('down-closes-the-domain-listener')
+    for host, argv in (('shop.example.test', []), ('api-shop.example.test', ['api'])):
+        code, body = get(domain_port, host, {'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': host})
+        assert code == 200, (host, code, body[:200])
+        answer = json.loads(body)
+        assert answer['argv'] == argv, answer
+        assert answer['headers'].get('X-Forwarded-Proto') == 'https', answer['headers']
+        assert answer['headers'].get('X-Forwarded-For') == '127.0.0.1', answer['headers']
+    cases.append('each-service-answers-on-its-domain-name-with-forwarded-headers')
 
-        live.cli(source, 'up', '--detach', '--no-share', timeout=60)
-        assert live.json(source, 'status', '--current')['live']['endpoints']['web'].get('shared', []) == []
-        assert not listening(domain_port)
-        cases.append('a-run-without-sharing-opens-no-domain-listener')
-        live.cli(source, 'down', timeout=60)
-        lan_pairing(live, source, cases)
-        return {'https_port': live.https, 'domain_port': domain_port, 'cases': cases}
+    code, _ = get(domain_port, 'other.example.test')
+    assert code != 200, code
+    cases.append('an-unknown-name-is-not-routed')
+
+    live.cli(source, 'down', timeout=60)
+    wait_for(lambda: not listening(domain_port), [live.proxy], timeout=15)
+    cases.append('down-closes-the-domain-listener')
+
+    live.cli(source, 'up', '--detach', '--no-share', timeout=60)
+    assert live.json(source, 'status', '--current')['live']['endpoints']['web'].get('shared', []) == []
+    assert not listening(domain_port)
+    cases.append('a-run-without-sharing-opens-no-domain-listener')
+    live.cli(source, 'down', timeout=60)
+    lan_pairing(live, source, cases)
+    return {'https_port': live.https, 'domain_port': domain_port, 'cases': cases}

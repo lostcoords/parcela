@@ -5,6 +5,9 @@
   const page = document.currentScript.hasAttribute('data-page');
   // A shared name is read-only and serves no logs or opened files; the server enforces it.
   const shared = !location.hostname.endsWith('.localhost');
+  // A LAN name shows only this environment's state and where to get the root certificate. Its
+  // paths sit behind the device gate, so its requests carry the pairing cookie.
+  const lan = location.hostname.endsWith('.local');
   const dashboard = '__PARCELA_DASHBOARD__';
   // Absolute, because a page's <base> would send relative ones to another host.
   const own = path => new URL(path, location.origin).href;
@@ -100,6 +103,10 @@
     .toast span{flex:1;min-width:0}
     .toast small{display:block;color:var(--muted);font-size:11px}
     .toast strong{display:block;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .certificate{display:grid;gap:10px;margin:0 4px;padding:10px;border-radius:10px;background:var(--raised)}
+    .certificate p{margin:0}
+    .certificate .toolbar{padding:0;flex-wrap:wrap}
+    .certificate .action{background:var(--selected)}
   `;
 
   const element = (tag, properties = {}, ...children) => {
@@ -120,7 +127,7 @@
   };
   const link = (href, ...children) => element('a', { href, target: '_blank', rel: 'noopener' }, ...children);
   const fetchJson = async (path, options) => {
-    const response = await fetch(own(path), { cache: 'no-store', credentials: 'omit', ...options });
+    const response = await fetch(own(path), { cache: 'no-store', credentials: lan ? 'same-origin' : 'omit', ...options });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   };
@@ -183,7 +190,7 @@
     badge.setAttribute('aria-controls', 'parcela-panel');
 
     const tray = shared ? null : opened(count);
-    const views = shared ? { environments: environments(tray) } : { environments: environments(tray), logs: logs() };
+    const views = lan ? { environments: device() } : shared ? { environments: environments(tray) } : { environments: environments(tray), logs: logs() };
     const labels = { environments: ['layers', 'Environments'], logs: ['terminal', 'Logs'] };
     const tabs = element('div', { className: 'tabs', role: 'tablist' });
     let current = localStorage.getItem(TAB) in views ? localStorage.getItem(TAB) : 'environments';
@@ -220,8 +227,8 @@
       : null;
     const panel = element('section', { id: 'parcela-panel', className: `panel${page ? ' page' : large ? ' large' : ''}`, hidden: true, tabIndex: -1 },
       element('div', { className: 'bar' },
-        Object.keys(views).length > 1 ? tabs : element('span', { className: 'title', textContent: 'Environments' }),
-        manage, ...(page ? [] : [grow, away, close])),
+        Object.keys(views).length > 1 ? tabs : element('span', { className: 'title', textContent: lan ? 'Parcela' : 'Environments' }),
+        manage, ...(page ? [] : lan ? [close] : [grow, away, close])),
       ...Object.values(views).map(view => view.element));
     // Its height follows what it lists, so a panel above the badge has to move as that changes.
     new ResizeObserver(() => { if (expanded()) anchor(panel); }).observe(panel);
@@ -534,6 +541,33 @@
     };
     view.shown = () => { tray?.shown(); refresh(); clearInterval(timer); timer = setInterval(refresh, 2000); };
     view.hidden = () => { tray?.hidden(); clearInterval(timer); };
+    return view;
+  };
+
+  // What a paired device sees on a LAN name: this environment and how to trust the certificate.
+  const device = () => {
+    const list = element('div', { className: 'scroll' });
+    const view = { element: element('div', { className: 'view', hidden: true }, list) };
+    view.shown = async () => {
+      try {
+        const { name, state } = await fetchJson('/_parcela/lan');
+        const ready = state === 'ready';
+        list.replaceChildren(
+          element('ol', {}, element('li', { className: 'environment current' },
+            element('span', { className: `dot ${ready ? 'ready' : 'busy'}` }),
+            element('span', { className: 'who' },
+              element('strong', { textContent: name || 'This page' }),
+              element('small', { textContent: state || 'unknown' })))),
+          element('h3', { textContent: 'Certificate' }),
+          element('div', { className: 'certificate' },
+            element('p', { textContent: 'Trust this computer\'s certificate on this device and the browser stops warning about this page.' }),
+            element('div', { className: 'toolbar' },
+              element('a', { className: 'action', href: own('/_parcela/ca.crt'), download: 'parcela-ca.crt', textContent: 'Download the certificate' }),
+              element('a', { className: 'action', href: own('/_parcela/certificate'), textContent: 'How to install it' }))));
+      } catch {
+        list.replaceChildren(element('p', { className: 'empty', textContent: 'Could not reach Parcela.' }));
+      }
+    };
     return view;
   };
 

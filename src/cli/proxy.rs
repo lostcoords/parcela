@@ -312,15 +312,17 @@ pub enum TrustAction {
     Trust,
     Print,
     Export,
+    Fingerprint,
     Remove,
 }
 
 impl TrustAction {
-    pub fn from_flags(print: bool, export: bool, remove: bool) -> Self {
-        match (print, export, remove) {
-            (true, _, _) => Self::Print,
-            (_, true, _) => Self::Export,
-            (_, _, true) => Self::Remove,
+    pub fn from_flags(print: bool, export: bool, fingerprint: bool, remove: bool) -> Self {
+        match (print, export, fingerprint, remove) {
+            (true, ..) => Self::Print,
+            (_, true, ..) => Self::Export,
+            (_, _, true, _) => Self::Fingerprint,
+            (.., true) => Self::Remove,
             _ => Self::Trust,
         }
     }
@@ -346,6 +348,10 @@ pub fn trust(state: &Path, action: TrustAction, caddy: &str) -> Result<i32> {
         TrustAction::Export => {
             let pem = std::fs::read_to_string(&certificate).with_context(missing)?;
             print!("{pem}");
+            return Ok(0);
+        }
+        TrustAction::Fingerprint => {
+            println!("{}", proxy::fingerprint(&proxy::certificate_der(state)?));
             return Ok(0);
         }
         TrustAction::Trust | TrustAction::Remove => {}

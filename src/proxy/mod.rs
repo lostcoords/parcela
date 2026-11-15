@@ -437,6 +437,56 @@ pub fn certificate(state: &Path) -> PathBuf {
     router::proxy_dir(state).join("data/pki/authorities/local/root.crt")
 }
 
+/// The root certificate in DER, decoded from Caddy's PEM file.
+pub fn certificate_der(state: &Path) -> Result<Vec<u8>> {
+    let path = certificate(state);
+    let pem = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "no certificate authority yet at {}; start the proxy with `parcela proxy start`",
+            path.display()
+        )
+    })?;
+    let body: String = pem
+        .lines()
+        .skip_while(|line| *line != "-----BEGIN CERTIFICATE-----")
+        .skip(1)
+        .take_while(|line| *line != "-----END CERTIFICATE-----")
+        .collect();
+    base64(&body).with_context(|| format!("unreadable certificate {}", path.display()))
+}
+
+fn base64(text: &str) -> Option<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(text.len() * 3 / 4);
+    let (mut buffer, mut bits) = (0u32, 0);
+    for byte in text.bytes().filter(|byte| *byte != b'=') {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        buffer = buffer << 6 | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push((buffer >> bits) as u8);
+        }
+    }
+    (!bytes.is_empty()).then_some(bytes)
+}
+
+/// The SHA-256 fingerprint people compare on a phone: uppercase hex pairs joined by colons.
+pub fn fingerprint(der: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(der)
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
 /// Whether the system trusts this proxy's CA, or None when it cannot tell. Read-only.
 pub fn trusted(state: &Path) -> Option<bool> {
     let certificate = certificate(state);
@@ -571,6 +621,22 @@ mod tests {
             super::certificate(Path::new("/state")),
             Path::new("/state/proxy/data/pki/authorities/local/root.crt")
         );
+    }
+
+    #[test]
+    fn the_fingerprint_matches_openssl_for_the_pem_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = super::certificate(directory.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, include_str!("../../tests/fixtures/root.crt")).unwrap();
+        let der = super::certificate_der(directory.path()).unwrap();
+        assert_eq!(der[0], 0x30, "a DER SEQUENCE");
+        assert_eq!(
+            super::fingerprint(&der),
+            "5F:56:AE:9D:1C:80:6F:DA:98:1E:2E:E5:3D:00:70:14:26:4B:EB:17:B3:69:9B:FC:27:DD:20:BB:28:CD:EB:06",
+            "openssl x509 -noout -fingerprint -sha256"
+        );
+        assert!(super::base64("a*b").is_none());
     }
 }
 

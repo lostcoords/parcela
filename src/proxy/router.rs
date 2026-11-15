@@ -346,6 +346,18 @@ fn paired(dashboard: &str, host: &str) -> Value {
     })
 }
 
+/// The root certificate and how to trust it, on every LAN name before the device gate, so a
+/// device can stop the certificate warning before it is paired. These paths are Parcela's there.
+fn certificate(dashboard: &str, hosts: &[String]) -> Value {
+    json!({"match":[{"host":hosts, "path":CERTIFICATE_PATHS}],
+        "handle":[{"handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+            "headers":{"request":{"set":{"X-Parcela-Access":["certificate"]},
+                "delete":["X-Parcela-Environment", "X-Parcela-Hostname", "X-Parcela-Action"]}}}],
+        "terminal":true})
+}
+
+const CERTIFICATE_PATHS: [&str; 2] = ["/_parcela/certificate", "/_parcela/ca.crt"];
+
 /// Headers through which proxies, Caddy among them, tell an app the client's address.
 const CLIENT_ADDRESS_HEADERS: [&str; 9] = [
     "X-Forwarded-For",
@@ -369,7 +381,45 @@ fn lan_handle(address: &std::net::SocketAddr, session: &Session) -> Value {
         "headers":{"request":{
             "set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Generation":[session.generation.to_string()]},
             "delete":CLIENT_ADDRESS_HEADERS,
-            "replace":{"Cookie":[{"search_regexp":format!("(^|;\\s*){COOKIE}=[^;]*"), "replace":""}]}}}
+            "replace":{"Cookie":[without_pairing_cookie()]}}}
+    })
+}
+
+fn without_pairing_cookie() -> Value {
+    json!({"search_regexp":format!("(^|;\\s*){COOKIE}=[^;]*"), "replace":""})
+}
+
+/// The only Parcela paths an approved device reaches on a LAN name; every other `/_parcela/`
+/// path there is the app's.
+const LAN_BADGE_PATHS: [&str; 3] = [
+    "/_parcela/widget.js",
+    "/_parcela/badge.png",
+    "/_parcela/lan",
+];
+
+/// The badge's own paths, as `lan` access: the dashboard answers them read-only, with this
+/// environment's name and state, and never acts.
+fn lan_badge(dashboard: &str, session: &Session, host: &str) -> Value {
+    json!({
+        "handler":"reverse_proxy", "upstreams":[{"dial":dashboard}],
+        "headers":{"request":{
+            "set":{"X-Parcela-Environment":[session.environment_id], "X-Parcela-Hostname":[host], "X-Parcela-Access":["lan"]},
+            "delete":["X-Parcela-Action"]}}
+    })
+}
+
+/// A page load on a LAN name through the badge injector, which forwards it to the app as
+/// `lan_handle` would: as a loopback request, without the pairing cookie.
+fn lan_page_load(injector: &str, address: &std::net::SocketAddr, session: &Session) -> Value {
+    json!({
+        "handler":"reverse_proxy", "upstreams":[{"dial":injector}],
+        "headers":{"request":{
+            "set":{
+                "X-Parcela-Environment":[session.environment_id],
+                "X-Parcela-Generation":[session.generation.to_string()],
+                crate::proxy::inject::UPSTREAM_HEADER:[address.to_string()]},
+            "delete":CLIENT_ADDRESS_HEADERS,
+            "replace":{"Cookie":[without_pairing_cookie()]}}}
     })
 }
 
@@ -485,6 +535,13 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
             {
                 let host = crate::share::local_host(&endpoint.hostname);
                 lan_listen.insert(format!("{ip}:{}", router.front_door.https));
+                // Approved devices get the badge too, read-only: see `lan_badge`.
+                if badge {
+                    lan_routes.push(json!({"match":[{"host":[host], "path":LAN_BADGE_PATHS, "file":leased}],
+                        "handle":[paired(&dashboard, &host), lan_badge(&dashboard, session, &host)], "terminal": true}));
+                    lan_routes.push(json!({"match":[{"host":[host], "method":["GET"], "header":{"Sec-Fetch-Dest":["document"]}, "file":leased}],
+                        "handle":[paired(&dashboard, &host), lan_page_load(&injector, address, session)], "terminal": true}));
+                }
                 lan_routes.push(json!({"match":[{"host":[host], "file":leased}],
                     "handle":[paired(&dashboard, &host), lan_handle(address, session)], "terminal": true}));
                 lan_hosts.push(host);
@@ -538,6 +595,7 @@ fn render(registry: &Registry, router: &Router, ready: &[Route], shared: bool) -
             "listener_wrappers":wrappers, "tls_connection_policies":[{}], "automatic_https":{"disable_redirects":true}, "routes":routes}
     });
     if !lan_routes.is_empty() {
+        lan_routes.insert(0, certificate(&dashboard, &lan_hosts));
         lan_routes.push(json!({"handle":[{"handler":"static_response", "status_code":404, "body":"No shared Parcela route\n"}], "terminal":true}));
         servers["lan"] = json!({"listen":lan_listen, "protocols":["h1","h2"],
             "listener_wrappers":wrappers, "tls_connection_policies":[{}], "automatic_https":{"disable_redirects":true}, "routes":lan_routes});
@@ -573,6 +631,22 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn lan_names_serve_the_certificate_before_the_gate_and_nothing_else() {
+        let route = super::certificate("unix//tmp/dashboard.sock", &["shop.local".into()]);
+        assert_eq!(
+            route["match"],
+            json!([{"host":["shop.local"], "path":["/_parcela/certificate", "/_parcela/ca.crt"]}])
+        );
+        let proxy = &route["handle"][0];
+        assert_eq!(
+            proxy["headers"]["request"]["set"]["X-Parcela-Access"][0],
+            "certificate"
+        );
+        assert!(proxy.get("handle_response").is_none());
+        assert_eq!(route["terminal"], true);
+    }
+
+    #[test]
     fn a_lan_name_asks_the_device_gate_and_only_a_2xx_continues() {
         let gate = super::paired("unix//tmp/dashboard.sock", "shop.local");
         assert_eq!(gate["upstreams"][0]["dial"], "unix//tmp/dashboard.sock");
@@ -604,7 +678,10 @@ mod tests {
             ports: Default::default(),
         };
         let app = "127.0.0.1:4000".parse().unwrap();
-        for handle in [super::lan_handle(&app, &session)] {
+        for handle in [
+            super::lan_handle(&app, &session),
+            super::lan_page_load("unix//tmp/inject.sock", &app, &session),
+        ] {
             let request = &handle["headers"]["request"];
             let deleted = request["delete"].as_array().unwrap();
             for name in ["X-Forwarded-For", "Forwarded", "X-Real-IP"] {

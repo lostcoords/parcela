@@ -15,7 +15,7 @@
 
 ## Output
 
-Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url`, `logs`, `trust --print`, `trust --export`, `skill` and `completion`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `up --detach` shows a progress line on stderr while it waits, in a terminal outside CI.
+Commands print text in a terminal and one JSON document when stdout is piped or `--json` is given. Exceptions are `url`, `logs`, `trust --print`, `trust --export`, `trust --fingerprint`, `skill` and `completion`, which print plain text, and `task` and `run`, which pass through command output. Errors go to stderr with the prefix `parcela:`. `up --detach` shows a progress line on stderr while it waits, in a terminal outside CI.
 
 Colors appear only in a terminal. `CLICOLOR_FORCE=1` or `FORCE_COLOR=1` keeps them when output is piped, for `less -R` or CI logs; `NO_COLOR` turns them off and wins over both. Forcing colors never switches a piped command from JSON to text.
 
@@ -184,7 +184,7 @@ The dashboard groups registered environments by project and discovers unregister
 
 While nothing serves a registered `.localhost` name, a browser page load there shows the environment's state with Start or Restart, a link to its logs and a link to the dashboard. Starting always takes a click. The page reloads into the app once it is ready. Other requests to the name get `503`.
 
-Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture) for what a tagged response changes.
+Pages on `.localhost`, domain and LAN names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture) for what a tagged response changes.
 
 A CSP that allows neither same-origin scripts nor a nonce blocks the menu; Parcela never relaxes it. One that blocks same-origin images shows the word `parcela` in place of the icon. One that blocks same-origin `fetch` leaves the badge without data. An app that compresses even when asked not to passes through without the badge. If the extra script upsets a framework's hydration, turn the badge off.
 
@@ -192,9 +192,11 @@ With `badge` off, an app can still include the script itself, from its own host:
 
 <code>&lt;script defer src="/_parcela/widget.js"&gt;&lt;/script&gt;</code>
 
-Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN names pass `/_parcela/` to the app like any other path, so the menu does not appear there.
+Every `.localhost` app host answers `/_parcela/` for its own environment, so the script loads from the app's own origin. LAN names pass `/_parcela/` to the app like any other path, except `/_parcela/certificate` and `/_parcela/ca.crt` (see [`devices`](#devices)) and, while `badge` is on, the menu's `/_parcela/widget.js`, `/_parcela/badge.png` and `/_parcela/lan`.
 
 On a domain name the menu is read-only, since other people may reach that name. It shows this environment's state and links to the project's other running environments, with no actions, logs or opened files. With `badge` off, a domain name passes `/_parcela/` to the app.
+
+On a LAN name only an approved device gets the menu, and its paths sit behind the same device gate as the app. It shows that environment's name and state and a Certificate section: a button that downloads `/_parcela/ca.crt` and a link to `/_parcela/certificate`. It has no actions, logs, opened files, links to other environments or to the dashboard, and its script does not know the dashboard's address.
 
 A Parcela icon sits in the page's top-right corner. Drag it to any edge of the window, or focus it and press the arrow keys; each host remembers its place per browser. On a `.localhost` name it shows a count of new items your app opened and opens a panel with two tabs:
 
@@ -315,7 +317,7 @@ The port is the host's [`proxy.port`](#config), else the port saved by `proxy st
 parcela devices [list | approve ID | revoke ID | revoke --all]
 ```
 
-Decides which devices may open runs shared with `--lan`. A device that opens a `.local` name without approval gets a page saying it waits for approval on this machine, with its device id, and Parcela lists it as pending. The page reloads every 3 seconds and opens the app once the device is approved. Requests that are not page loads, such as images or `fetch`, get a plain `403` and ask for nothing.
+Decides which devices may open runs shared with `--lan`. A device that opens a `.local` name without approval gets a page saying it waits for approval on this machine, with its device id, and Parcela lists it as pending. The page asks again every 3 seconds without reloading, or reloads every 3 seconds when scripts are off, and opens the app once the device is approved. Requests that are not page loads, such as images or `fetch`, get a plain `403` and ask for nothing.
 
 | Subcommand | Effect |
 | --- | --- |
@@ -327,6 +329,8 @@ Decides which devices may open runs shared with `--lan`. A device that opens a `
 The dashboard at `parcela-dashboard.localhost` shows the same list under **Devices on the LAN**, with Approve for a pending device and Revoke for an approved one. Only the dashboard's own name decides, with the same same-origin rule as its other actions. LAN names never reach the dashboard, so a device cannot approve itself.
 
 Approval is per device and `.local` name: browsers keep no cookie across single-label `.local` domains, so a phone that opens `shop.local` and `api-shop.local` is approved for each. The cookie, `parcela_device`, is `Secure`, `HttpOnly` and `SameSite=Lax`, lasts 400 days, and never reaches the app. Parcela stores a SHA-256 hash of its token in `proxy/devices.json` in the state directory. At most 20 requests stay pending; older ones make room, so 20 page loads without a cookie can push out a real request. Approve the id the device's page shows, and if it is no longer listed, reload the page there to ask again. Revoking a device stops its next request, but a WebSocket it already opened stays open until either side closes it.
+
+The waiting page offers the root certificate as a one-tap download and links to `/_parcela/certificate`, which every `.local` name serves before pairing: the certificate's SHA-256 fingerprint, which should match `parcela trust --fingerprint` on this machine, and install steps for iPhone, Android and desktop browsers. `/_parcela/ca.crt` downloads the certificate in DER as `application/x-x509-ca-cert`; the private key is never served. Both are HTTPS only: plain `http://` on the LAN is redirected to HTTPS before any route, so the first visit shows the browser's warning. Read [what trusting the certificate authority allows](/docs/faq#what-does-trusting-the-certificate-authority-allow) first. Certificate trust on a phone is not verified working yet: after the root was installed on an iPhone, Brave on iOS still showed the `.local` page as not trusted. The cause has not been investigated.
 
 An approved device is as trusted as this machine. Its requests reach the app as loopback requests: Caddy removes `X-Forwarded-For`, `Forwarded`, `X-Real-IP` and similar headers that would name the device, whether Caddy added them or the device sent them, and keeps `X-Forwarded-Proto` and `X-Forwarded-Host`, so the app still sees HTTPS on the `.local` name. Tools that answer only local requests, such as Rails' web-console, should therefore answer an approved device; that has not been tested. Approve only devices you would let use this computer. Apps need no change and learn nothing about pairing. Unapproved devices never reach the app. Tailscale and `--domain` shares are not gated and still pass the real client address.
 
@@ -370,7 +374,7 @@ Each environment starts with `parcela up --detach` in its checkout, shared as it
 ## trust
 
 ```text
-parcela trust [--print | --export | --remove]
+parcela trust [--print | --export | --fingerprint | --remove]
 ```
 
 Adds Caddy's local CA to the system trust store using `caddy trust`, starting the proxy first if needed. Prints the certificate's path and the undo command before the system password prompt. Requires a terminal. All projects use the same CA.
@@ -379,9 +383,10 @@ Adds Caddy's local CA to the system trust store using `caddy trust`, starting th
 | --- | --- |
 | `--print` | Prints the certificate path. Changes nothing. |
 | `--export` | Prints the certificate itself, to install on a phone or another computer that opens `.local` URLs: `parcela trust --export > parcela-ca.crt`. Changes nothing. |
+| `--fingerprint` | Prints the certificate's SHA-256 fingerprint as colon-separated hex, to compare with the one a phone shows at `/_parcela/certificate`. Changes nothing. |
 | `--remove` | Removes the CA from the system trust store with `caddy untrust`, behind the system password prompt. Requires a terminal. |
 
-`--print` and `--export` fail until the proxy has started once and created the CA. [Clients and certificates](/docs/faq#clients-and-certificates) covers programs with their own CA list.
+`--print`, `--export` and `--fingerprint` fail until the proxy has started once and created the CA. [Clients and certificates](/docs/faq#clients-and-certificates) covers programs with their own CA list.
 
 ## upgrade
 
@@ -419,7 +424,7 @@ Shows or changes this machine's settings. Without a subcommand, or with `list` (
 | `proxy.port` | The proxy's HTTPS port, 1443 by default. Setting or unsetting it moves a running proxy; restart environments to update their URLs. Remove the relay first if it is installed. |
 | `proxy.caddy` | The Caddy binary: a name on `PATH`, an absolute path, or a path under `~/`. Default `caddy`. |
 | `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
-| `badge` | `false` stops the proxy adding the debug menu to `.localhost` and domain pages. Default `true`. A running proxy picks it up on its own. |
+| `badge` | `false` stops the proxy adding the debug menu to `.localhost`, domain and LAN pages. Default `true`. A running proxy picks it up on its own. |
 
 `sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](/docs/worktrees#share-with-another-device) covers each kind.
 

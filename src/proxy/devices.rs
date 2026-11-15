@@ -231,6 +231,8 @@ pub struct Answer {
     pub headers: Vec<(&'static str, String)>,
     pub mime: &'static str,
     pub body: Vec<u8>,
+    /// The nonce of the page's one script, for its policy.
+    pub nonce: Option<String>,
 }
 
 pub fn answer(state: &Path, ask: &Ask) -> Result<Answer> {
@@ -252,8 +254,11 @@ pub fn answer(state: &Path, ask: &Ask) -> Result<Answer> {
             headers: Vec::new(),
             mime: "text/plain",
             body: Vec::new(),
+            nonce: None,
         },
-        Gate::Wait { device, token } => Answer {
+        Gate::Wait { device, token } => {
+            let nonce = Uuid::new_v4().simple().to_string();
+            Answer {
             status: 403,
             headers: token
                 .map(|token| {
@@ -265,22 +270,30 @@ pub fn answer(state: &Path, ask: &Ask) -> Result<Answer> {
                     )
                 })
                 .into_iter()
+                .chain([(PAIRING_HEADER, "pending".to_owned())])
                 .collect(),
             mime: "text/html; charset=utf-8",
             body: page(
-                &machine,
+                &format!("Pair with {machine}"),
+                &banner(&machine),
+                "Pair this device",
                 &format!(
-                    "Waiting for approval on {machine}. Open the Parcela dashboard there and approve device {device}. This page continues by itself."
+                    "<p>Waiting for approval on {machine}. Open the Parcela dashboard there and approve device <strong>{device}</strong>. This page continues by itself.</p>",
+                    machine = escape(&machine)
                 ),
-                true,
+                Some(&nonce),
             ),
-        },
+            nonce: Some(nonce),
+        }},
         Gate::Refuse => Answer {
             status: 403,
             headers: Vec::new(),
             mime: "text/plain",
-            body: format!("This device is not paired with {machine}. Open the page to pair it.\n")
-                .into_bytes(),
+            body: format!(
+                "This device is not paired with {machine}. Open the page to pair it. Certificate: {CERTIFICATE_PATH}\n"
+            )
+            .into_bytes(),
+            nonce: None,
         },
     })
 }
@@ -305,18 +318,100 @@ fn escape(text: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn page(machine: &str, message: &str, waiting: bool) -> Vec<u8> {
-    let refresh = if waiting {
-        "<meta http-equiv=\"refresh\" content=\"3\">"
-    } else {
-        ""
-    };
+const CERTIFICATE_PATH: &str = "/_parcela/certificate";
+/// Tells the waiting page's script that the device still waits; anything else is worth a reload.
+const PAIRING_HEADER: &str = "Parcela-Pairing";
+/// Asks again every 3s without reloading, so the certificate steps stay open while the person
+/// reads them. Without scripts the page reloads itself instead.
+const WAITING_SCRIPT: &str = "setInterval(()=>fetch(location.href,{method:'HEAD',cache:'no-store'}).then(r=>{if(r.headers.get('Parcela-Pairing')!=='pending')location.reload()},()=>{}),3000)";
+
+/// The policy of the pairing and certificate pages: inline styles, and the waiting page's one
+/// script, by its nonce.
+pub fn policy(nonce: Option<&str>) -> String {
+    let script = nonce.map_or_else(String::new, |nonce| {
+        format!("script-src 'nonce-{nonce}'; connect-src 'self'; ")
+    });
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{refresh}<title>Pair with {machine}</title></head><body style=\"margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#16212b;color:#e8edf2\"><main style=\"max-width:28rem;padding:24px\"><h1 style=\"font-size:1.25rem;margin:0 0 8px\">Pair this device</h1><p style=\"margin:0\">{message}</p></main></body></html>",
-        machine = escape(machine),
-        message = escape(message),
+        "default-src 'none'; {script}style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    )
+}
+
+/// Always on the waiting page, since a page cannot tell whether its own certificate is trusted.
+fn banner(machine: &str) -> String {
+    format!(
+        "<section style=\"display:grid;gap:12px;padding:16px;border-radius:16px;background:#22344a\">\
+<p><strong>This device doesn't trust {machine} yet</strong>, so your browser warns you.</p>\
+<a href=\"/_parcela/ca.crt\" download style=\"display:block;padding:12px 16px;border-radius:999px;background:#8cc8ff;color:#0d1a26;font-weight:600;text-align:center;text-decoration:none\">Download the certificate</a>\
+<p><a href=\"{CERTIFICATE_PATH}\">How to install it, and its fingerprint</a></p></section>",
+        machine = escape(machine)
+    )
+}
+
+/// `body` is HTML; callers escape what they put in it.
+/// With `nonce`, the page waits for approval and carries `WAITING_SCRIPT` under it.
+fn page(title: &str, banner: &str, heading: &str, body: &str, nonce: Option<&str>) -> Vec<u8> {
+    let refresh = nonce.map_or_else(String::new, |nonce| {
+        format!(
+            "<noscript><meta http-equiv=\"refresh\" content=\"3\"></noscript><script nonce=\"{nonce}\">{WAITING_SCRIPT}</script>"
+        )
+    });
+    format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{refresh}<title>{title}</title><style>p{{margin:0}}a{{color:#8cc8ff}}</style></head><body style=\"margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#16212b;color:#e8edf2\"><main style=\"max-width:32rem;padding:24px;display:grid;gap:12px\">{banner}<h1 style=\"font-size:1.25rem;margin:0\">{heading}</h1>{body}</main></body></html>",
+        title = escape(title),
+        heading = escape(heading),
     )
     .into_bytes()
+}
+
+/// What a LAN name answers at `/_parcela/certificate` and `/_parcela/ca.crt`, before any pairing:
+/// how to trust this proxy's root certificate, and the certificate itself. Never the key.
+pub fn certificate(state: &Path, path: &str) -> Result<Answer> {
+    let der = crate::proxy::certificate_der(state)?;
+    Ok(match path {
+        "/_parcela/ca.crt" => Answer {
+            status: 200,
+            headers: vec![(
+                "Content-Disposition",
+                "attachment; filename=\"parcela-ca.crt\"".into(),
+            )],
+            mime: "application/x-x509-ca-cert",
+            body: der,
+            nonce: None,
+        },
+        CERTIFICATE_PATH => Answer {
+            status: 200,
+            headers: Vec::new(),
+            mime: "text/html; charset=utf-8",
+            body: certificate_page(&machine(), &crate::proxy::fingerprint(&der)),
+            nonce: None,
+        },
+        _ => Answer {
+            status: 404,
+            headers: Vec::new(),
+            mime: "text/plain",
+            body: b"Not found\n".to_vec(),
+            nonce: None,
+        },
+    })
+}
+
+fn certificate_page(machine: &str, fingerprint: &str) -> Vec<u8> {
+    let machine = escape(machine);
+    page(
+        &format!("Trust {machine}"),
+        "",
+        "Install this computer's certificate",
+        &format!(
+            "<p>Pages from {machine} are signed by its own certificate authority. Trust it on this device and the \"not secure\" warning goes away.</p>\
+<p><a href=\"/_parcela/ca.crt\">Download the certificate</a></p>\
+<p>Before you trust it, check that its SHA-256 fingerprint matches what <code>parcela trust --fingerprint</code> prints on {machine}:<br><code style=\"overflow-wrap:anywhere\">{fingerprint}</code></p>\
+<p><strong>iPhone and iPad:</strong> download it and allow the profile. Open Settings › General › VPN &amp; Device Management, tap the downloaded profile, named Caddy Local Authority, and install it. Then open Settings › General › About › Certificate Trust Settings and turn on full trust for it.</p>\
+<p><strong>Android:</strong> download it. Open Settings › Security › Encryption &amp; credentials › Install a certificate › CA certificate and choose the downloaded file. Menu names vary by maker.</p>\
+<p><strong>Desktop browsers:</strong> download it and add it to the system's trusted roots: Keychain Access on macOS, Certificate Manager on Windows. Firefox keeps its own list under Settings › Privacy &amp; Security › Certificates.</p>\
+<p><strong>What this allows:</strong> whoever holds this computer's Parcela key can then make certificates for any website that this device accepts, so they could read and change its HTTPS traffic. Trust it only on devices you own, and remove it when you are done: on iPhone, delete the profile in VPN &amp; Device Management; on Android, remove it under Encryption &amp; credentials › User credentials or Trusted credentials › User.</p>"
+        ),
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -340,6 +435,22 @@ mod tests {
             .find(|device| device.id == id)
             .unwrap()
             .standing = Standing::Approved;
+    }
+
+    #[test]
+    fn each_waiting_page_allows_only_its_own_script() {
+        let directory = tempfile::tempdir().unwrap();
+        let waiting = || answer(directory.path(), &ask("shop.local", None, true)).unwrap();
+        let (first, second) = (waiting(), waiting());
+        let nonce = first.nonce.clone().unwrap();
+        assert_ne!(Some(&nonce), second.nonce.as_ref());
+        assert!(
+            String::from_utf8(first.body)
+                .unwrap()
+                .contains(&format!("<script nonce=\"{nonce}\">"))
+        );
+        assert!(policy(Some(&nonce)).contains(&format!("script-src 'nonce-{nonce}'")));
+        assert!(!policy(None).contains("script-src"));
     }
 
     #[test]

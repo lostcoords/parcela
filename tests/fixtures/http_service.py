@@ -27,6 +27,14 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b'\x81\x05hello')
             self.wfile.flush()
             return
+        if self.path == '/page':
+            page = b'<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>page</title></head><body>page</body></html>'
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(page)))
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(page)
+            return
         if self.path == '/sse':
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
