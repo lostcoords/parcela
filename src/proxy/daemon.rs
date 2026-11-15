@@ -153,6 +153,13 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
         front_door.describe()
     ));
     let mut refresh = Instant::now();
+    let loaded = directory.join("loaded.json");
+    let modified = || {
+        std::fs::metadata(&loaded)
+            .and_then(|file| file.modified())
+            .ok()
+    };
+    let mut synced = None;
     let result = loop {
         if !identity.alive() {
             break Err(anyhow::anyhow!(
@@ -170,12 +177,15 @@ pub fn run(registry: &Registry, binary: &str, front_door: FrontDoor) -> Result<i
                 signals.received() as i32,
             );
         }
-        if Instant::now() >= refresh {
+        // An owner still running an older Parcela republishes its own rendering when it rebinds
+        // after a proxy upgrade; this proxy's rendering replaces it as soon as it lands.
+        if Instant::now() >= refresh || modified() != synced {
             if let Err(error) = sync(registry, &router) {
                 crate::paint::Paint::note(&format!(
                     "route lease renewal failed; routes expire: {error:#}"
                 ));
             }
+            synced = modified();
             refresh = Instant::now() + RENEW;
         }
         thread::sleep(Duration::from_millis(100));

@@ -16,6 +16,7 @@ import time
 import urllib.request
 
 from live.common import BINARY, SERVICE, Live, listening, wait_for
+from live.sharing import lan_address, lan_fetch
 
 REPOSITORY = 'lostcoords/parcela'
 MANIFEST = f'''version: 1
@@ -77,9 +78,16 @@ def run(caddy, **_):
         with Live(f'upgrade-{tag}', caddy) as live:
             old = download(tag, live.root / 'old')
 
+            # The kept app is shared on the LAN, with a stand-in for dns-sd so no name is published.
+            ip = lan_address()
+            (live.root / 'bin').mkdir()
+            (live.root / 'bin/dns-sd').write_text('#!/bin/sh\nexec sleep 86400\n')
+            (live.root / 'bin/dns-sd').chmod(0o755)
+            environment = {**os.environ, 'PATH': f'{live.root / "bin"}:{os.environ["PATH"]}'}
+
             def old_cli(path, *argv, check=True):
                 return subprocess.run([str(old), '--path', str(path), '--state-dir', str(live.state), *argv],
-                                      capture_output=True, text=True, check=check, timeout=60)
+                                      capture_output=True, text=True, check=check, timeout=60, env=environment)
 
             # The old release's proxy, as a person would have running before upgrading.
             log = open(live.root / 'old-proxy.log', 'w')
@@ -91,7 +99,8 @@ def run(caddy, **_):
             apps = {}
             for name in ('kept', 'cycled'):
                 source = live.checkout(name, MANIFEST)
-                started = json.loads(old_cli(source, '--json', 'up', '--detach', '--name', name).stdout)
+                shared = ['--lan-ip', ip] if name == 'kept' and ip else []
+                started = json.loads(old_cli(source, '--json', 'up', '--detach', '--name', name, *shared).stdout)
                 live.ports.extend(endpoint['backend_port'] for endpoint in started['session']['endpoints'])
                 host = f'{name}-upgrade.localhost'
                 wait_for(lambda: live.request(host))
@@ -134,10 +143,27 @@ def run(caddy, **_):
             assert live.json(cycled['source'], 'up', '--detach')['live']['state'] == 'ready'
             wait_for(lambda: live.request(cycled['host']))
             # This build's owners put their routes on a new proxy within a tick, not seconds later.
+            # The kept owner, still the old release, republishes its own LAN routes when it rebinds;
+            # those are ungated, and the proxy puts back its own, behind the device gate, right after.
             live.cli(live.root, 'proxy', 'restart')
             began = time.monotonic()
-            wait_for(lambda: live.fetch(cycled['host'])[0] == 200, timeout=10)
-            assert time.monotonic() - began < 1, time.monotonic() - began
+            served = {}
+            def back():
+                if live.fetch(cycled['host'])[0] == 200:
+                    served.setdefault('cycled', time.monotonic())
+                if ip:
+                    try:
+                        code, _, body = lan_fetch(live, ip, 'kept-upgrade.local', 'Sec-Fetch-Dest: empty\r\n')
+                    except OSError:
+                        code = None
+                    if code is not None:
+                        served.setdefault('lan', time.monotonic())
+                    if code == 403 and b'not paired' in body:
+                        served.setdefault('gated', time.monotonic())
+                return 'cycled' in served and (not ip or 'gated' in served)
+            wait_for(back, timeout=10)
+            assert served['cycled'] - began < 1, served['cycled'] - began
+            assert not ip or served['gated'] - served['lan'] < .4, (served, began)
             assert live.json(cycled['source'], 'down')['state'] == 'stopped'
             kept = apps['kept']
             assert live.json(kept['source'], 'down')['state'] == 'stopped'
@@ -147,6 +173,6 @@ def run(caddy, **_):
                        if (runtime / 'data/setup-runs').exists()), 'setup never ran again'
             live.cli(live.root, 'proxy', 'stop')
             report[tag] = {'old_owners_answered': 2, 'proxy_replaced': True, 'apps_kept_running': True,
-                           'down_restart_up': True}
+                           'down_restart_up': True, 'lan_gated_in': ip and round(served['gated'] - served['lan'], 2)}
     assert report, 'no earlier release to upgrade from'
     return report

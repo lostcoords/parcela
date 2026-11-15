@@ -11,6 +11,10 @@
 
 - `--lan` always requires pairing. Devices that could open a LAN share before now see the pairing page once per `.local` name until approved.
 
+### Fixed
+
+- A restarted or upgraded proxy puts its own routes back as soon as an environment owner still running an older release republishes its own, instead of up to a second later. Those owners republish whenever they rebind or their readiness or listeners change, so restart environments after upgrading.
+
 ## 0.9.3 - 2026-11-13
 
 ### Fixed
