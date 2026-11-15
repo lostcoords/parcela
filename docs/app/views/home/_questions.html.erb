@@ -1,7 +1,7 @@
 <section class="home-section questions" aria-labelledby="faq">
   <div class="questions-intro">
     <%= section_heading("faq") { "Common questions" } %>
-    <div class="section-actions"><%= home_button "Read the FAQ", "/docs/faq/", variant: :secondary %></div>
+    <div class="section-actions"><%= home_button "Read the FAQ", "/docs/faq", variant: :secondary %></div>
   </div>
   <div class="question-list">
     <% HomeHelper::QUESTIONS.each do |question, answer| %>

@@ -18,7 +18,7 @@ class SiteTest < ActiveSupport::TestCase
   end
 
   def output = self.class.output
-  def html(page) = output.join(page.path.delete_prefix("/"), "index.html").read
+  def html(page) = output.join(page.path == "/" ? "index.html" : "#{page.path.delete_prefix("/")}.html").read
   def head(page) = Nokogiri::HTML5(html(page)).at_css("head")
 
   test "every Markdown view is a published page" do
@@ -76,7 +76,7 @@ class SiteTest < ActiveSupport::TestCase
     Docs.docs.each do |page|
       assert documents.any? { it["url"] == page.path && it["title"] == page.meta[:title] }, "search lists #{page.slug}"
     end
-    assert documents.any? { it["url"] == "/docs/configuration/#hooks" }, "sections are searchable"
+    assert documents.any? { it["url"] == "/docs/configuration#hooks" }, "sections are searchable"
   end
 
   test "the tutorial contains the tested example app" do

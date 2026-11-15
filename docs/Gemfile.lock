@@ -124,7 +124,7 @@ GEM
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
     json (3.1.0)
-    kiln (0.1.5)
+    kiln (0.2.0)
       actionpack (>= 8.1)
       nokogiri (>= 1.16)
       railties (>= 8.1)
@@ -303,7 +303,7 @@ PLATFORMS
 DEPENDENCIES
   commonmarker (~> 2.9)
   importmap-rails
-  kiln (~> 0.1.3)
+  kiln (~> 0.2.0)
   lostcoords-ui (~> 0.10.0)
   propshaft
   puma
@@ -366,7 +366,7 @@ CHECKSUMS
   io-console (0.9.5) sha256=83dd9bbf4c4680416629245b39cd4212eb5f4d9a4ea91804870c1f6b846414d5
   irb (1.18.0) sha256=de9454a0703a54704b9811a5ef31a60c86949fbf4013fcf244fabc7c775248e3
   json (3.1.0) sha256=3ce7ccf8fde58960177a3a756c31f292a4c1e1dedee884547096a5b0604e3bd8
-  kiln (0.1.5) sha256=6a08a2b95611339cd5079974f2cf914cc1d228d857ab72e3b4cc8e02bcb90f62
+  kiln (0.2.0) sha256=82aa9e577d732e79dc01fda523a48b4bc071d3fb3002293fd583881f6264565e
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   loofah (2.25.3) sha256=545f14eef0cc2a7de80df560530d593232b7c07e515c5c4e37532d9cb5b0185c
   lostcoords-ui (0.10.0) sha256=017c2c9d36baeeb3db247deb654a6603f02b93c94729b798579eec772b267da2

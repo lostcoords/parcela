@@ -32,14 +32,14 @@ module HomeHelper
   }.freeze
 
   FEATURES = [
-    { icon: "lock", title: "Named HTTPS", text: "Caddy serves each environment at a `.localhost` name with a local certificate, on a port that needs no sudo.", href: "/docs/faq/" },
-    { icon: "plug", title: "Free ports", text: "Each HTTP service gets its own `$PORT`. Databases and other tools can ask for named ports. Running environments never share a port.", href: "/docs/configuration/#ports" },
-    { icon: "activity", title: "Readiness checks", text: "`parcela up` waits until every healthcheck returns 2xx before it routes the URLs.", href: "/docs/configuration/#http-services" },
-    { icon: "scroll-text", title: "Logs per process", text: "`parcela logs -f` follows every service, worker, and hook, with the process name on each line.", href: "/docs/cli/#logs" },
-    { icon: "database-backup", title: "Data snapshots", text: "Snapshot the data of a stopped environment, then restore it into a new worktree to reproduce a test case.", href: "/docs/worktrees/#reproduce-a-test-dataset" },
-    { icon: "layout-dashboard", title: "Dashboard", text: "`parcela ui` prints the address of a page that lists every environment, with start, stop, restart, and logs.", href: "/docs/cli/#ui" },
-    { icon: "bug", title: "Debug menu", text: "The proxy adds a small badge to your app's pages on `.localhost`, with this environment's state and logs. Your code doesn't change.", href: "/docs/cli/#ui" },
-    { icon: "bot", title: "Agent skill", text: "`parcela --skill` prints the instructions a coding agent needs to run Parcela.", href: "/docs/worktrees/#set-up-a-coding-agent" }
+    { icon: "lock", title: "Named HTTPS", text: "Caddy serves each environment at a `.localhost` name with a local certificate, on a port that needs no sudo.", href: "/docs/faq" },
+    { icon: "plug", title: "Free ports", text: "Each HTTP service gets its own `$PORT`. Databases and other tools can ask for named ports. Running environments never share a port.", href: "/docs/configuration#ports" },
+    { icon: "activity", title: "Readiness checks", text: "`parcela up` waits until every healthcheck returns 2xx before it routes the URLs.", href: "/docs/configuration#http-services" },
+    { icon: "scroll-text", title: "Logs per process", text: "`parcela logs -f` follows every service, worker, and hook, with the process name on each line.", href: "/docs/cli#logs" },
+    { icon: "database-backup", title: "Data snapshots", text: "Snapshot the data of a stopped environment, then restore it into a new worktree to reproduce a test case.", href: "/docs/worktrees#reproduce-a-test-dataset" },
+    { icon: "layout-dashboard", title: "Dashboard", text: "`parcela ui` prints the address of a page that lists every environment, with start, stop, restart, and logs.", href: "/docs/cli#ui" },
+    { icon: "bug", title: "Debug menu", text: "The proxy adds a small badge to your app's pages on `.localhost`, with this environment's state and logs. Your code doesn't change.", href: "/docs/cli#ui" },
+    { icon: "bot", title: "Agent skill", text: "`parcela --skill` prints the instructions a coding agent needs to run Parcela.", href: "/docs/worktrees#set-up-a-coding-agent" }
   ].freeze
 
   QUESTIONS = [

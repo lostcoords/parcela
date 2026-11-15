@@ -140,7 +140,7 @@ hooks:
 
 ### Docker Compose
 
-Keep the backing services in `docker-compose.yml` and the apps native. A [compose](/docs/configuration/#compose) service starts the Compose services an environment needs, and the apps depend on it:
+Keep the backing services in `docker-compose.yml` and the apps native. A [compose](/docs/configuration#compose) service starts the Compose services an environment needs, and the apps depend on it:
 
 ```yaml
 env:
@@ -168,7 +168,7 @@ services:
 - A built image used by several worktrees needs an `image:` name next to `build:`, or Compose builds one per environment.
 - Compose reads `.env` next to the Compose file for its own variables, such as passwords. Variables from `parcela.yaml` take precedence. The containers start before `setup`, so a new worktree cannot copy it first: point Compose at the main checkout's with `COMPOSE_ENV_FILES: ${PARCELA_PRIMARY_DIR}/.env`.
 - Nothing deletes an environment's volumes. `parcela rm` removes its containers and network and lists the volumes to delete with `docker volume rm`.
-- A container that serves HTTP, like Mailpit, MinIO's console or Kibana, gets its own URL through `http` under `compose`. See [Containers with URLs](/docs/configuration/#containers-with-urls).
+- A container that serves HTTP, like Mailpit, MinIO's console or Kibana, gets its own URL through `http` under `compose`. See [Containers with URLs](/docs/configuration#containers-with-urls).
 
 ### Redis, Sidekiq and queues
 
@@ -373,4 +373,4 @@ services:
 
 Run `parcela doctor`, then `parcela up --detach`. Open every returned URL and read `parcela logs`. Before giving agents parallel checkouts, check that their data is separate as intended. After editing configuration, use `parcela restart --detach`.
 
-The [configuration reference](/docs/configuration/) lists every field. The [CLI reference](/docs/cli/) lists commands, flags, and task syntax.
+The [configuration reference](/docs/configuration) lists every field. The [CLI reference](/docs/cli) lists commands, flags, and task syntax.

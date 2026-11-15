@@ -247,7 +247,7 @@ Databases and other containers can come from the project's own `docker-compose.y
 
 ### Added
 
-- `services.<name>.compose` runs containers from the project's own Docker Compose file next to native apps: `compose: {file: docker-compose.yml, services: [postgres]}`. Each environment gets its own Compose project, so its own containers, network and volumes, and a leased loopback port for every port the containers publish, as `PARCELA_PORT_<SERVICE>`. The Compose file needs no changes: an override in the environment's runtime directory replaces its host ports and drops `container_name`. Hooks and tasks get `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE`, and the Compose file's default override file applies as with plain `docker compose`. `compose.http` gives a container that serves HTTP its own HTTPS URL, readiness check and sharing, or the environment's own URL for an app that runs entirely in Docker. `parcela doctor` checks the file and services. See [compose](https://parcela.run/docs/configuration/#compose).
+- `services.<name>.compose` runs containers from the project's own Docker Compose file next to native apps: `compose: {file: docker-compose.yml, services: [postgres]}`. Each environment gets its own Compose project, so its own containers, network and volumes, and a leased loopback port for every port the containers publish, as `PARCELA_PORT_<SERVICE>`. The Compose file needs no changes: an override in the environment's runtime directory replaces its host ports and drops `container_name`. Hooks and tasks get `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE`, and the Compose file's default override file applies as with plain `docker compose`. `compose.http` gives a container that serves HTTP its own HTTPS URL, readiness check and sharing, or the environment's own URL for an app that runs entirely in Docker. `parcela doctor` checks the file and services. See [compose](https://parcela.run/docs/configuration#compose).
 - `services.<name>.stop`: a command that stops what a service started outside its own processes, like `docker compose stop` for a `docker compose up` service. It runs on every stop, after the service's dependents and before its SIGTERM, even if the service already exited or Parcela crashed. A failed one leaves the environment interrupted until `down` runs it again. A `compose` service sets it for you.
 - `parcela completion <shell>` prints shell completions. `parcela open [SERVICE]` opens a URL in the browser, and `url [SERVICE]` prints one service's URL.
 - `-w`/`--workspace` takes an environment's name, URL, hostname or ID. `-C` is short for `--path`.
@@ -319,7 +319,7 @@ Parcela runs each environment's processes itself, so Process Compose is no longe
 
 ## 0.3.0 - 2026-10-18
 
-`parcela.yaml` has a new format, version 1. Files written for 0.2 or earlier need rewriting, and `parcela doctor` links to the new format. The [configuration reference](https://parcela.run/docs/configuration/) shows the new format.
+`parcela.yaml` has a new format, version 1. Files written for 0.2 or earlier need rewriting, and `parcela doctor` links to the new format. The [configuration reference](https://parcela.run/docs/configuration) shows the new format.
 
 ### Added
 

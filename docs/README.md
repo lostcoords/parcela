@@ -31,9 +31,9 @@ Without Parcela, run `bin/rails tailwindcss:build` and then `bin/rails server -p
 
 ## Add or edit a page
 
-1. Choose a reader need using the [writing guidance](https://parcela.run/docs/contributing/#write-documentation).
+1. Choose a reader need using the [writing guidance](https://parcela.run/docs/contributing#write-documentation).
 2. Edit its view in `app/views/pages/`. For a new page, add `SLUG.html.md` there and a `Page` with its title and description to `GROUPS` in `app/models/docs.rb`.
-3. Link pages by route, such as `/docs/cli/#config`, and downloads by their `/assets/` path. The build fails on a broken link or anchor.
+3. Link pages by route, such as `/docs/cli#config`, and downloads by their `/assets/` path. The build fails on a broken link or anchor.
 4. Use one H1.
 5. Run the checks.
 

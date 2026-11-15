@@ -35,7 +35,7 @@ If the checkout has no `parcela.yaml` and the user asks to configure it, `parcel
 
 The main checkout gets the project URL. A linked jj workspace or Git worktree gets its own name on its first `up`; `--name NAME` picks one, and `--primary` gives the project URL to a checkout only when the user intends that. Names stay after the first `up`.
 
-A separate URL does not separate databases, uploads, secrets or queues. Read the project's `parcela.yaml` and instructions before the first `up`, and refuse to start until its data bindings suit the request. https://parcela.run/docs/frameworks/ shows per-environment SQLite, PostgreSQL, Redis and uploads, and host checks for common frameworks; propose such a change rather than make it unasked.
+A separate URL does not separate databases, uploads, secrets or queues. Read the project's `parcela.yaml` and instructions before the first `up`, and refuse to start until its data bindings suit the request. https://parcela.run/docs/frameworks shows per-environment SQLite, PostgreSQL, Redis and uploads, and host checks for common frameworks; propose such a change rather than make it unasked.
 
 `up` runs `hooks.setup` on an environment's first start and `hooks.prestart` on every start. Tell the user what they will do, such as installing packages or migrating. `up --setup` reruns setup; use it only when asked. Do not run preparation commands that `parcela.yaml` does not declare.
 
@@ -132,4 +132,4 @@ Interactive commands offer stable-release updates at most once a day. Piped comm
 
 Parcela is a local development runner, not a sandbox. It does not restart individual services, snapshot undeclared or external data, transfer secrets, or prove browser trust. This skill and `--help` are not runtime proof.
 
-Parcela sends anonymous usage data unless it is turned off (https://parcela.run/docs/telemetry/). Leave `parcela telemetry` and `DO_NOT_TRACK` as the user set them unless they ask.
+Parcela sends anonymous usage data unless it is turned off (https://parcela.run/docs/telemetry). Leave `parcela telemetry` and `DO_NOT_TRACK` as the user set them unless they ask.

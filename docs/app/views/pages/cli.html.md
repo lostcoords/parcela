@@ -31,7 +31,7 @@ For example, `parcela status --current --json | jq -r .state` reads the environm
 
 ## Environment variables
 
-Parcela reads these from the shell that runs it. Variables it gives your processes are in [Configuration](/docs/configuration/#environment-variables-parcela-sets).
+Parcela reads these from the shell that runs it. Variables it gives your processes are in [Configuration](/docs/configuration#environment-variables-parcela-sets).
 
 | Variable | Effect |
 | --- | --- |
@@ -43,7 +43,7 @@ Parcela reads these from the shell that runs it. Variables it gives your process
 | `PARCELA_DOMAIN`, `PARCELA_DOMAIN_PORT` | Like `--domain`, comma-separated, and `--domain-port`. |
 | `PARCELA_NO_TRUST` | Any value but empty or `0` stops `up` from offering CA trust. |
 | `PARCELA_NO_UPDATE` | `1` turns off release checks and update prompts. |
-| `DO_NOT_TRACK`, `PARCELA_TELEMETRY_DISABLED` | Any value but empty, `0`, `false` or `no` turns off [telemetry](/docs/telemetry/). |
+| `DO_NOT_TRACK`, `PARCELA_TELEMETRY_DISABLED` | Any value but empty, `0`, `false` or `no` turns off [telemetry](/docs/telemetry). |
 | `PARCELA_TELEMETRY_DEBUG` | Prints the telemetry event instead of sending it. |
 | `NO_COLOR`, `CLICOLOR_FORCE`, `FORCE_COLOR` | Color control; see [Output](#output). |
 | `CI` | Hides the `up --detach` progress line. |
@@ -77,7 +77,7 @@ The default directory is a sibling named `<repository>-<NAME>`, or `<repository>
 parcela snapshot NAME
 ```
 
-Saves the selected environment's [declared data](/docs/configuration/#data) under `<state>/snapshots/<project>/<NAME>`. The environment must be stopped with no owner, restart, or task operation holding its locks. Each SQLite database uses SQLite's backup API, including committed WAL contents. Snapshot names are immutable. There is no automatic seeding, retention limit, or snapshot deletion command.
+Saves the selected environment's [declared data](/docs/configuration#data) under `<state>/snapshots/<project>/<NAME>`. The environment must be stopped with no owner, restart, or task operation holding its locks. Each SQLite database uses SQLite's backup API, including committed WAL contents. Snapshot names are immutable. There is no automatic seeding, retention limit, or snapshot deletion command.
 
 ## restore
 
@@ -115,7 +115,7 @@ Registers the checkout on first use and starts the configured services. If HTTP 
 
 After readiness, ordinary services are not restarted automatically. Exits are reported. If an HTTP service stops listening for longer than the readiness timeout, `readiness_timeout_seconds` in `parcela.yaml` (60 seconds by default), the environment stops. Sharing publishers have a separate retry policy.
 
-`--backend-port`, `--lan`, `--lan-ip`, `--tailscale` and `--domain` need an HTTP service. [Share with another device](/docs/worktrees/#share-with-another-device) covers each kind of sharing.
+`--backend-port`, `--lan`, `--lan-ip`, `--tailscale` and `--domain` need an HTTP service. [Share with another device](/docs/worktrees#share-with-another-device) covers each kind of sharing.
 
 For an HTTP environment, the first `up` in a terminal may offer system CA trust. It is offered once per CA. `PARCELA_NO_TRUST=1` or [`trust false`](#config) suppresses it. Nonterminal runs never change trust.
 
@@ -184,7 +184,7 @@ The dashboard groups registered environments by project and discovers unregister
 
 While nothing serves a registered `.localhost` name, a browser page load there shows the environment's state with Start or Restart, a link to its logs and a link to the dashboard. Starting always takes a click. The page reloads into the app once it is ready. Other requests to the name get `503`.
 
-Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture/) for what a tagged response changes.
+Pages on `.localhost` and domain names get Parcela's debug menu without any change to the app: the proxy adds its script to each top-level page load. `parcela config set badge false` turns that off. Everything else, including assets, API calls, frames and `curl`, reaches the app unchanged. See [The badge on app pages](/docs/architecture) for what a tagged response changes.
 
 A CSP that allows neither same-origin scripts nor a nonce blocks the menu; Parcela never relaxes it. One that blocks same-origin images shows the word `parcela` in place of the icon. One that blocks same-origin `fetch` leaves the badge without data. An app that compresses even when asked not to passes through without the badge. If the extra script upsets a framework's hydration, turn the badge off.
 
@@ -355,7 +355,7 @@ Adds Caddy's local CA to the system trust store using `caddy trust`, starting th
 | `--export` | Prints the certificate itself, to install on a phone or another computer that opens `.local` URLs: `parcela trust --export > parcela-ca.crt`. Changes nothing. |
 | `--remove` | Removes the CA from the system trust store with `caddy untrust`, behind the system password prompt. Requires a terminal. |
 
-`--print` and `--export` fail until the proxy has started once and created the CA. [Clients and certificates](/docs/faq/#clients-and-certificates) covers programs with their own CA list.
+`--print` and `--export` fail until the proxy has started once and created the CA. [Clients and certificates](/docs/faq#clients-and-certificates) covers programs with their own CA list.
 
 ## upgrade
 
@@ -395,7 +395,7 @@ Shows or changes this machine's settings. Without a subcommand, or with `list` (
 | `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
 | `badge` | `false` stops the proxy adding the debug menu to `.localhost` and domain pages. Default `true`. A running proxy picks it up on its own. |
 
-`sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](/docs/worktrees/#share-with-another-device) covers each kind.
+`sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](/docs/worktrees#share-with-another-device) covers each kind.
 
 The file is `$XDG_CONFIG_HOME/parcela/config.yaml`, or `~/.config/parcela/config.yaml`. `PARCELA_CONFIG` names another file. It is YAML, and `set` rewrites it without comments:
 
@@ -414,7 +414,7 @@ worktrees:
 parcela telemetry [status | enable | disable]
 ```
 
-Shows or changes the saved telemetry preference. Without a subcommand, shows status. Environment overrides and event fields are in [Telemetry](/docs/telemetry/).
+Shows or changes the saved telemetry preference. Without a subcommand, shows status. Environment overrides and event fields are in [Telemetry](/docs/telemetry).
 
 ## skill
 
@@ -423,7 +423,7 @@ parcela skill
 parcela --skill
 ```
 
-Prints the bundled agent instructions as Markdown without reading project or state. [Worktrees and agents](/docs/worktrees/#set-up-a-coding-agent) covers installation.
+Prints the bundled agent instructions as Markdown without reading project or state. [Worktrees and agents](/docs/worktrees#set-up-a-coding-agent) covers installation.
 
 ## completion
 

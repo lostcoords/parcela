@@ -4,8 +4,8 @@
 <% end %>
 <% section = Docs::GROUPS.find { |group| group.pages.include?(@page) }&.label %>
 <% links = [
-  ["Docs", "/docs/", @page&.slug == "docs"],
-  ["Get started", "/docs/getting-started/", @page&.slug == "getting-started"],
+  ["Docs", "/docs", @page&.slug == "docs"],
+  ["Get started", "/docs/getting-started", @page&.slug == "getting-started"],
   ["Guides", Docs::GROUPS[1].pages.first.path, section == "Guides"],
   ["Reference", Docs::GROUPS[2].pages.first.path, section == "Reference"]
 ] %>

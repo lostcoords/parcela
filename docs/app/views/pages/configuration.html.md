@@ -1,6 +1,6 @@
 # Configuration
 
-Parcela reads `parcela.yaml` from the root of your checkout. Commands look for it in the current directory, or `--path`, and then in each parent directory. Every field has one spelling and one shape. The format is version 1. Unknown keys are errors except top-level `x-` keys. [Configure your app](/docs/frameworks/#services-and-setup) covers the setup workflow.
+Parcela reads `parcela.yaml` from the root of your checkout. Commands look for it in the current directory, or `--path`, and then in each parent directory. Every field has one spelling and one shape. The format is version 1. Unknown keys are errors except top-level `x-` keys. [Configure your app](/docs/frameworks#services-and-setup) covers the setup workflow.
 
 ## version and project
 
@@ -224,7 +224,7 @@ ports: [db, cache]
 - No two running environments get the same port. Parcela does not route or check these ports.
 - A [compose](#compose) service adds one for every port its containers publish.
 
-Ports come from 20000 through 29999, or the host's [`ports.backend`](/docs/cli/#config).
+Ports come from 20000 through 29999, or the host's [`ports.backend`](/docs/cli#config).
 
 ## env
 
@@ -319,7 +319,7 @@ Every service, hook and task receives these. Service names are uppercased, with 
 | `…/proxy/` | The proxy's Caddy config, `proxy.log` and the local certificate authority. |
 | `…/snapshots/<project>/<name>/` | Data snapshots from `parcela snapshot`. |
 | `…/telemetry.json`, `…/update-check.json`, `…/autostart.log` | The telemetry install ID and notice, the last release check, and autostart's output. |
-| `~/.config/parcela/config.yaml` | [Host settings](/docs/cli/#config), outside the state directory. Override it with `PARCELA_CONFIG` or `XDG_CONFIG_HOME`. |
+| `~/.config/parcela/config.yaml` | [Host settings](/docs/cli#config), outside the state directory. Override it with `PARCELA_CONFIG` or `XDG_CONFIG_HOME`. |
 | `$(getconf DARWIN_USER_TEMP_DIR)parcela/` on macOS, `/tmp/parcela-<uid>/` on Linux | Unix sockets for the running environments and the proxy. |
 
 The state directory is private to your user. `rm` keeps an environment's directory. A later registration gets a new directory. Retained files are not automatically reused.

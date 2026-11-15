@@ -8,7 +8,7 @@ Parcela sends anonymous command events to help maintainers understand use and fa
 | Control | Effect |
 | --- | --- |
 | `parcela telemetry status` | Shows the effective setting and why it is disabled, if applicable. |
-| `parcela telemetry disable` | Saves a disabled preference, `telemetry: false` in the [host config](/docs/cli/#config). |
+| `parcela telemetry disable` | Saves a disabled preference, `telemetry: false` in the [host config](/docs/cli#config). |
 | `parcela telemetry enable` | Saves an enabled preference. Environment overrides still apply. |
 | `DO_NOT_TRACK=1` | Disables telemetry for commands that inherit the variable. |
 | `PARCELA_TELEMETRY_DISABLED=1` | Disables telemetry for commands that inherit the variable. |
@@ -22,7 +22,7 @@ Nothing is sent the first time Parcela runs. That run prints a notice instead:
 
 ```text
 Parcela collects anonymous usage data: commands, exit codes and versions, never paths or names.
-Turn it off with `parcela telemetry disable` or DO_NOT_TRACK=1. https://parcela.run/docs/telemetry/
+Turn it off with `parcela telemetry disable` or DO_NOT_TRACK=1. https://parcela.run/docs/telemetry
 ```
 
 After that, each command sends one event when it finishes. A background `curl` posts it to `https://parcela.run/api/telemetry` and gives up after 3 seconds; Parcela never waits for it, and a failed or blocked request changes nothing. Builds from source in debug mode, including `cargo test`, never send. `parcela telemetry`, `--help`, `--version` and Parcela's own internal re-runs are not reported.

@@ -2,13 +2,13 @@
 
 ## What does Parcela change on my machine?
 
-Parcela stores its registry, logs, certificates, and environment data in a private state directory. The default is `~/.local/state/parcela`. Unix sockets live in a per-user temporary directory. [State locations](/docs/configuration/#state-locations) lists the paths and overrides.
+Parcela stores its registry, logs, certificates, and environment data in a private state directory. The default is `~/.local/state/parcela`. Unix sockets live in a per-user temporary directory. [State locations](/docs/configuration#state-locations) lists the paths and overrides.
 
 `parcela init` writes `parcela.yaml` in your checkout. Your configured commands and hooks can write other files or change external services.
 
 The shared proxy listens on `127.0.0.1:1443` by default. Backends use loopback ports leased from 20000 through 29999, or the host's `ports.backend`. LAN and tailnet access require a sharing flag or a host setting from `parcela config`. System services require `parcela relay install`.
 
-Parcela sends anonymous command telemetry unless disabled. [Telemetry](/docs/telemetry/) describes its fields and controls.
+Parcela sends anonymous command telemetry unless disabled. [Telemetry](/docs/telemetry) describes its fields and controls.
 
 ## What does trusting the certificate authority allow?
 
@@ -38,15 +38,15 @@ Parcela runs a declared group of processes per checkout. That includes workers a
 
 Use containers when you need isolated execution or exact runtime images. Parcela runs native commands as your user, so editors, debuggers, and file watchers use the local filesystem directly.
 
-A `compose` service runs databases, search engines and other containers from your `docker-compose.yml`, at the versions it pins, with their own containers, volumes and loopback ports in every environment. A container that serves HTTP can get its own URL. See [Docker Compose](/docs/frameworks/#docker-compose).
+A `compose` service runs databases, search engines and other containers from your `docker-compose.yml`, at the versions it pins, with their own containers, volumes and loopback ports in every environment. A container that serves HTTP can get its own URL. See [Docker Compose](/docs/frameworks#docker-compose).
 
 ## How does it fit with coding agent tools?
 
-An agent manager can create checkouts and run agents. Parcela runs the app inside each checkout. The embedded operating skill tells an agent how to select, inspect, start, and stop its own environment. See [Worktrees and agents](/docs/worktrees/).
+An agent manager can create checkouts and run agents. Parcela runs the app inside each checkout. The embedded operating skill tells an agent how to select, inspect, start, and stop its own environment. See [Worktrees and agents](/docs/worktrees).
 
 ## Does each worktree get its own database?
 
-Only when the configuration gives it one. Parcela separates processes, ports, URLs, and logs. A shared `.env` can still point every checkout at one database. [Keep environment data separate](/docs/frameworks/#separate-data) covers SQLite, PostgreSQL, Redis, and uploads.
+Only when the configuration gives it one. Parcela separates processes, ports, URLs, and logs. A shared `.env` can still point every checkout at one database. [Keep environment data separate](/docs/frameworks#separate-data) covers SQLite, PostgreSQL, Redis, and uploads.
 
 ## Does it work on Windows or WSL?
 
@@ -122,7 +122,7 @@ Read the [changelog](https://github.com/lostcoords/parcela/blob/main/CHANGELOG.m
 
 The installer refreshes an older running proxy automatically. If you update through Homebrew or Cargo, the next regular Parcela command does that refresh. Application processes keep running; their URLs briefly disconnect. Stopped proxies stay stopped.
 
-Interactive commands such as `up`, `status` and `ls` check for a stable release at most once a day and offer an update for shell-installer installations. [upgrade](/docs/cli/#upgrade) lists them. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` or run `parcela config set updates false` to disable release checks.
+Interactive commands such as `up`, `status` and `ls` check for a stable release at most once a day and offer an update for shell-installer installations. [upgrade](/docs/cli#upgrade) lists them. Accepting resumes your original command with the new CLI. Piped commands and `--json` never prompt. Set `PARCELA_NO_UPDATE=1` or run `parcela config set updates false` to disable release checks.
 
 A CLI installed before automatic update checks needs one explicit `parcela upgrade` to acquire this behavior.
 

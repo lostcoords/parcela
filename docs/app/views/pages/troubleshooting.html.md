@@ -60,12 +60,12 @@ The environment is registered but not running, or it is still starting. In a bro
 Run `parcela status --current` and look at the `parcela-lan-*` and `parcela-tailscale-*` processes. `parcela logs parcela-tailscale-web` shows why one stopped.
 
 - **A `.local` name does not resolve.** The device must be on the same network, and some guest or office Wi-Fi blocks mDNS. After the laptop changes networks, run `parcela restart --detach --lan`.
-- **The page says the host is not allowed.** The dev server refuses the shared name. Add `PARCELA_SHARE_HOSTS` to its allowed hosts, as shown in [the sharing guide](/docs/worktrees/#let-the-dev-server-accept-the-names).
+- **The page says the host is not allowed.** The dev server refuses the shared name. Add `PARCELA_SHARE_HOSTS` to its allowed hosts, as shown in [the sharing guide](/docs/worktrees#let-the-dev-server-accept-the-names).
 - **`--tailscale` refuses to start.** It says what is missing: the CLI, `tailscale up`, MagicDNS, or HTTPS certificates in the tailnet's DNS settings.
 
 ## The dev server rejects the host
 
-Rails, Django and Vite accept `*.localhost` names in development by default, but not the `.local`, tailnet and domain names of `--lan`, `--tailscale` and `--domain`, nor any name once you set an allow list yourself. Add the names from `PARCELA_SHARE_HOSTS`, or derive them from `PARCELA_URL`. [Configure frameworks](/docs/frameworks/#framework-settings) shows the setting for each framework.
+Rails, Django and Vite accept `*.localhost` names in development by default, but not the `.local`, tailnet and domain names of `--lan`, `--tailscale` and `--domain`, nor any name once you set an allow list yourself. Add the names from `PARCELA_SHARE_HOSTS`, or derive them from `PARCELA_URL`. [Configure frameworks](/docs/frameworks#framework-settings) shows the setting for each framework.
 
 ## Safari searches instead of opening the URL
 

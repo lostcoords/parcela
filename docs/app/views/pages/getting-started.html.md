@@ -5,7 +5,7 @@ Set up Parcela so `parcela up` starts your app. Open it at a local HTTPS URL suc
 
 Start with a project you can already run locally on macOS or Linux. Use the agent prompt below, or [follow the manual steps](#install-it-by-hand).
 
-To try Parcela with a small sample project, follow the [example app](/docs/tutorial/).
+To try Parcela with a small sample project, follow the [example app](/docs/tutorial).
 
 ## Install it with your agent
 
@@ -32,7 +32,7 @@ the whole app in any checkout or worktree, each at its own HTTPS URL.
    - databases and other containers already in docker-compose.yml
      as one service with `compose: {file, services}`, the apps
      native, as in
-     https://parcela.run/docs/frameworks/#docker-compose;
+     https://parcela.run/docs/frameworks#docker-compose;
    - hooks.setup to install packages, copy .env from
      $PARCELA_PRIMARY_DIR and create and seed the database;
      hooks.prestart to run migrations.
@@ -42,7 +42,7 @@ the whole app in any checkout or worktree, each at its own HTTPS URL.
 6. Show me parcela.yaml and what you verified. Leave the app running.
 ```
 
-The prompt asks before choosing how to share data. Review the resulting configuration and verification report. [Install the operating skill](/docs/worktrees/#set-up-a-coding-agent) to give later agents the same instructions.
+The prompt asks before choosing how to share data. Review the resulting configuration and verification report. [Install the operating skill](/docs/worktrees#set-up-a-coding-agent) to give later agents the same instructions.
 
 ## Install it by hand
 
@@ -68,7 +68,7 @@ The prompt asks before choosing how to share data. Review the resulting configur
    parcela doctor
    ```
 
-   Fix any failed checks before starting. [Configure your app](/docs/frameworks/) covers workers, databases, and setup hooks. Separate URLs do not separate data.
+   Fix any failed checks before starting. [Configure your app](/docs/frameworks) covers workers, databases, and setup hooks. Separate URLs do not separate data.
 
 4. Start the environment.
 
@@ -98,4 +98,4 @@ The prompt asks before choosing how to share data. Review the resulting configur
 | Print an API URL | `parcela url api` |
 | List checkouts | `parcela ls` |
 
-[Configure your app](/docs/frameworks/) to add services and data. [Worktrees and agents](/docs/worktrees/) covers parallel copies. For a complete example, follow the [tutorial](/docs/tutorial/). Upgrades and removal are in the [FAQ](/docs/faq/#upgrade-parcela).
+[Configure your app](/docs/frameworks) to add services and data. [Worktrees and agents](/docs/worktrees) covers parallel copies. For a complete example, follow the [tutorial](/docs/tutorial). Upgrades and removal are in the [FAQ](/docs/faq#upgrade-parcela).

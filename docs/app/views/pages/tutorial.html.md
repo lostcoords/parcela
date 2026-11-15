@@ -2,7 +2,7 @@
 
 Build a page, a SQLite-backed API, and a worker. Then run a second copy in a worktree with its own database.
 
-You need macOS or Linux, Python, Git, and [Parcela with Caddy installed](/docs/getting-started/#install-it-by-hand). This tutorial uses a new directory. The finished app is in [examples/docs-demo](https://github.com/lostcoords/parcela/tree/main/examples/docs-demo).
+You need macOS or Linux, Python, Git, and [Parcela with Caddy installed](/docs/getting-started#install-it-by-hand). This tutorial uses a new directory. The finished app is in [examples/docs-demo](https://github.com/lostcoords/parcela/tree/main/examples/docs-demo).
 
 ## Create the app
 
@@ -196,4 +196,4 @@ parcela rm --prune
 
 The shared proxy stays running. To stop it, run `parcela proxy stop` when no other environment needs its URLs.
 
-For your own app, continue with [Configure your app](/docs/frameworks/#services-and-setup). To use jj workspaces or coding agents, see [Worktrees and agents](/docs/worktrees/).
+For your own app, continue with [Configure your app](/docs/frameworks#services-and-setup). To use jj workspaces or coding agents, see [Worktrees and agents](/docs/worktrees).

@@ -123,4 +123,4 @@ LAN names are published over mDNS with `dns-sd` or `avahi`. Caddy serves the LAN
              up --detach for each
 ```
 
-[Architecture](/docs/architecture/) has the details: locks, recovery, proxy updates and the source map.
+[Architecture](/docs/architecture) has the details: locks, recovery, proxy updates and the source map.

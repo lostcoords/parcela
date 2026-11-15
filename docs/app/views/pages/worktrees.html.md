@@ -12,7 +12,7 @@ Start with a configured project. Give each agent its own checkout, then run the 
 
 Parcela remembers identity on first registration. Renaming a branch keeps the same URL. A conflicting name is refused. Use `--name review` on first start to choose a name, or `--primary` for the main URL after the old holder releases it with `rm`. Long derived names are shortened to fit DNS limits and get a hash suffix.
 
-Each environment has its own processes, ports, logs, and runtime directory. Processes still run as your user. Separate databases and queues in [your app configuration](/docs/frameworks/#separate-data).
+Each environment has its own processes, ports, logs, and runtime directory. Processes still run as your user. Separate databases and queues in [your app configuration](/docs/frameworks#separate-data).
 
 ## Run several agents at once
 
@@ -33,7 +33,7 @@ You can still create checkouts with Git or jj yourself, then run `parcela up --d
 
 ### Reproduce a test dataset
 
-First bind the app's databases and uploads to `PARCELA_DATA_DIR` and declare [snapshot data](/docs/configuration/#data). Configure a `tasks.seed` command if the project needs synthetic fixtures. Review its effects before running it.
+First bind the app's databases and uploads to `PARCELA_DATA_DIR` and declare [snapshot data](/docs/configuration#data). Configure a `tasks.seed` command if the project needs synthetic fixtures. Review its effects before running it.
 
 ```sh
 parcela create baseline
@@ -84,7 +84,7 @@ Parcela ships instructions for coding agents inside the binary. Print them with:
 parcela --skill
 ```
 
-Use the same operating instructions with Claude Code, Codex, Cursor, or another coding agent. The output is Markdown. It tells the agent how to pick the right checkout, start it with `--detach`, read `--json` output, find URLs and logs and stop only its own environment. You can also [read the operating skill](/docs/operating-skill/) here or [download it](/assets/parcela-skill.txt).
+Use the same operating instructions with Claude Code, Codex, Cursor, or another coding agent. The output is Markdown. It tells the agent how to pick the right checkout, start it with `--detach`, read `--json` output, find URLs and logs and stop only its own environment. You can also [read the operating skill](/docs/operating-skill) here or [download it](/assets/parcela-skill.txt).
 
 ### Install the skill for Claude Code
 
@@ -120,11 +120,11 @@ Then ask Claude Code something bounded:
 
 ### Configure a project with an agent
 
-[Get started](/docs/getting-started/#install-it-with-your-agent) has a prompt that installs Parcela and writes `parcela.yaml` for an existing project.
+[Get started](/docs/getting-started#install-it-with-your-agent) has a prompt that installs Parcela and writes `parcela.yaml` for an existing project.
 
 ## Share with another device
 
-Sharing is off by default and lasts for one run. Pass the flag again after a restart, or set a [host default](/docs/cli/#config) to share every run on this machine.
+Sharing is off by default and lasts for one run. Pass the flag again after a restart, or set a [host default](/docs/cli#config) to share every run on this machine.
 
 ### Share on the same network
 
@@ -174,7 +174,7 @@ Every environment's name becomes one label under your domain, so one wildcard ce
 }
 ```
 
-Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`. Repeat `--domain`, or separate names with commas, for a machine behind more than one front proxy; every domain uses the same loopback port. To share every environment on this machine under a domain, run [`parcela config add sharing.domains dev.example.com`](/docs/cli/#config). The domain belongs to the machine, not the project, so `parcela.yaml` never names one. Use `--no-share` for a local-only run.
+Point a wildcard DNS record, `*.dev.example.com`, at the address the proxy listens on. A tailnet address in public DNS is still reachable only from your tailnet. Configure the proxy once: new environments need no change there. Parcela trusts `X-Forwarded-Proto` and `X-Forwarded-Host` from loopback, so the app sees `https` and the name the browser asked for. `PARCELA_DOMAIN=dev.example.com` in the environment works like `--domain`. Repeat `--domain`, or separate names with commas, for a machine behind more than one front proxy; every domain uses the same loopback port. To share every environment on this machine under a domain, run [`parcela config add sharing.domains dev.example.com`](/docs/cli#config). The domain belongs to the machine, not the project, so `parcela.yaml` never names one. Use `--no-share` for a local-only run.
 
 ### Let the dev server accept the names
 
@@ -194,4 +194,4 @@ Run `parcela down` in the shared checkout. This stops the environment and its mD
 
 Check `parcela status`. For Tailscale, also check `tailscale serve status` to confirm the run's ports are gone. Parcela leaves unrelated serve configuration alone.
 
-If a device cannot connect, see [shared URL troubleshooting](/docs/troubleshooting/#another-device-cannot-open-a-shared-url).
+If a device cannot connect, see [shared URL troubleshooting](/docs/troubleshooting#another-device-cannot-open-a-shared-url).

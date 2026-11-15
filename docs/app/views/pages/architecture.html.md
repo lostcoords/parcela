@@ -164,4 +164,4 @@ CA trust changes occur only through `parcela trust` or a first terminal `up`, be
 
 `parcela relay install` is the only system-service installation path. The service manager owns loopback port 443 (and 80 when free) and relays connections as the user: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. Parcela code does not run as root. Packet-filter redirection is not used.
 
-For contributor commands and live verification, see [Contribute to Parcela](/docs/contributing/). For site checks, see [Build the documentation site](/docs/docs-site/).
+For contributor commands and live verification, see [Contribute to Parcela](/docs/contributing). For site checks, see [Build the documentation site](/docs/docs-site).
