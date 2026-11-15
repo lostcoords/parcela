@@ -24,6 +24,8 @@ A normal user can bind port 1443 without `sudo`. Parcela refuses occupied ports 
 
 `parcela relay install` installs a password-protected system relay on loopback port 443 that forwards, as your user, to the proxy: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. It also relays port 80 when free. Restart environments to update their URLs. `parcela relay uninstall` removes it.
 
+The relay serves loopback only. `parcela relay install --lan` adds a packet-filter redirect so shared `.local` URLs drop the port too. See [`relay`](/docs/cli#relay).
+
 On Linux you can instead allow unprivileged port 443 with `sudo sysctl net.ipv4.ip_unprivileged_port_start=443`, then run `parcela proxy start --port 443`. This system setting affects all local processes.
 
 ## Why use .localhost names?

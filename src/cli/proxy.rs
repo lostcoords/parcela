@@ -171,7 +171,14 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
             let started = proxy::start(state, &listen.caddy(), front_door, true)?;
             report_started(state, &started, out)
         }
-        ProxyCommand::Install => relay(state, RelayCommand::Install, out),
+        ProxyCommand::Install => relay(
+            state,
+            RelayCommand::Install {
+                lan: false,
+                interface: None,
+            },
+            out,
+        ),
         ProxyCommand::Uninstall => relay(state, RelayCommand::Uninstall, out),
         ProxyCommand::Stop => {
             let stopped = proxy::stop(state)?;
@@ -200,7 +207,28 @@ pub fn run(state: &Path, command: ProxyCommand, out: Output) -> Result<i32> {
 /// `parcela relay [status|install|uninstall]`: the system relay from 443 and 80 to the proxy.
 pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
     match command {
-        RelayCommand::Install => {
+        RelayCommand::Install {
+            lan: true,
+            interface,
+        } => {
+            Registry::open(state, true)?.context("cannot create the registry")?;
+            let redirect = parcela::proxy::relay::install_lan(
+                state,
+                FrontDoor::load(state)?,
+                interface.as_deref(),
+            )?;
+            let report = json!({"lan": redirect});
+            out.emit(&report, |style| {
+                format!(
+                    "{} Shared .local URLs are now {}\n  Restart LAN-shared environments to use them: {}\n",
+                    style.ok(),
+                    style.url("https://<name>.local"),
+                    style.bold("parcela restart --lan")
+                )
+            })?;
+            Ok(0)
+        }
+        RelayCommand::Install { lan: false, .. } => {
             Registry::open(state, true)?.context("cannot create the registry")?;
             let front_door = parcela::proxy::relay::install(state, FrontDoor::load(state)?)?;
             switch(state, front_door, out)
@@ -214,16 +242,41 @@ pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
             let front_door = FrontDoor::load(state)?;
             let relayed = parcela::proxy::relay::target().filter(|_| installed);
             let target = relayed.unwrap_or(front_door.https);
+            let lan = parcela::proxy::relay::lan();
             let report = json!({
                 "installed": installed,
                 "http": http,
                 "location": parcela::proxy::relay::location(),
                 "target": target,
                 "proxy_port": front_door.https,
+                "lan": lan,
             });
             out.emit(&report, |style| {
                 let ports = if http { ":443 and :80" } else { ":443" };
-                match relayed {
+                let lan = match &lan {
+                    None => String::new(),
+                    Some(lan) => {
+                        let ports = if lan.http { ":443 and :80" } else { ":443" };
+                        let moved = if lan.target == front_door.https {
+                            String::new()
+                        } else {
+                            format!(
+                                "{}\n",
+                                style.dim(&format!(
+                                    "This proxy is on :{}, so its .local URLs keep the port.",
+                                    front_door.https
+                                ))
+                            )
+                        };
+                        format!(
+                            "{} LAN redirect installed: {ports} on {} to :{}\n{moved}",
+                            style.ok(),
+                            lan.interface,
+                            lan.target
+                        )
+                    }
+                };
+                let relay = match relayed {
                     None if !installed => format!(
                         "Relay not installed\n{}\n",
                         style.dim("Serve URLs without a port with `parcela relay install`.")
@@ -237,7 +290,8 @@ pub fn relay(state: &Path, command: RelayCommand, out: Output) -> Result<i32> {
                         ))
                     ),
                     _ => format!("{} Relaying {ports} to :{target}\n", style.ok()),
-                }
+                };
+                relay + &lan
             })?;
             Ok(0)
         }

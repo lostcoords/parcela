@@ -93,7 +93,7 @@ A domain name can be reachable by other people, so its `/_parcela/*` carries `X-
 
 ## Sharing for one run
 
-LAN sharing records the selected interface address with the run. Caddy adds a server on that address and the HTTPS port for the shared environment's `.local` names. It serves those names only while the interface still holds the address. If the LAN listener cannot load, the proxy retries configuration without it so loopback routes can remain available.
+LAN sharing records the selected interface address with the run. Caddy adds a server on that address and the HTTPS port for the shared environment's `.local` names. It serves those names only while the interface still holds the address. The run's `.local` URLs carry that port, unless the LAN redirect targets it on the interface holding the address; then they use 443. If the LAN listener cannot load, the proxy retries configuration without it so loopback routes can remain available.
 
 mDNS publishers use `dns-sd` on macOS or `avahi-publish` on Linux. Tailscale sharing chooses free HTTPS ports from `tailscale serve status` and starts one foreground serve process per service. Tailnet requests reach backend ports directly.
 
@@ -151,7 +151,7 @@ The crate is grouped by subsystem. The groups organize the code; they are not st
 | `proxy` | `mod` | Starts, stops, refreshes and revives the proxy, and installs or removes CA trust. |
 | | `daemon` | `parcela proxy run`: owns Caddy, the dashboard and the injector, and renews route leases. |
 | | `router` | Builds Caddy configuration and route leases, and loads them over the admin socket. |
-| | `frontdoor`, `relay` | The proxy's HTTPS port, and the optional 443/80 relay. |
+| | `frontdoor`, `relay` | The proxy's HTTPS port, the optional 443/80 relay, and the LAN redirect. |
 | | `dashboard`, `inject`, `opens` | Serves the local browser dashboard, switcher and app debug menu; adds the badge script to HTML page loads on loopback and domain names; records what processes hand to `BROWSER`. |
 | `share` | | Plans LAN, Tailscale and domain sharing and allowed host variables. |
 | `cli` | | Parses arguments, selects commands, and renders output. |
@@ -162,6 +162,8 @@ CA trust changes occur only through `parcela trust` or a first terminal `up`, be
 
 `parcela autostart enable` installs a per-user service (a LaunchAgent, or a systemd user unit) that runs `parcela autostart run` once at login. It runs `up --detach` for each environment whose last session was running but whose owner is gone, which is what a reboot leaves; `down` marks a session stopped, so stopped environments stay stopped. It needs no root.
 
-`parcela relay install` is the only system-service installation path. The service manager owns loopback port 443 (and 80 when free) and relays connections as the user: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. Parcela code does not run as root. Packet-filter redirection is not used.
+`parcela relay install` is the only system-service installation path. The service manager owns loopback port 443 (and 80 when free) and relays connections as the user: launchd with `nc` on macOS, systemd socket units with `systemd-socket-proxyd` on Linux. Parcela code does not run as root.
+
+`parcela relay install --lan` adds a packet-filter redirect, also behind the password prompt. On one interface, connections to its address on 443, and on 80 when nothing answers there, go to the proxy's port on the same address, which only the LAN listener holds. Loopback is never a target, so unshared environments stay off the LAN. It is macOS only. Root's launchd loads pf rules into the `com.apple/parcela` anchor at boot with `pfctl -E`; the stock `/etc/pf.conf` evaluates that anchor and is not edited. The rules are plain `rdr`, without `pass`, so filter rules still see the redirected connections. pf does not redirect this Mac's own connections to its LAN address, so on the machine itself the port-less `.local` URL does not connect; `<name>.localhost` serves it there. The install checks the rules with `pfctl -n` before the password prompt and removes the rules file and daemon if a later step fails, since a rules file left behind makes `.local` URLs drop the port. A program that starts listening on that address's 443 after the install is hidden by the redirect.
 
 For contributor commands and live verification, see [Contribute to Parcela](/docs/contributing). For site checks, see [Build the documentation site](/docs/docs-site).

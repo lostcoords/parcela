@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `parcela relay install --lan` drops the `:1443` from shared `.local` URLs. After a password prompt it redirects ports 443 and 80 on the LAN interface to the proxy's LAN listener, which serves only environments started with `--lan`: a pf anchor under `com.apple/*`, reloaded at boot by a launchd daemon. It uses plain `rdr`, so your own pf filter rules still apply, and works for other devices only. On this Mac itself the port-less `.local` URL does not connect: pf does not redirect the machine's own connections to its LAN address. Use `<name>.localhost` there, or `<name>.local:<proxy port>`. macOS only; on Linux it refuses, and `.local` URLs keep the port. `--interface` picks the interface. It refuses when something already answers on port 443 at that interface's address, and skips port 80 when something answers there. pf checks the rules before the password prompt, and a failed install removes what it put in place and shows pf's error. `parcela relay status` shows the installed redirect, and `parcela relay uninstall` removes it with the relay. Restart LAN-shared environments to update their URLs. Verified live from an iPhone and from another host on the LAN.
+
 ## 0.9.3 - 2026-11-13
 
 ### Fixed

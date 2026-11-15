@@ -463,8 +463,16 @@ pub enum RelayCommand {
     /// Show whether the relay is installed
     Status,
     /// Install the relay
-    Install,
-    /// Remove the relay
+    Install {
+        /// Install the LAN redirect instead: 443 and 80 on the LAN interface go to the proxy's
+        /// LAN listener, so shared `.local` URLs need no port
+        #[arg(long)]
+        lan: bool,
+        /// The interface for --lan (default: the one with the detected LAN address)
+        #[arg(long, requires = "lan", value_name = "NAME")]
+        interface: Option<String>,
+    },
+    /// Remove the relay and the LAN redirect
     Uninstall,
 }
 

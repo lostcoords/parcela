@@ -312,18 +312,21 @@ The port is the host's [`proxy.port`](#config), else the port saved by `proxy st
 ## relay
 
 ```text
-parcela relay [status | install | uninstall]
+parcela relay [status | install [--lan [--interface NAME]] | uninstall]
 ```
 
 Serves URLs without a port. The relay is not the proxy: it is a system service that forwards loopback port 443, and port 80 when free, to the proxy's port, as your user. Without a subcommand, shows whether it is installed.
 
 | Subcommand | Effect |
 | --- | --- |
-| `status` | Shows whether the relay is installed, whether it takes port 80, and the port it forwards to, as installed. JSON adds `proxy_port`, this state directory's proxy port. |
+| `status` | Shows whether the relay is installed, whether it takes port 80, and the port it forwards to, as installed. JSON adds `proxy_port`, this state directory's proxy port, and `lan`, the installed LAN redirect's `interface`, `target` port and `http`, read from its rules file, or `null`. |
 | `install` | Installs the relay after a password prompt. Refuses an occupied 443. On macOS it is a launchd daemon running `nc`; on Linux, systemd socket units running `systemd-socket-proxyd`. |
-| `uninstall` | Removes the relay. |
+| `install --lan` | Installs the LAN redirect instead, after a password prompt. macOS only. `--interface` picks the interface; the default holds the detected LAN address. |
+| `uninstall` | Removes the relay and the LAN redirect. |
 
-Restart running environments after either change so their URLs update. `proxy install` and `proxy uninstall` still work as aliases.
+Restart running environments after either change so their URLs update.
+
+The LAN redirect sends ports 443 and 80 on one interface's address to the proxy's port on that same address. Caddy listens there only while a run is shared with `--lan`, and only for that run's `.local` names, so it never reaches loopback-only environments. It is a pf anchor, `com.apple/parcela`, loaded at boot by a launchd daemon that also turns pf on; `/etc/pf.conf` is not edited. The rules are plain `rdr`, so your own pf filter rules still apply. On this Mac itself the port-less `.local` URL does not connect: pf does not redirect the machine's own connections to its LAN address. Use `<name>.localhost` there, or `<name>.local:<proxy port>`. Linux is not supported: there `install --lan` refuses and `.local` URLs keep the port. pf checks the rules before the password prompt; if a later step fails, the install removes what it put in place and shows pf's error. It refuses when something already answers on port 443 at that address and skips port 80 when something answers there. Shared `.local` URLs drop the port only while the redirect targets this proxy's port on the interface that holds the run's LAN address. Uninstalling flushes the anchor but leaves pf on until the next boot. Verified live from an iPhone and from another host on the LAN, through port 443. `proxy install` and `proxy uninstall` still work as aliases.
 
 ## autostart
 

@@ -150,6 +150,7 @@ fn relay_status_reports_without_changing_anything() {
     assert_eq!(report["proxy_port"], 1443);
     assert!(report["target"].is_u64());
     assert!(report["installed"].is_boolean() && report["location"].is_string());
+    assert!(report["lan"].is_null() || report["lan"]["interface"].is_string());
     assert!(!state.exists(), "status writes no state");
 }
 

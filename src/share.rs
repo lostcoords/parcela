@@ -38,7 +38,8 @@ pub struct Share {
     /// The LAN address the `.local` names point at. Caddy also listens there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lan: Option<Ipv4Addr>,
-    /// Caddy's port on that address. The 443 relay serves loopback only, so this is the proxy's.
+    /// The port other devices reach on that address: 443 when the LAN redirect sends it to this
+    /// proxy on that address's interface, else the proxy's own port, where Caddy listens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lan_port: Option<u16>,
     /// The mDNS publisher, `dns-sd` or `avahi-publish`.
@@ -140,7 +141,10 @@ impl Share {
                 .context("--lan needs dns-sd (macOS) or avahi-publish (Linux) on PATH")?;
             probe_lan(state, ip, https_port)?;
             share.lan = Some(ip);
-            share.lan_port = Some(https_port);
+            share.lan_port = Some(match crate::proxy::relay::lan() {
+                Some(redirect) if redirect.reaches(ip, https_port, &interfaces()) => 443,
+                _ => https_port,
+            });
             share.mdns = Some(mdns.to_str().context("non-UTF-8 mDNS path")?.into());
         }
         if request.tailscale {
@@ -243,8 +247,9 @@ impl Share {
                 let label = host.trim_end_matches(".local");
                 let command = if mdns.ends_with("dns-sd") {
                     format!(
-                        "{} -P {label} _https._tcp local {https_port} {host} {ip}",
-                        quote(mdns)
+                        "{} -P {label} _https._tcp local {} {host} {ip}",
+                        quote(mdns),
+                        self.lan_port.unwrap_or(https_port)
                     )
                 } else {
                     format!("{} -a -R {host} {ip}", quote(mdns))
@@ -328,7 +333,7 @@ pub fn local_host(hostname: &str) -> String {
 }
 
 /// The address of the interface the default route uses. Connecting a UDP socket sends nothing.
-fn lan_address() -> Result<Ipv4Addr> {
+pub(crate) fn lan_address() -> Result<Ipv4Addr> {
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
     let address = socket
         .connect((Ipv4Addr::new(192, 0, 2, 1), 9))
@@ -382,7 +387,7 @@ fn probe_domain(state: &Path, port: u16) -> Result<()> {
 }
 
 /// RFC 1918 and link-local addresses. A public address would serve the app to the internet.
-fn private_network(ip: Ipv4Addr) -> bool {
+pub(crate) fn private_network(ip: Ipv4Addr) -> bool {
     ip.is_private() || ip.is_link_local()
 }
 
@@ -401,12 +406,17 @@ fn probe_lan(state: &Path, ip: Ipv4Addr, port: u16) -> Result<()> {
 
 /// Whether an interface still has `ip`. Caddy cannot listen on an address that left.
 pub fn present(ip: Ipv4Addr) -> bool {
+    interfaces().iter().any(|(_, address)| *address == ip)
+}
+
+/// Every IPv4 address with the name of the interface that holds it.
+pub fn interfaces() -> Vec<(String, Ipv4Addr)> {
     let mut list = std::ptr::null_mut();
     // SAFETY: getifaddrs fills `list`, which is walked read-only and freed once below.
     if unsafe { libc::getifaddrs(&mut list) } != 0 {
-        return false;
+        return Vec::new();
     }
-    let mut found = false;
+    let mut found = Vec::new();
     let mut entry = list;
     while !entry.is_null() {
         // SAFETY: `entry` is a node of the list getifaddrs returned.
@@ -414,9 +424,17 @@ pub fn present(ip: Ipv4Addr) -> bool {
         if !interface.ifa_addr.is_null()
             && i32::from(unsafe { (*interface.ifa_addr).sa_family }) == libc::AF_INET
         {
-            // SAFETY: an AF_INET address is a sockaddr_in.
-            let address = unsafe { &*(interface.ifa_addr as *const libc::sockaddr_in) };
-            found |= Ipv4Addr::from(u32::from_be(address.sin_addr.s_addr)) == ip;
+            // SAFETY: an AF_INET address is a sockaddr_in, and ifa_name a C string.
+            let (address, name) = unsafe {
+                (
+                    &*(interface.ifa_addr as *const libc::sockaddr_in),
+                    std::ffi::CStr::from_ptr(interface.ifa_name),
+                )
+            };
+            found.push((
+                name.to_string_lossy().into_owned(),
+                Ipv4Addr::from(u32::from_be(address.sin_addr.s_addr)),
+            ));
         }
         entry = interface.ifa_next;
     }
@@ -587,6 +605,37 @@ mod tests {
             "notes.local,api-notes.local,mb.tail1.ts.net,notes.dev.example.com,api-notes.dev.example.com,notes.tower.example.org,api-notes.tower.example.org"
         );
         assert_eq!(Share::default().hosts(&[]), "");
+    }
+
+    #[test]
+    fn interfaces_name_the_holder_of_each_address() {
+        let loopback = interfaces()
+            .into_iter()
+            .find(|(_, address)| *address == Ipv4Addr::LOCALHOST)
+            .expect("an interface holds 127.0.0.1");
+        assert!(loopback.0.starts_with("lo"), "{loopback:?}");
+        assert!(present(Ipv4Addr::LOCALHOST));
+        assert!(!present(Ipv4Addr::new(192, 0, 2, 1)));
+    }
+
+    #[test]
+    fn lan_urls_and_mdns_drop_the_port_through_the_lan_redirect() {
+        let share = Share {
+            lan_port: Some(443),
+            tailscale: None,
+            domains: Vec::new(),
+            ..shared()
+        };
+        let web = endpoint("web", "notes.localhost", 24001);
+        assert_eq!(share.urls(&web), ["https://notes.local"]);
+        let manifest = Manifest::parse(
+            "version: 1\nproject: notes\nservices:\n  web:\n    command: serve\n    http: {healthcheck: /}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            share.processes(&manifest, &[web], 1443).unwrap()["parcela-lan-web"],
+            "'/usr/bin/dns-sd' -P notes _https._tcp local 443 notes.local 192.168.1.20"
+        );
     }
 
     #[test]

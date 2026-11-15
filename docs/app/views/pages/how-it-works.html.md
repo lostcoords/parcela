@@ -98,7 +98,7 @@ Off by default. Each kind is turned on per run with a flag, or for every run on 
                      └────────────────────────────────────────────┘
 ```
 
-LAN names are published over mDNS with `dns-sd` or `avahi`. Caddy serves the LAN and domain names; `tailscale serve` forwards to the backend ports itself, and Parcela never uses Funnel. A domain listener is plain HTTP for your own proxy (cloudflared, nginx) to put TLS in front of. Domain listeners stay on loopback; something you run in front of them makes them public.
+LAN names are published over mDNS with `dns-sd` or `avahi`. With `parcela relay install --lan`, port 443 on the LAN address is redirected to the LAN listener, so `.local` URLs have no port. Caddy serves the LAN and domain names; `tailscale serve` forwards to the backend ports itself, and Parcela never uses Funnel. A domain listener is plain HTTP for your own proxy (cloudflared, nginx) to put TLS in front of. Domain listeners stay on loopback; something you run in front of them makes them public.
 
 ## Lifecycle
 
