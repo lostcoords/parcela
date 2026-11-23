@@ -435,9 +435,13 @@ pub fn run(mut cli: Cli) -> Result<i32> {
             let (registry, workspace) = reader()?;
             super::lifecycle::open(&registry, &workspace, service.as_deref(), out)
         }
-        Command::Rm { prune } => {
-            super::inventory::remove(&state, &cli.path, id, prune, out)?;
-            Ok(0)
+        Command::Rm {
+            orphans: true,
+            data,
+            ..
+        } => super::inventory::orphans(&state, data, out),
+        Command::Rm { prune, data, .. } => {
+            super::inventory::remove(&state, &cli.path, id, prune, data, out)
         }
         Command::Task { name, args } => super::lifecycle::task(&state, &cli.path, &name, &args),
         Command::Context => super::lifecycle::context(&state, &cli.path, out),

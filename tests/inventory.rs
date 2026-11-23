@@ -93,6 +93,13 @@ impl Fixture {
             )
             .unwrap();
     }
+    /// The runtime directory a run would have left, holding `bytes` of data.
+    fn runtime(&self, id: &str, bytes: usize) -> PathBuf {
+        let runtime = self.state.join("environments").join(id);
+        parcela::state::private::write_bytes(&runtime.join("data/db.sqlite3"), &vec![1; bytes])
+            .unwrap();
+        runtime
+    }
     fn ids(&self) -> Vec<String> {
         Registry::open(&self.state, false)
             .unwrap()
@@ -289,4 +296,155 @@ fn dashboard_hostname_cannot_be_adopted_by_an_application() {
             .contains("reserved for the Parcela dashboard")
     );
     assert!(registry.list(None).unwrap().is_empty());
+}
+
+#[test]
+fn rm_data_deletes_the_runtime_directory_only_once_the_environment_is_forgotten() {
+    let f = Fixture::new();
+    let (review, review_id) = f.checkout("notes", "notes-review", Role::Preview, "review");
+    let (notes, running_id) = f.checkout("notes", "notes", Role::Primary, "primary");
+    let review_data = f.runtime(&review_id, 64 * 1024);
+    let running_data = f.runtime(&running_id, 1024);
+    f.running(&running_id, 47003);
+    let refused = cli(&notes, &f.state, &["rm", "--data"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(running_data.is_dir());
+
+    let removed = json_of(&cli(&review, &f.state, &["rm", "--data"]));
+    let row = &removed["forgotten"][0];
+    assert_eq!(row["kept"], json!({"source": review}));
+    assert_eq!(row["deleted"]["runtime_dir"], json!(review_data));
+    assert!(
+        row["deleted"]["bytes"].as_u64().unwrap() >= 64 * 1024,
+        "{row}"
+    );
+    assert!(!review_data.exists());
+    assert!(review.join("parcela.yaml").is_file());
+    assert_eq!(f.ids(), [running_id]);
+    // Created but never started: there is no directory to delete.
+    let (shop, _) = f.checkout("shop", "shop", Role::Primary, "primary");
+    let removed = json_of(&cli(&shop, &f.state, &["rm", "--data"]));
+    assert_eq!(removed["forgotten"][0]["deleted"], Value::Null);
+    assert_eq!(removed["forgotten"][0]["kept"], json!({"source": shop}));
+    assert!(human(&f.root, &f.state, &["rm", "--orphans"]).starts_with("No orphaned data in "));
+}
+
+#[test]
+fn rm_prune_data_deletes_the_data_of_each_forgotten_environment() {
+    let f = Fixture::new();
+    let (kept, kept_id) = f.checkout("notes", "notes", Role::Primary, "primary");
+    let (gone, gone_id) = f.checkout("notes", "gone", Role::Preview, "gone");
+    let kept_data = f.runtime(&kept_id, 1024);
+    let gone_data = f.runtime(&gone_id, 1024);
+    fs::remove_dir_all(&gone).unwrap();
+    let text = human(&kept, &f.state, &["rm", "--prune", "--data"]);
+    assert!(
+        text.starts_with("✓ Forgot gone (notes); released api-gone-notes.localhost, gone-notes.localhost\n  deleted "),
+        "{text}"
+    );
+    assert!(
+        text.contains(&format!("of data in {}", gone_data.display())),
+        "{text}"
+    );
+    assert!(!gone_data.exists());
+    assert!(kept_data.is_dir());
+    assert_eq!(f.ids(), [kept_id]);
+}
+
+#[test]
+fn rm_orphans_lists_unowned_data_and_deletes_it_only_with_data() {
+    let f = Fixture::new();
+    let (notes, owned_id) = f.checkout("notes", "notes", Role::Primary, "primary");
+    let (review, review_id) = f.checkout("notes", "notes-review", Role::Preview, "review");
+    let owned = f.runtime(&owned_id, 1024);
+    let orphan = f.runtime(&review_id, 64 * 1024);
+    parcela::state::private::write_json(
+        &orphan.join("context.json"),
+        &json!({"source": review, "environment": {"PARCELA_PROJECT_ID": "notes", "PARCELA_ROLE": "preview", "PARCELA_ENVIRONMENT_NAME": "review"}}),
+    )
+    .unwrap();
+    json_of(&cli(&review, &f.state, &["rm"]));
+    let unknown = f.runtime(&uuid::Uuid::new_v4().to_string(), 1024);
+
+    let listed = json_of(&cli(&notes, &f.state, &["rm", "--orphans"]));
+    let rows = listed["orphans"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "{listed}");
+    assert_eq!(rows[0]["id"], review_id);
+    assert_eq!(rows[0]["path"], json!(orphan));
+    assert_eq!(rows[0]["name"], "review");
+    assert_eq!(rows[0]["source"], json!(review));
+    assert_eq!(rows[1]["path"], json!(unknown));
+    assert_eq!(rows[1]["project"], Value::Null);
+    let text = human(&notes, &f.state, &["rm", "--orphans"]);
+    assert!(
+        text.starts_with(&format!(
+            "2 data directories in {} no environment owns, ",
+            f.state.join("environments").display()
+        )),
+        "{text}"
+    );
+    assert!(text.contains(&format!("  {review_id}  ")), "{text}");
+    assert!(text.contains("just now  review (notes)  "), "{text}");
+    assert!(
+        text.ends_with("Delete them with parcela rm --orphans --data\n"),
+        "{text}"
+    );
+    assert!(orphan.is_dir() && unknown.is_dir());
+
+    let doctor = cli(
+        &notes,
+        &f.state,
+        &["doctor", "--caddy", "/nonexistent/caddy"],
+    );
+    let report: Value = serde_json::from_slice(&doctor.stdout).unwrap();
+    assert_eq!(report["orphaned_data"]["directories"], 2);
+    assert!(
+        report["notes"].as_array().unwrap().iter().any(|note| note
+            .as_str()
+            .unwrap()
+            .starts_with("2 data directories no environment owns hold ")),
+        "{report}"
+    );
+
+    let deleted = json_of(&cli(&notes, &f.state, &["rm", "--orphans", "--data"]));
+    assert_eq!(deleted["deleted"].as_array().unwrap().len(), 2);
+    assert_eq!(deleted["failed"], json!([]));
+    assert!(!orphan.exists() && !unknown.exists());
+    assert!(owned.join("data/db.sqlite3").is_file());
+    assert_eq!(
+        human(&notes, &f.state, &["rm", "--orphans"]),
+        format!(
+            "No orphaned data in {}.\n",
+            f.state.join("environments").display()
+        )
+    );
+    let report: Value = serde_json::from_slice(
+        &cli(
+            &notes,
+            &f.state,
+            &["doctor", "--caddy", "/nonexistent/caddy"],
+        )
+        .stdout,
+    )
+    .unwrap();
+    assert_eq!(
+        report["orphaned_data"],
+        json!({"directories": 0, "bytes": 0})
+    );
+}
+
+#[test]
+fn rm_orphans_refuses_to_judge_ownership_without_a_registry() {
+    let f = Fixture::new();
+    let (_, id) = f.checkout("notes", "notes", Role::Primary, "primary");
+    let runtime = f.runtime(&id, 1024);
+    fs::remove_file(f.state.join("registry.sqlite3")).unwrap();
+    let refused = cli(&f.root, &f.state, &["rm", "--orphans", "--data"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("registry is missing"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert!(runtime.is_dir());
 }

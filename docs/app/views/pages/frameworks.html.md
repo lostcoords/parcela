@@ -220,7 +220,7 @@ local:
 Django: `MEDIA_ROOT = os.environ.get("STORAGE_ROOT", BASE_DIR / "media")`.
 
 
-`down` keeps data. `rm` forgets the registration and retains its runtime directory, but a declared teardown hook can delete external data first. A later registration gets a new directory. Retained files are not automatically reused.
+`down` keeps data. `rm` forgets the registration and retains its runtime directory unless you pass `--data`, but a declared teardown hook can delete external data first. A later registration gets a new directory. Retained files are not automatically reused; [`rm --orphans`](/docs/cli#rm) lists and deletes them.
 
 ## Framework settings
 

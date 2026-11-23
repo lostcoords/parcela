@@ -322,7 +322,7 @@ Every service, hook and task receives these. Service names are uppercased, with 
 | `~/.config/parcela/config.yaml` | [Host settings](/docs/cli#config), outside the state directory. Override it with `PARCELA_CONFIG` or `XDG_CONFIG_HOME`. |
 | `$(getconf DARWIN_USER_TEMP_DIR)parcela/` on macOS, `/tmp/parcela-<uid>/` on Linux | Unix sockets for the running environments and the proxy. |
 
-The state directory is private to your user. `rm` keeps an environment's directory. A later registration gets a new directory. Retained files are not automatically reused.
+The state directory is private to your user. `rm` keeps an environment's directory unless you pass `--data`. A later registration gets a new directory. Retained files are not automatically reused: [`rm --orphans`](/docs/cli#rm) lists them and `rm --orphans --data` deletes them.
 
 ## data
 

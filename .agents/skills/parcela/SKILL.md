@@ -64,7 +64,7 @@ parcela --json --path "$CHECKOUT" create trial --from baseline
 
 SQLite uses a consistent backup, including WAL contents. Snapshots reject linked paths, common secret files and raw SQLite file copies. Names are immutable. `restore baseline` fills only a fresh registered environment with no data directory; never remove existing data to make it pass. Restore starts nothing and does not mark setup complete. Review the next start's setup and migration commands for their effects on restored data.
 
-Seed and external data operations remain project-defined tasks, such as `parcela --workspace "$ENVIRONMENT_ID" task seed`. Do not infer permission to run them from permission to create a checkout. `down` stops the selected graph; `rm` still retains source and runtime data. There is no implicit source or snapshot deletion.
+Seed and external data operations remain project-defined tasks, such as `parcela --workspace "$ENVIRONMENT_ID" task seed`. Do not infer permission to run them from permission to create a checkout. `down` stops the selected graph; `rm` still retains source and, without `--data`, runtime data. There is no implicit source or snapshot deletion.
 
 ## Start and verify
 
@@ -119,7 +119,7 @@ parcela --workspace "$ENVIRONMENT_ID" down
 - `restart` checks the new configuration, then restarts every service. It cannot restart one service alone.
 - `down` stops the services and keeps source and data. Do not stop other environments as cleanup. A refused stop is not a successful one.
 - `down --all` stops the project's environments and `--all-projects` every one; use them only when asked.
-- `rm` forgets a stopped environment and frees its URLs; `rm --prune` does so for every one whose checkout is gone. Both keep the runtime directory, but `hooks.teardown`, if declared, runs first and may delete data; read it before `rm`. Use them only on an explicit cleanup request.
+- `rm` forgets a stopped environment and frees its URLs; `rm --prune` does so for every one whose checkout is gone. Both keep the runtime directory unless given `--data`, but `hooks.teardown`, if declared, runs first and may delete data; read it before `rm`. `rm --orphans` lists runtime directories no environment owns, and `rm --orphans --data` deletes them. Use them, and `--data` above all, only on an explicit cleanup request.
 - Before `task NAME -- ARGS`, read that task's command and effects in `parcela.yaml`. Run only the requested task.
 
 ## CLI updates

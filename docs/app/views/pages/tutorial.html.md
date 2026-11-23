@@ -192,7 +192,7 @@ git worktree remove ../signup
 parcela rm --prune
 ```
 
-`rm --prune` forgets the removed checkout and releases its names. It retains the runtime directory and reports where the data remains. Source files in `hello` remain too.
+`rm --prune` forgets the removed checkout and releases its names. It retains the runtime directory and reports where the data remains; add `--data` to delete it too. Source files in `hello` remain either way.
 
 The shared proxy stays running. To stop it, run `parcela proxy stop` when no other environment needs its URLs.
 

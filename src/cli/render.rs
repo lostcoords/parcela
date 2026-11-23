@@ -260,3 +260,54 @@ pub fn proxy_stopped(value: &Value, style: &Style) -> String {
         format!("{} The proxy is not running\n", style.ok())
     }
 }
+
+/// Disk space in decimal units, as Finder and `df -H` show it.
+pub fn size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1000.0 && unit + 1 < UNITS.len() {
+        value /= 1000.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// How long ago a time in seconds since the epoch was, to the largest whole unit.
+pub fn ago(seconds: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |now| now.as_secs() as i64);
+    let elapsed = (now - seconds).max(0);
+    let (count, unit) = match elapsed {
+        0..60 => return "just now".into(),
+        60..3600 => (elapsed / 60, "minute"),
+        3600..86400 => (elapsed / 3600, "hour"),
+        _ => (elapsed / 86400, "day"),
+    };
+    format!("{count} {unit}{} ago", if count == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_and_ages_read_at_a_glance() {
+        assert_eq!(size(0), "0 B");
+        assert_eq!(size(999), "999 B");
+        assert_eq!(size(16_384), "16.4 kB");
+        assert_eq!(size(18_200_000_000), "18.2 GB");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert_eq!(ago(now), "just now");
+        assert_eq!(ago(now - 3600), "1 hour ago");
+        assert_eq!(ago(now - 12 * 86400), "12 days ago");
+    }
+}

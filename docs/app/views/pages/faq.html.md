@@ -138,7 +138,7 @@ Save any data you need before removing state. A configured `hooks.teardown` can 
    parcela down --all-projects
    ```
 
-2. In each checkout whose teardown hook you want to run, run `parcela rm`.
+2. In each checkout whose teardown hook you want to run, run `parcela rm`. Add `--data` to delete its runtime directory too.
 3. If you trusted the certificate authority, remove that trust before deleting its certificate.
 
    ```sh

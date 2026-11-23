@@ -1,12 +1,12 @@
 //! Commands that act on many registered environments at once.
 use super::{
     commands::target_workspace,
-    output::{Output, cell, status_diagnostics, status_rows, table},
+    output::{Output, cell, home, status_diagnostics, status_rows, table},
     render,
 };
 use anyhow::{Context, Result};
 use parcela::{
-    environment::lifecycle,
+    environment::{data, lifecycle},
     project::config::Manifest,
     state::registry::{Registry, SessionStatus, Workspace},
 };
@@ -116,14 +116,16 @@ pub fn down_all(state: &Path, project: Option<&str>, out: Output) -> Result<i32>
     Ok(if failed { 1 } else { 0 })
 }
 
-/// Forget registrations. Never deletes the checkout or the runtime data directory.
+/// Forget registrations. Never deletes the checkout; deletes the runtime data directory only
+/// with `data`, after its registration is gone, so a running environment's is never touched.
 pub fn remove(
     state: &Path,
     path: &Path,
     id: Option<uuid::Uuid>,
     prune: bool,
+    data: bool,
     out: Output,
-) -> Result<()> {
+) -> Result<i32> {
     let existing = Registry::open(state, false)?
         .context("no environments are registered; nothing to remove")?;
     let (targets, mut skipped) = if prune {
@@ -183,18 +185,37 @@ pub fn remove(
     drop(existing);
     let mut registry = Registry::open(state, true)?.context("registry disappeared")?;
     let mut forgotten = Vec::new();
+    let mut failed = false;
     for (workspace, (hosts, runtime, volumes)) in targets.into_iter().zip(released) {
         match registry.forget(&workspace.id) {
             Ok(workspace) => {
-                let mut kept = json!({"source": workspace.source, "runtime_dir": runtime});
+                let mut kept = json!({"source": workspace.source});
                 if !volumes.is_empty() {
                     kept["volumes"] = json!(volumes);
                 }
-                forgotten.push(json!({
+                let mut row = json!({
                     "workspace": workspace,
                     "released_hostnames": hosts.into_values().collect::<Vec<_>>(),
-                    "kept": kept,
-                }))
+                });
+                if !data {
+                    kept["runtime_dir"] = json!(runtime);
+                } else {
+                    match parcela::environment::data::delete(&runtime) {
+                        Ok(usage) => {
+                            row["deleted"] = json!(usage.map(|usage| json!({
+                                "runtime_dir": runtime,
+                                "bytes": usage.bytes,
+                            })))
+                        }
+                        Err(error) => {
+                            failed = true;
+                            kept["runtime_dir"] = json!(runtime);
+                            row["error"] = json!(format!("{error:#}"));
+                        }
+                    }
+                }
+                row["kept"] = kept;
+                forgotten.push(row)
             }
             Err(error) if prune => {
                 skipped.push(json!({"workspace": workspace, "reason": format!("{error:#}")}))
@@ -206,18 +227,34 @@ pub fn remove(
     out.emit(&result, |style| {
         let mut text = String::new();
         for row in &forgotten {
+            let data = if let Some(error) = row["error"].as_str() {
+                format!(
+                    "{} could not delete {}: {error}",
+                    style.bad(),
+                    cell(&row["kept"]["runtime_dir"])
+                )
+            } else if row["deleted"].is_object() {
+                style.dim(&format!(
+                    "deleted {} of data in {}",
+                    render::size(row["deleted"]["bytes"].as_u64().unwrap_or_default()),
+                    cell(&row["deleted"]["runtime_dir"])
+                ))
+            } else if row["kept"]["runtime_dir"].is_null() {
+                style.dim("no data directory to delete")
+            } else {
+                style.dim(&format!(
+                    "data kept in {}; `parcela rm --orphans` lists it",
+                    cell(&row["kept"]["runtime_dir"])
+                ))
+            };
             text.push_str(&format!(
-                "{} Forgot {}; released {}\n  {}\n",
+                "{} Forgot {}; released {}\n  {data}\n",
                 style.ok(),
                 render::name(&row["workspace"]),
                 row["released_hostnames"]
                     .as_array()
                     .map(|hosts| hosts.iter().map(cell).collect::<Vec<_>>().join(", "))
                     .unwrap_or_default(),
-                style.dim(&format!(
-                    "data kept in {}",
-                    cell(&row["kept"]["runtime_dir"])
-                )),
             ));
             let volumes: Vec<_> = row["kept"]["volumes"]
                 .as_array()
@@ -245,5 +282,107 @@ pub fn remove(
             text.push_str("Nothing to remove; every registered checkout still exists.\n");
         }
         text
-    })
+    })?;
+    Ok(if failed { 1 } else { 0 })
+}
+
+/// List runtime directories no registered environment owns; delete them only with `delete`.
+pub fn orphans(state: &Path, delete: bool, out: Output) -> Result<i32> {
+    let found = data::orphans(state)?;
+    let directory = found.directory.display().to_string();
+    // As `render::name` names a registered one: the project for a primary checkout.
+    let label = |orphan: &data::Orphan| match (&orphan.project, &orphan.role, &orphan.name) {
+        (Some(project), Some(role), _) if role == "primary" => project.clone(),
+        (Some(project), _, Some(name)) => format!("{name} ({project})"),
+        _ => "unknown".into(),
+    };
+    if !delete {
+        let total: u64 = found.orphans.iter().map(|orphan| orphan.usage.bytes).sum();
+        let result =
+            json!({"environments_dir": directory, "orphans": found.orphans, "bytes": total});
+        out.emit(&result, |style| {
+            if found.orphans.is_empty() {
+                return format!("No orphaned data in {}.\n", home(&directory));
+            }
+            let rows: Vec<Vec<String>> = found
+                .orphans
+                .iter()
+                .map(|orphan| {
+                    vec![
+                        format!("  {}", orphan.id),
+                        render::size(orphan.usage.bytes),
+                        render::ago(orphan.usage.modified),
+                        label(orphan),
+                        orphan
+                            .source
+                            .as_ref()
+                            .map(|source| home(&source.display().to_string()))
+                            .unwrap_or_else(|| "-".into()),
+                    ]
+                })
+                .collect();
+            format!(
+                "{} data director{} in {} no environment owns, {}:\n{}\nDelete {} with {}\n",
+                found.orphans.len(),
+                if found.orphans.len() == 1 { "y" } else { "ies" },
+                home(&directory),
+                render::size(total),
+                table(&["  ID", "SIZE", "MODIFIED", "NAME", "CHECKOUT"], &rows),
+                if found.orphans.len() == 1 {
+                    "it"
+                } else {
+                    "them"
+                },
+                style.bold("parcela rm --orphans --data"),
+            )
+        })?;
+        return Ok(0);
+    }
+    let mut deleted = Vec::new();
+    let mut failed = Vec::new();
+    for orphan in found.orphans {
+        match data::delete_orphan(state, &orphan) {
+            Ok(_) => deleted.push(orphan),
+            Err(error) => failed.push((orphan, format!("{error:#}"))),
+        }
+    }
+    let total: u64 = deleted.iter().map(|orphan| orphan.usage.bytes).sum();
+    let result = json!({
+        "environments_dir": directory,
+        "deleted": deleted,
+        "bytes": total,
+        "failed": failed.iter().map(|(orphan, error)| {
+            let mut row = json!(orphan);
+            row["error"] = json!(error);
+            row
+        }).collect::<Vec<_>>(),
+    });
+    out.emit(&result, |style| {
+        if deleted.is_empty() && failed.is_empty() {
+            return format!("No orphaned data in {}.\n", home(&directory));
+        }
+        let mut text = String::new();
+        for orphan in &deleted {
+            text.push_str(&format!(
+                "{} Deleted {} ({}), {}\n",
+                style.ok(),
+                orphan.id,
+                label(orphan),
+                render::size(orphan.usage.bytes)
+            ));
+        }
+        for (orphan, error) in &failed {
+            text.push_str(&format!(
+                "{} Kept {} ({}): {error}\n",
+                style.bad(),
+                orphan.id,
+                label(orphan)
+            ));
+        }
+        if !deleted.is_empty() {
+            text.push_str(&format!("Freed {}.\n", render::size(total)));
+        }
+        text
+    })?;
+    Ok(if failed.is_empty() { 0 } else { 1 })
 }

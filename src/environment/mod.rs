@@ -1,6 +1,7 @@
-//! One environment's run: its owner, process graph, control socket, logs and recovery.
+//! One environment's run: its owner, process graph, control socket, logs, recovery and data.
 pub mod autostart;
 pub mod control;
+pub mod data;
 mod echo;
 mod health;
 pub mod inventory;

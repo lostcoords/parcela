@@ -248,6 +248,12 @@ pub enum Command {
         /// Remove environments whose checkout is gone
         #[arg(long, conflicts_with = "workspace")]
         prune: bool,
+        /// Also delete the runtime data directory; with --orphans, delete the listed directories
+        #[arg(long)]
+        data: bool,
+        /// List data directories no registered environment owns
+        #[arg(long, conflicts_with_all = ["workspace", "prune"])]
+        orphans: bool,
     },
     /// Check the setup
     #[command(display_order = 17)]

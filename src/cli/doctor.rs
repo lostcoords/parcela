@@ -355,13 +355,35 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
     });
     let ready = checks.iter().all(|check| check.ok);
     let problems = recent_problems(probes.state);
-    let notes = if headless {
+    let mut notes = if headless {
         vec!["No HTTP services; no proxy or certificate trust is needed.".to_owned()]
     } else {
         vec![
         "HTTPS trust is not checked, and only `parcela trust` changes it. If the browser warns, run `parcela trust` once.".to_owned(),
     ]
     };
+    // `rm` keeps data by default, so forgotten environments' directories build up unseen.
+    let orphaned = parcela::environment::data::orphans(probes.state)
+        .ok()
+        .map(|found| {
+            serde_json::json!({
+                "directories": found.orphans.len(),
+                "bytes": found.orphans.iter().map(|orphan| orphan.usage.bytes).sum::<u64>(),
+            })
+        });
+    if let Some(orphaned) = orphaned
+        .as_ref()
+        .filter(|orphaned| orphaned["directories"] != 0)
+    {
+        let count = orphaned["directories"].as_u64().unwrap_or_default();
+        notes.push(format!(
+            "{count} data director{} no environment owns {} {}; list {} with `parcela rm --orphans`.",
+            if count == 1 { "y" } else { "ies" },
+            if count == 1 { "holds" } else { "hold" },
+            super::render::size(orphaned["bytes"].as_u64().unwrap_or_default()),
+            if count == 1 { "it" } else { "them" },
+        ));
+    }
     let next = checks
         .iter()
         .find_map(|check| check.fix.clone())
@@ -373,7 +395,7 @@ pub fn run(probes: Probes<'_>, out: Output) -> Result<bool> {
             }
         });
     out.emit(
-        &serde_json::json!({"ready": ready, "checks": checks, "notes": notes, "recent_problems": problems}),
+        &serde_json::json!({"ready": ready, "checks": checks, "notes": notes, "orphaned_data": orphaned, "recent_problems": problems}),
         |style| {
             let width = checks
                 .iter()

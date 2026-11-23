@@ -122,7 +122,7 @@ The directory has mode 700. It contains the following records:
 
 Control and Caddy admin sockets use a hash of the state path under a per-user temporary directory. The base is `parcela` inside macOS's per-user temporary directory or `/tmp/parcela-<uid>` on Linux. Socket placement does not depend on environment variables. This keeps processes in agreement and paths within Unix socket length limits.
 
-`rm` removes registration, not source or runtime files. A configured teardown hook can change external data. Read-only inspection does not register a checkout or start processes.
+`rm` removes registration, not source, and runtime files only with `--data`, after the registration is gone. `rm --orphans` finds runtime directories no registration owns; it lists them before the registry is read, since `up` registers an ID before creating its directory, and refuses without a readable registry. A configured teardown hook can change external data. Read-only inspection does not register a checkout or start processes.
 
 ## Source map
 

@@ -74,7 +74,7 @@ This stops and removes only `billing`, then forgets missing stopped checkouts. W
 
 To stop all environments of this project, use `parcela down --all`. To stop all projects, use `parcela down --all-projects`.
 
-`down` keeps everything on disk. `rm` forgets a stopped environment and frees its URLs. It keeps the runtime directory, but a configured teardown hook runs first and can delete external data.
+`down` keeps everything on disk. `rm` forgets a stopped environment and frees its URLs. It keeps the runtime directory unless you add `--data`, but a configured teardown hook runs first and can delete external data. `parcela rm --orphans` lists the directories kept this way, and `parcela doctor` notes them.
 
 ## Set up a coding agent
 

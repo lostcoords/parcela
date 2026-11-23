@@ -342,7 +342,8 @@ impl Registry {
     }
 
     /// Forget a stopped environment's registration and release its hostnames and ports.
-    /// Source and runtime data stay on disk; only registry rows are removed.
+    /// Source and runtime data stay on disk; only registry rows are removed. `rm --data`
+    /// deletes the runtime directory afterwards.
     pub fn forget(&mut self, environment: &str) -> Result<Workspace> {
         let transaction = self
             .connection

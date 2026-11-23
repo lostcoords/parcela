@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `parcela rm --data` also deletes the environment's runtime directory, with its `data`, logs and cache, once its registration is gone. A plain `rm` still keeps it. It works with `--prune`, refuses a running environment as `rm` does, and refuses a directory that is not a private directory you own or that a process still holds. Output and JSON say what was deleted and how much, instead of where the data was kept.
+- `parcela rm --orphans` lists the runtime directories no registered environment owns, the ones a plain `rm` left behind, with each one's size, last modification and the name and checkout of its last run. `rm --orphans --data` deletes them. Before, nothing showed or removed them once their environment was forgotten, and they built up unseen: on one Mac, 18 of them held 18 GB, 16 GB of it a single SQLite database. Only directories directly under `environments/` named by an environment ID are considered, symlinks are never followed, and it refuses when the registry cannot be read.
+- `parcela doctor` notes orphaned runtime directories and their total size, and points at `parcela rm --orphans`. JSON reports them as `orphaned_data`.
+
 ## 0.10.1 - 2026-11-23
 
 ### Added

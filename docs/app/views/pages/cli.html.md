@@ -257,17 +257,24 @@ Checks Caddy, `lsof`, `ps`, configuration, the state directory, and the proxy wi
 
 It also lists problems from the last day's logs, without failing on them: errors from the proxy's log and what each environment's supervisor reported, such as a process that exited, with how often each happened and the log to read.
 
-JSON has the shape `{ready, checks: [{name, ok, detail, fix}], notes, recent_problems: [{source, detail, count, log}]}`.
+It also notes runtime directories that no registered environment owns, with their total size, and points at [`rm --orphans`](#rm).
+
+JSON has the shape `{ready, checks: [{name, ok, detail, fix}], notes, orphaned_data: {directories, bytes}, recent_problems: [{source, detail, count, log}]}`. `orphaned_data` is `null` when the registry cannot be read.
 
 ## rm
 
 ```text
-parcela rm [--prune]
+parcela rm [--prune] [--data]
+parcela rm --orphans [--data]
 ```
 
-Forgets a stopped environment and releases names and ports. Refuses a running environment. A configured `hooks.teardown` runs first. Then, for a `compose` service, Parcela removes the environment's containers and network and lists the volumes it keeps. If either fails, registration remains. Parcela itself retains source and the runtime directory.
+Forgets a stopped environment and releases names and ports. Refuses a running environment. A configured `hooks.teardown` runs first. Then, for a `compose` service, Parcela removes the environment's containers and network and lists the volumes it keeps. If either fails, registration remains. Parcela itself retains source and, without `--data`, the runtime directory.
 
 `--prune` applies to stopped environments whose checkout directory no longer exists. It conflicts with `--workspace`.
+
+`--data` also deletes each forgotten environment's runtime directory, `PARCELA_RUNTIME_DIR`, with its `data`, logs and cache. It deletes only after the registration is gone, so a running environment's directory is never touched, and it refuses a directory that is not a private directory you own or that a process still holds. If the deletion fails, the environment stays forgotten, the directory is reported as kept, and the exit code is 1. JSON reports `deleted: {runtime_dir, bytes}` for each, or `null` when there was no directory.
+
+`--orphans` lists the runtime directories that no registered environment owns, such as those a plain `rm` kept, with their size, last modification, and the name and checkout of their last run when known. It changes nothing. With `--data`, it deletes them. It considers only directories directly under `environments/` that are named by an environment ID, never follows symlinks, and refuses when the registry cannot be read, since ownership cannot then be proved. JSON has the shape `{environments_dir, orphans: [{id, path, bytes, modified, project, role, name, source}], bytes}`, or `{environments_dir, deleted, failed, bytes}` with `--data`; `modified` is in seconds since the epoch. `--orphans` conflicts with `--prune` and `--workspace`.
 
 ## task
 
