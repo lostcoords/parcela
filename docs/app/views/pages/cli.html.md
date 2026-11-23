@@ -366,7 +366,7 @@ Starts again, at login, the environments that were running when the machine went
 | Subcommand | Effect |
 | --- | --- |
 | `status` | Shows whether autostart is on. |
-| `enable` | Installs a per-user service that runs once at login: a LaunchAgent on macOS, a systemd user unit on Linux. No password prompt. It keeps the current `PATH` and `PARCELA_CONFIG`. |
+| `enable` | Installs a per-user service that runs once at login: a LaunchAgent on macOS, a systemd user unit on Linux. No password prompt. It keeps the current `PATH` and `PARCELA_CONFIG`; set [`env.command`](#tool-versions) so a project's tool versions come from its checkout instead. |
 | `disable` | Removes the service. |
 
 Each environment starts with `parcela up --detach` in its checkout, shared as its last run was: the same domains, Tailscale, and LAN on whatever address the machine has now. A run that shared nothing starts with `--no-share`. Output goes to `autostart.log` in the state directory. On a Linux machine nobody logs in to, run `loginctl enable-linger` so user services start at boot.
@@ -425,6 +425,7 @@ Shows or changes this machine's settings. Without a subcommand, or with `list` (
 | `proxy.caddy` | The Caddy binary: a name on `PATH`, an absolute path, or a path under `~/`. Default `caddy`. |
 | `trust` | `false` stops `up` from offering to trust the CA, for example on a headless machine. `parcela trust` still works. |
 | `badge` | `false` stops the proxy adding the debug menu to `.localhost`, domain and LAN pages. Default `true`. A running proxy picks it up on its own. |
+| `env.command` | A shell command that prints a JSON object of variables for every service, hook and task, such as `mise env --json` or `direnv export json`. Unset by default. See [below](#tool-versions). |
 
 `sharing` applies to `up`, `restart` and the dashboard's actions, in projects with an HTTP service. Flags and `PARCELA_LAN`, `PARCELA_TAILSCALE`, `PARCELA_DOMAIN` and `PARCELA_DOMAIN_PORT` add to it or override it. `--no-share` turns all of it off for one run. [Share with another device](/docs/worktrees#share-with-another-device) covers each kind.
 
@@ -438,6 +439,16 @@ telemetry: false
 worktrees:
   directory: "~/worktrees"
 ```
+
+### Tool versions
+
+A process inherits the environment of whatever started its environment: your shell for `up`, the proxy for the dashboard's Start and Restart, and the login service for [`autostart`](#autostart). That `PATH` was fixed when the proxy or service started, so it can name a Ruby, Node or Python the checkout has since moved off. Set `env.command` to ask your version manager from the checkout instead:
+
+```sh
+parcela config set env.command 'mise env --json'
+```
+
+Parcela runs it with `/bin/sh` in the checkout, with the inherited environment, each time an environment starts, a task runs or a takeover owner rebuilds its processes. It has 30 seconds. Its JSON object of strings is added to what processes inherit, so a `PATH` it prints replaces the inherited one; a `null` value keeps the inherited variable. Parcela's own variables and `env` in `parcela.yaml` win over it. When it fails or prints anything else, the start or task fails with its output. A checkout that no longer exists, as for `hooks.teardown` after its directory is gone, skips it. Running environments keep their variables until they restart.
 
 ## telemetry
 

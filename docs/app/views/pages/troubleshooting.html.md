@@ -51,6 +51,8 @@ parcela: hooks.setup failed with exit code 1; its output is above
 
 The setup or prestart command exited nonzero, so no other service started and the environment stopped. Its output is printed above the error, prefixed with `setup |`, and `parcela logs setup` shows it again. Fix the cause and run `parcela up` again. A setup that failed runs again on the next `up`. `parcela up --setup` reruns one that already succeeded.
 
+If the hook works from your shell but fails from the dashboard, for example with a gem or package missing for an older Ruby or Node, its processes got the tool versions of the shell that started the proxy. Set [`env.command`](/docs/cli#tool-versions), or run `parcela proxy restart` from a shell in the checkout.
+
 ## The URL answers 503
 
 The environment is registered but not running, or it is still starting. In a browser, the name shows the environment's state with a Start or Restart button instead. Run `parcela status --current`. If it says `stopped`, run `parcela up --detach`.

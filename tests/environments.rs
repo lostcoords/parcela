@@ -349,3 +349,99 @@ fn host_config_places_new_checkouts_and_leases_ports_from_its_range() {
     value(with_config(&f.source, &["down"]));
     assert!((30500..=30510).contains(&port), "{port}");
 }
+
+/// The bug this guards: the proxy behind the dashboard's Restart kept the `PATH` of the shell
+/// that started it, which named a Ruby the checkout had since moved off, and the prestart hook
+/// ran under it. With `env.command`, hooks, services and tasks get what the checkout pins.
+#[test]
+fn env_command_gives_processes_the_tool_versions_the_checkout_pins() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new(false);
+    let root = f.source.parent().unwrap();
+    let executable = |path: &Path, text: &str| {
+        fs::write(path, text).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    for version in ["1.0", "2.0"] {
+        let bin = root.join("installs").join(version).join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        executable(&bin.join("tool"), &format!("#!/bin/sh\necho {version}\n"));
+    }
+    executable(
+        &root.join("manager"),
+        &format!(
+            "#!/bin/sh\nprintf '{{\"PATH\":\"%s:%s\",\"PARCELA_ENVIRONMENT_NAME\":\"wrong\"}}' \"{}/installs/$(cat .tool-version)/bin\" \"$PATH\"\n",
+            root.display()
+        ),
+    );
+    fs::write(f.source.join(".tool-version"), "2.0\n").unwrap();
+    fs::write(
+        f.source.join("parcela.yaml"),
+        "version: 1\nproject: sandbox\nservices:\n  worker: {command: 'exec sleep 300'}\nhooks:\n  prestart: {command: 'echo \"$(tool) $PARCELA_ENVIRONMENT_NAME\" > hook.txt'}\ntasks:\n  which: {command: tool}\n",
+    )
+    .unwrap();
+    let config = root.join("config.yaml");
+    let stale = format!("{}/installs/1.0/bin:/usr/bin:/bin", root.display());
+    let parcela = |config: &Path, args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_parcela"))
+            .arg("--state-dir")
+            .arg(&f.state)
+            .arg("--path")
+            .arg(&f.source)
+            .env("PARCELA_NO_TRUST", "1")
+            .env("PARCELA_CONFIG", config)
+            .env("PATH", &stale)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+
+    let hook = || fs::read_to_string(f.source.join("hook.txt")).unwrap();
+    let up = |config: &Path| {
+        let up = parcela(config, &["up", "--detach"]);
+        assert!(
+            up.status.success(),
+            "{}",
+            String::from_utf8_lossy(&up.stderr)
+        );
+    };
+    let task = |config: &Path| {
+        let task = parcela(config, &["task", "which"]);
+        String::from_utf8_lossy(&task.stdout).trim().to_owned()
+    };
+
+    // Without it, processes inherit the stale PATH, as before.
+    up(&config);
+    assert_eq!(hook().trim(), "1.0 primary");
+    assert_eq!(task(&config), "1.0");
+    assert!(parcela(&config, &["down"]).status.success());
+
+    fs::write(
+        &config,
+        format!(
+            "env:\n  command: {:?}\n",
+            root.join("manager").display().to_string()
+        ),
+    )
+    .unwrap();
+    up(&config);
+    assert_eq!(
+        hook().trim(),
+        "2.0 primary",
+        "the checkout's version, and Parcela's own variables win"
+    );
+    assert_eq!(task(&config), "2.0");
+    assert!(parcela(&config, &["down"]).status.success());
+
+    fs::write(&config, "env:\n  command: 'exit 7'\n").unwrap();
+    let failed = parcela(&config, &["up", "--detach"]);
+    assert!(!failed.status.success());
+    assert!(
+        String::from_utf8_lossy(&failed.stderr).contains("env.command `exit 7`"),
+        "{}",
+        String::from_utf8_lossy(&failed.stderr)
+    );
+    fs::remove_file(&config).unwrap();
+    up(&config);
+    assert!(parcela(&config, &["down"]).status.success());
+}

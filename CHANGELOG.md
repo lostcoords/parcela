@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `parcela config set env.command 'mise env --json'` gives every service, hook and task the tool versions its checkout pins. Parcela runs the command in the checkout whenever an environment starts or a task runs, and adds the JSON object of variables it prints, so a `PATH` it prints replaces the inherited one. Parcela's own variables and `env` in `parcela.yaml` still win. `direnv export json` or any command that prints such an object works too. Unset by default, so nothing changes until you set it.
+
+### Fixed
+
+- With `env.command` set, Start and Restart in the dashboard no longer run a project under the tool versions of the shell that started the proxy. A proxy started while Ruby 4.0.9 was active kept 4.0.9's directory on its `PATH`, so after the checkout moved to 4.0.10 its prestart hook ran under 4.0.9 and Bundler could not find the project's gems, while `parcela up` from a shell worked. The same applies to environments `autostart` starts at login.
+
 ## 0.10.0 - 2026-11-15
 
 ### Added

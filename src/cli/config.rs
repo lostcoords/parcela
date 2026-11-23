@@ -124,6 +124,7 @@ fn default(key: &str) -> String {
         }
         "proxy.port" => "1443",
         "proxy.caddy" => "caddy",
+        "env.command" => "none",
         _ => "-",
     }
     .into()

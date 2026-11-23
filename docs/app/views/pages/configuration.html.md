@@ -236,7 +236,7 @@ env:
   API_ORIGIN: ${PARCELA_SERVICE_API_URL}
 ```
 
-Names use ASCII letters, digits and underscores, and do not start with a digit. Values can use `${NAME}` to insert any variable Parcela sets. A placeholder that does not resolve is an error. You cannot set `PORT`, `HOST` or names starting with `PARCELA_`, nor `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE` when a service uses `compose`. Commands inherit the launching shell's environment except `PORT` and names starting with `PARCELA_`. Service `env` overrides top-level `env`. Use Parcela-provided variables in placeholders. Arbitrary shell variables such as `${HOME}` are unavailable to interpolation.
+Names use ASCII letters, digits and underscores, and do not start with a digit. Values can use `${NAME}` to insert any variable Parcela sets. A placeholder that does not resolve is an error. You cannot set `PORT`, `HOST` or names starting with `PARCELA_`, nor `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE` when a service uses `compose`. Commands inherit the launching shell's environment, or the proxy's for the dashboard's actions, except `PORT` and names starting with `PARCELA_`. The host's [`env.command`](/docs/cli#tool-versions) adds variables from the checkout, such as the tool versions it pins. Service `env` overrides top-level `env`. Use Parcela-provided variables in placeholders. Arbitrary shell variables such as `${HOME}` are unavailable to interpolation.
 
 ## tasks
 

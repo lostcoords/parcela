@@ -12,7 +12,7 @@ use std::{
 };
 
 /// Every key `parcela config set` accepts.
-pub const KEYS: [&str; 13] = [
+pub const KEYS: [&str; 14] = [
     "sharing.domains",
     "sharing.domain_port",
     "sharing.lan",
@@ -26,6 +26,7 @@ pub const KEYS: [&str; 13] = [
     "proxy.caddy",
     "trust",
     "badge",
+    "env.command",
 ];
 
 /// Where backend ports come from unless `ports.backend` says otherwise. Below every OS
@@ -49,6 +50,16 @@ pub struct Host {
     pub trust: Option<bool>,
     /// `false`: the proxy stops adding the Parcela badge to app pages.
     pub badge: Option<bool>,
+    pub env: Env,
+}
+
+/// What every process an environment starts sees, beyond what Parcela sets.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Env {
+    /// A shell command, run in the checkout, that prints a JSON object of variables to add,
+    /// like `mise env --json`.
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -170,6 +181,13 @@ impl Host {
             self.proxy.port != Some(0),
             "proxy.port must be between 1 and 65535"
         );
+        ensure!(
+            self.env
+                .command
+                .as_deref()
+                .is_none_or(|command| !command.trim().is_empty()),
+            "env.command must not be empty"
+        );
         Ok(())
     }
 
@@ -230,6 +248,7 @@ impl Host {
             "proxy.caddy" => json!(self.proxy.caddy),
             "trust" => json!(self.trust),
             "badge" => json!(self.badge),
+            "env.command" => json!(self.env.command),
             _ => bail!(unknown(key)),
         })
     }
@@ -292,6 +311,10 @@ impl Host {
             }
             "trust" => self.trust = Some(boolean(key, value)?),
             "badge" => self.badge = Some(boolean(key, value)?),
+            "env.command" => {
+                ensure!(!value.trim().is_empty(), "{key} must not be empty");
+                self.env.command = Some(value.to_owned());
+            }
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -346,6 +369,7 @@ impl Host {
             "proxy.caddy" => self.proxy.caddy = None,
             "trust" => self.trust = None,
             "badge" => self.badge = None,
+            "env.command" => self.env.command = None,
             _ => bail!(unknown(key)),
         }
         Ok(())
@@ -490,6 +514,7 @@ mod tests {
             ("proxy.caddy", "/opt/caddy/bin/caddy"),
             ("trust", "false"),
             ("badge", "off"),
+            ("env.command", "mise env --json"),
         ] {
             host.set(key, value).unwrap();
         }
@@ -515,6 +540,7 @@ mod tests {
                 ["proxy.caddy", "/opt/caddy/bin/caddy"],
                 ["trust", false],
                 ["badge", false],
+                ["env.command", "mise env --json"],
             ])
         );
         assert_eq!(parsed.backend_ports(), 30000..=30999);
@@ -540,6 +566,7 @@ mod tests {
         assert!(host.set("ports.backend", "30000-20000").is_err());
         assert!(host.set("proxy.port", "0").is_err());
         assert!(host.set("proxy.caddy", "bin/caddy").is_err());
+        assert!(host.set("env.command", " ").is_err());
         assert!(Host::parse("sharing:\n  domain_port: 1481\n").is_err());
         assert!(Host::parse("sharing:\n  funnel: true\n").is_err());
         assert!(Host::parse("ports:\n  backend: lots\n").is_err());
